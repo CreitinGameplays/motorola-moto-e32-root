@@ -16,6 +16,10 @@ Root survives until reboot and is inherited by the parent adb shell.
 > the runtime root to mint the secure-world `VerifiedBoot-UNLOCK` marker into
 > `miscdata`. See `docs/07-unlock-how-to.md` and
 > `docs/06-secure-world-unlock-path.md`.
+>
+> **Proof:** an Android 15 GSI with no Motorola signature now boots on the
+> device (`ro.boot.flash.locked=0`, `verifiedbootstate=orange`,
+> `vbmeta.device_state=unlocked`) - see `docs/09-gsi-proof.md`.
 
 ## Target
 
@@ -62,6 +66,7 @@ docs/
   06-secure-world-unlock-path.md  secure-world SMC signing oracle -> unlock
   07-unlock-how-to.md       step-by-step software bootloader unlock
   08-debloat.md             Motorola/OOBE/Facebook bloat removal
+  09-gsi-proof.md           a GSI boots = independent proof of the unlock
   evidence/                 captured successful-run logs
 scripts/
   mali/                     target-side C: exploit + primitive probes
@@ -174,8 +179,14 @@ Then wipe `/data` once from stock recovery (same as a normal unlock) and
 reboot: `ro.boot.flash.locked=0`, `verifiedbootstate=orange`, and U-Boot logs
 `WARNNING: LOCK FLAG IS : UNLOCK, SKIP VERIFY!!!`. The full mechanism,
 constraints and the step-by-step are in `docs/06-secure-world-unlock-path.md`
-and `docs/07-unlock-how-to.md`. Note that fastboot flashing stays
-signature-gated; only the boot-time AVB policy changes.
+and `docs/07-unlock-how-to.md`. Only the boot-time AVB policy changes - the
+fastboot *download* gate is a separate mechanism and was still refusing
+unsigned requests when last probed.
+
+The functional proof: with the marker in place an **Android 15 GSI boots**
+(a system image with no Motorola signature), installed with
+[DSU-Sideloader](https://github.com/VegaBobo/DSU-Sideloader) - see
+`docs/09-gsi-proof.md`.
 
 ## How it works (short version)
 

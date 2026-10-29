@@ -362,6 +362,31 @@ boot, the marker read back from flash after a reboot is byte-identical to the
 one that was written, and the runtime root exploit still works on the wiped
 device (`mali_kroot` -> `uid=0`, `ROOTPROOF_0_Permissive`).
 
+### 7.6 Independent proof: a foreign unsigned system image boots
+
+Properties and a serial banner can be argued about; an **Android 15 GSI**
+booting cannot. A Generic System Image carries no Motorola signature, so
+its booting means the boot chain accepted a system it never signed - which
+is exactly the policy change the marker makes.
+
+Installed with [DSU-Sideloader](https://github.com/VegaBobo/DSU-Sideloader)
+(a tool whose own requirement list says "Unlocked Bootloader", because
+Android's `gsid` refuses DSU images on a locked device), the GSI booted on
+2026-10-29 with the stock Motorola boot image and vendor still in place:
+
+```
+ro.build.fingerprint        = google/treble_arm64_bvS/tdgsi_arm64_ab:15/AP4A.241205.013.C1/250106:userdebug/test-keys
+ro.bootimage.build.fingerprint = motorola/hawaii/hawaii:11/RORS31.335-58-1/612c2:user/release-keys
+ro.vendor.build.fingerprint   = motorola/hawaii/hawaii:11/RORS31.335-58-1/612c2:user/release-keys
+ro.boot.flash.locked        = 0
+ro.boot.verifiedbootstate   = orange
+ro.boot.vbmeta.device_state = unlocked
+```
+
+Details, DSU state, the U-Boot log for that boot and the (unrelated)
+Quickstep launcher crash are in [09-gsi-proof.md](09-gsi-proof.md); raw
+captures in [evidence/2026-10-29-gsi-boot.txt](evidence/2026-10-29-gsi-boot.txt).
+
 ## Reproduce
 
 Full step-by-step instructions are in `docs/07-unlock-how-to.md`; the short
@@ -404,8 +429,15 @@ software-only unlock: no Motorola key, no unlock code, no signed FDL, no
 BootROM exploit. `/data` has to be wiped once (recovery is enough) because it
 was created under the previous verified-boot state.
 
+The strongest confirmation is functional rather than declarative: an
+**Android 15 GSI with no Motorola signature boots** (installed with
+DSU-Sideloader, stock Motorola boot image and vendor still in place) - see
+[09-gsi-proof.md](09-gsi-proof.md).
+
 Caveat: the marker only affects the *boot* path. The fastboot download gate
-still rejects unsigned requests (`Please verify the signature!`), so this is
-not a general "unlocked bootloader" for flashing arbitrary images - it is an
-unlock of the verified-boot/AVB policy check, which is what `SKIP VERIFY`
-means here.
+still rejected unsigned requests when last probed (`Please verify the
+signature!`), so this is not a general "unlocked bootloader" for flashing
+arbitrary images from fastboot - it is an unlock of the verified-boot/AVB
+policy check, which is what `SKIP VERIFY` means here. That policy change is
+exactly what allows a GSI to boot, while the separate fastboot download
+gate still applies.

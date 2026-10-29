@@ -89,3 +89,16 @@ system updates. If an OTA is wanted later, restore it first:
 ```sh
 adb shell pm install-existing com.motorola.ccc.ota
 ```
+
+## Note: this applies to the stock system
+
+The list above was applied to the **stock Motorola system** (Android 11).
+While an Android 15 GSI is running as a userspace DSU, its own package set
+is in effect instead - the GSI has no Motorola packages at all (it is a
+generic AOSP image), so there is nothing to debloat there. The removals
+live in `/data` and therefore still apply to the stock system when you
+reboot back into it.
+
+The GSI does have its own bloat profile (AOSP apps plus whatever the image
+adds) and no Play Store, so it is a separate cleanup job if it becomes the
+daily driver.

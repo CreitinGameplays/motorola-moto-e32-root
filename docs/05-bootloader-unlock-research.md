@@ -185,7 +185,7 @@ their fingerprints, and compares them against a candidate leaked key.
 | Motorola official unlock | no | device unsupported, commands removed |
 | Unisoc identifier-token unlock | **no** (mechanism present) | needs Motorola/ODM private key; leaked key does not match |
 | CVE-2022-38694 BootROM exploit | **no** (platform matches) | needs physical download mode + hawaii UFS FDLs; Moto UFS falls back to AutoD; brick risk |
-| secure-world `miscdata` marker (SMC `0xb4000020` op `0x31`) | **yes - works** | mechanism decoded in [06](06-secure-world-unlock-path.md), applied and verified; see [07](07-unlock-how-to.md) |
+| secure-world `miscdata` marker (SMC `0xb4000020` op `0x31`) | **yes - works** | mechanism decoded in [06](06-secure-world-unlock-path.md), applied and verified; a GSI boots as independent proof, see [07](07-unlock-how-to.md) and [09](09-gsi-proof.md) |
 | runtime root (this repo) | **yes** | `scripts/mali/mali_kroot.c`, 5/5 fresh boots |
 
 Recommendation: keep using the runtime-root exploit. Bootloader unlock via the
@@ -197,3 +197,6 @@ It is now applied and verified on the device (`ro.boot.flash.locked=0`,
 `verifiedbootstate=orange`); the step-by-step is in
 [07-unlock-how-to.md](07-unlock-how-to.md) and the captured evidence in
 [evidence/2026-10-29-unlock.txt](evidence/2026-10-29-unlock.txt).
+Functionally confirmed as well: an Android 15 GSI with no Motorola
+signature boots on the unlocked device ([09-gsi-proof.md](09-gsi-proof.md),
+[evidence/2026-10-29-gsi-boot.txt](evidence/2026-10-29-gsi-boot.txt)).
