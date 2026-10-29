@@ -1,0 +1,24 @@
+# Local build outputs and run artifacts: compiled binaries, kernel/Image
+# dumps, generated maps and run logs. Rebuild them with the scripts instead.
+/artifacts/
+
+# Local-only working data, not part of the exploit sources:
+# third-party tools/SDKs and reference PoCs, downloaded APKs and decompiles.
+/tools/
+/apks/
+/decompiles/
+/dumps/
+
+# Local agent/dev notes (machine-specific workflow, not upstream material)
+AGENTS.md
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Python caches (scripts/host)
+__pycache__/
+*.pyc
