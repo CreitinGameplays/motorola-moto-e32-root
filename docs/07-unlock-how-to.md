@@ -200,6 +200,27 @@ and the boot log shows `WARNNING: LOCK FLAG IS : UNLOCK, SKIP VERIFY!!!`.
 Reboot again and re-read `miscdata[0x2000]`: the marker is byte-identical, so
 the state is permanent.
 
+### The strongest check: boot a GSI
+
+Properties can be argued about; a **foreign unsigned system image booting**
+cannot. With the marker in place, an Android 15 GSI installs and boots on
+this device (stock Motorola boot image and vendor stay in place - the GSI is
+layered on as a userspace DSU):
+
+```sh
+# on the stock system, with USB debugging and the DSU-Sideloader app
+# (https://github.com/VegaBobo/DSU-Sideloader) or the AOSP `gsi_tool`:
+adb shell gsi_tool install --gsi-size 2g --userdata-size 4g gsi.img
+adb shell gsi_tool enable            # sticky; omit for a single boot
+adb reboot
+adb shell getprop ro.build.fingerprint        # google/treble_arm64_bvS/...
+adb shell getprop ro.boot.flash.locked        # 0
+```
+
+DSU itself refuses to work on a locked bootloader, so a GSI that boots is
+an independent confirmation of the unlock. Details and the captured output:
+[09-gsi-proof.md](09-gsi-proof.md).
+
 ## 7. One-command version
 
 `scripts/host/unlock_marker.py` automates steps 1-4 (it re-roots for every
@@ -229,8 +250,8 @@ adb shell 'for i in 1 2 3; do /data/local/tmp/mali_kroot >/dev/null 2>&1;
 
 The marker only changes the **boot-time verified-boot policy**: U-Boot skips
 AVB and reports the orange state. The fastboot download gate is separate and
-still rejects unsigned requests, so flashing images from fastboot keeps
-failing with `Please verify the signature!`:
+still rejected unsigned requests when last probed, so flashing images from
+fastboot kept failing with `Please verify the signature!`:
 
 ```
 fastboot -w
@@ -238,7 +259,28 @@ fastboot -w
   FAILED (remote: 'Please verify the signature!')
 ```
 
+That probe predates the GSI test and has not been re-run since; treat the
+fastboot download gate as **unverified after the unlock** rather than
+proven-closed. What *is* proven is that the boot chain now accepts a system
+image nobody signed - an Android 15 GSI boots (see
+[09-gsi-proof.md](09-gsi-proof.md)).
+
 Erasing/wiping from stock recovery works and is the recovery path if a
 post-unlock boot ever loops again.
+
+## 10. Notes on the GSI session
+
+* The GSI is installed as a userspace DSU (`gsi_tool status` -> `[0] dsu`,
+  `system_gsi` + `userdata_gsi`). The stock `system_b` partition stays in
+  `super`, so a reboot returns to Android 11.
+* `/metadata/gsi/dsu/one_shot_boot=1` means the GSI is single-boot. Use
+  `gsi_tool enable` (sticky) before experimenting if you want reboots to
+  stay in the GSI.
+* A GSI is `userdebug`, so `adb root` works there and the Mali exploit is
+  not needed. On the stock Motorola system `adb root` is refused and the
+  runtime root from this repo is still the way in.
+* The GSI's Quickstep launcher may crash (`MANAGE_ACTIVITY_TASKS` denial);
+  that is an image defect, not an unlock problem. See
+  [09-gsi-proof.md](09-gsi-proof.md).
 
 

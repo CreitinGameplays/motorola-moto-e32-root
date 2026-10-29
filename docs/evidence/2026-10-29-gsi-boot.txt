@@ -1,0 +1,132 @@
+GSI boot as independent proof of the bootloader unlock - Moto E32 (hawaii), 2026-10-29
+===============================================================================
+
+An Android 15 GSI (Google "treble_arm64_bvS" / TrebleDroid_vanilla,
+test-keys, userdebug) was installed with DSU-Sideloader
+(https://github.com/VegaBobo/DSU-Sideloader) and booted successfully.
+
+DSU-Sideloader lists "Unlocked Bootloader" as a hard requirement, and
+Android's gsid refuses to install/boot a DSU image on a locked bootloader
+(only OEM-signed GSIs may boot there). A foreign, unsigned system image
+booting is therefore an independent confirmation of the unlock, and it
+exercises exactly the property the marker enables: U-Boot skips the
+verified-boot policy for a system it did not sign.
+
+1. Running system and bootloader state (adb shell getprop)
+
+     ro.product.device          = tdgsi_arm64_ab
+     ro.product.model           = TrebleDroid_vanilla
+     ro.build.version.release   = 15
+     ro.build.version.sdk       = 35
+     ro.build.type              = userdebug
+     ro.build.tags              = test-keys
+     ro.build.fingerprint       = google/treble_arm64_bvS/tdgsi_arm64_ab:15/AP4A.241205.013.C1/250106:userdebug/test-keys
+     ro.system.build.fingerprint= google/treble_arm64_bvS/tdgsi_arm64_ab:15/... (GSI)
+
+     ro.boot.flash.locked       = 0
+     ro.boot.verifiedbootstate  = orange
+     ro.boot.vbmeta.device_state= unlocked
+     ro.boot.veritymode         = enforcing
+     ro.boot.bootreason         = reboot,factory_reset
+     sys.boot_completed         = 1
+
+2. The stock Motorola images are untouched - only the GSI is layered on top
+
+     ro.bootimage.build.fingerprint = motorola/hawaii/hawaii:11/RORS31.335-58-1/612c2:user/release-keys
+     ro.vendor.build.fingerprint   = motorola/hawaii/hawaii:11/RORS31.335-58-1/612c2:user/release-keys
+     ro.hardware                   = ums9230_4h10   (Unisoc T606)
+
+   The GSI runs as a userspace DSU ("dsu" slot), so the stock system_b
+   partition is still in super and a plain reboot returns to Android 11.
+
+3. DSU state (read from /metadata/gsi/dsu/)
+
+     gsi_tool status
+       running
+       installed
+       disabled
+       [0] dsu
+       installed: userdata_gsi
+       AVB public key (sha1): [NONE]
+       installed: system_gsi
+       AVB public key (sha1): cdbb77177f731920bbe0a0f94f84d9038ae0617d
+
+     /metadata/gsi/dsu/one_shot_boot  = 1      (single boot, not sticky)
+     /metadata/gsi/dsu/install_status = disabled
+     /metadata/gsi/dsu/lp_names       = userdata_gsi,system_gsi,
+     /metadata/gsi/dsu/avb/           = q-gsi.avbpubkey r-gsi.avbpubkey s-gsi.avbpubkey
+
+     getprop
+       ro.gsid.image_running = 1
+       ro.gsid.dsu_slot      = dsu
+       vold.has_adoptable    = 1
+
+4. U-Boot log (live partition /dev/block/by-name/uboot_log)
+
+     avb_slot_verify.c:1609: DEBUG: avb_slot_verify() avb slot verify OK!
+     g_sprd_vboot_cmdline is androidboot.vbmeta.device=PARTUUID=1.0
+       androidboot.vbmeta.avb_version=1.1 androidboot.vbmeta.device_state=unlocked
+       androidboot.vbmeta.hash_alg=sha256 androidboot.vbmeta.size=18944
+       androidboot.vbmeta.digest=50535c59a54ce3d0d11a91f439932f69ee880822747e53addc0ce7e1204a4b71
+       androidboot.vbmeta.invalidate_on_error=yes androidboot.veritymode=enforcing
+     g_sprd_vboot_cmdline is ... androidboot.vbmeta.device_state=unlocked ...
+       androidboot.vbmeta.size=45888
+       androidboot.vbmeta.digest=2610ae5728d7aa2d19e7f3ab169adadcbee243bec311a5d23522e703a27d42be
+     set_root_of_trust succeeded.
+
+   Two vbmeta descriptors are seen: the stock 18944-byte one and the GSI's
+   45888-byte one. Both are accepted while device_state=unlocked.
+
+5. adb shell is usable on the GSI, and the GSI is a userdebug build, so
+   root does not even need the Mali exploit here:
+
+     adb root
+       restarting adbd as root
+     id
+       uid=0(root) gid=0(root) groups=0(root),... context=u:r:su:s0
+
+6. Known GSI-side defect: the Quickstep launcher crashes
+
+     java.lang.SecurityException: Permission Denial: getRootTaskInfo() from
+       pid=2704, uid=10105 requires android.permission.MANAGE_ACTIVITY_TASKS
+       at com.android.launcher3.uioverrides.QuickstepLauncher
+
+   Root cause (not related to the unlock):
+
+     * com.android.launcher3 lives in
+       /system/system_ext/priv-app/Launcher3QuickStep/Launcher3QuickStep.apk
+       but is signed with a different key than the platform:
+         launcher3 signatures:[d7f1f224]
+         platform  signatures:[b4addb29]
+       so the signature|privileged permission MANAGE_ACTIVITY_TASKS is not
+       granted by signature match;
+     * the GSI ships no privapp allowlist entry for it - none of the 30
+       files in /system/etc/permissions/ mentions the launcher;
+     * it cannot be granted at runtime either:
+         pm grant com.android.launcher3 android.permission.MANAGE_ACTIVITY_TASKS
+         java.lang.SecurityException: Permission ... is not a changeable
+         permission type
+     * consequence: cmd package resolve-activity -c android.intent.category.HOME
+       -> "No activity found" (no usable home screen).
+
+   Workarounds: sideload any launcher APK (this GSI has no Play Store:
+   com.android.vending is absent), or reboot back into the stock Motorola
+   system where com.motorola.launcher3 works.
+
+7. Return to stock (single-boot DSU) - the unlock is unaffected
+
+     adb reboot
+     adb shell getprop ro.build.fingerprint
+       motorola/hawaii/hawaii:11/RORS31.335-58-1/612c2:user/release-keys
+     adb shell getprop ro.build.version.release
+       11
+     adb shell getprop ro.boot.flash.locked
+       0
+     adb shell getprop ro.boot.verifiedbootstate
+       orange
+
+   The 64 bytes read back from /dev/block/by-name/miscdata at 0x2000 after
+   that reboot are byte-identical to the marker that was written
+   (artifacts/marker.bin == artifacts/marker_readback_after_gsi.bin), and
+   the uboot_log partition still shows
+   androidboot.vbmeta.device_state=unlocked.
