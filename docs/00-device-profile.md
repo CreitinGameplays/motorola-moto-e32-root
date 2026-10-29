@@ -13,6 +13,11 @@
 
 ## Security posture
 - Bootloader locked, AVB green, dm-verity enforcing, SELinux enforcing
+- Bootloader: U-Boot `2015.07-g0bc803f` (QOGIRL6, Ontim build), `secure: true`,
+  `androidboot.securefuse=true`, `androidboot.vbmeta.device_state=locked`,
+  `lcs: 5`; AVB algorithm `SHA256_RSA4096` (Motorola key `ecbe1669...`)
+  - Unlock feasibility (Unisoc token flow present, BootROM route blocked):
+    see `docs/05-bootloader-unlock-research.md`
 - Kernel config highlights (`artifacts/kernel-config`):
   - `CONFIG_RANDOMIZE_BASE=y` but panic log shows `Kernel Offset: disabled` -> KASLR effectively off; static kernel addresses usable
   - `CONFIG_KALLSYMS=y`, `CONFIG_KALLSYMS_ALL=y` (but `/proc/kallsyms` denied to shell)

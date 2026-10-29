@@ -11,6 +11,7 @@
 
 # Local agent/dev notes (machine-specific workflow, not upstream material)
 AGENTS.md
+todo.md
 
 # OS / editor noise
 .DS_Store
