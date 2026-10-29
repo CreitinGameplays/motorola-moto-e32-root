@@ -152,9 +152,12 @@ above, not for a Motorola web unlock.
   bootloader config strings (`disable`, `autoreboot-enable`). It contains **no
   unlock state** on a locked device.
 - U-Boot's `WARNNING: LOCK FLAG IS : UNLOCK, SKIP VERIFY!!!` is the classic
-  Unisoc message used when the device is already unlocked (the lock flag is
-  checked in secure world/OTP, not in a writable partition we can see), so
-  flipping it from Android is not a viable shortcut.
+  Unisoc message used when the device is already unlocked. Follow-up reversing
+  (see [06](06-secure-world-unlock-path.md)) shows the flag is **not** an OTP
+  bit: U-Boot reads a 64-byte signed marker from `miscdata` @`0x2000`,
+  validates it with SMC op `0x33`, and skips AVB when it is valid. The marker
+  is produced by SMC op `0x31` (`VerifiedBoot-UNLOCK`), which is now being
+  tested as a signature oracle from Linux.
 - `lcs: 5` is the lifecycle state reported by `fastboot getvar`; it is not
   writable through any exposed fastboot command.
 - AVB on this device is `SHA256_RSA4096`; the vbmeta key is Motorola's
@@ -182,8 +185,15 @@ their fingerprints, and compares them against a candidate leaked key.
 | Motorola official unlock | no | device unsupported, commands removed |
 | Unisoc identifier-token unlock | **no** (mechanism present) | needs Motorola/ODM private key; leaked key does not match |
 | CVE-2022-38694 BootROM exploit | **no** (platform matches) | needs physical download mode + hawaii UFS FDLs; Moto UFS falls back to AutoD; brick risk |
+| secure-world `miscdata` marker (SMC `0xb4000020` op `0x31`) | **yes - works** | mechanism decoded in [06](06-secure-world-unlock-path.md), applied and verified; see [07](07-unlock-how-to.md) |
 | runtime root (this repo) | **yes** | `scripts/mali/mali_kroot.c`, 5/5 fresh boots |
 
-Recommendation: keep using the runtime-root exploit. Bootloader unlock is not
-reachable with public tooling; do not flash or force download mode without a
-hawaii-specific UFS FDL and a verified recovery plan.
+Recommendation: keep using the runtime-root exploit. Bootloader unlock via the
+legacy/key paths is not reachable with public tooling; do not flash or force
+download mode without a hawaii-specific UFS FDL and a verified recovery plan.
+The secure-world marker route turned out to be the winning one: it needs no
+private key and no FDL, only the runtime root that this repo already provides.
+It is now applied and verified on the device (`ro.boot.flash.locked=0`,
+`verifiedbootstate=orange`); the step-by-step is in
+[07-unlock-how-to.md](07-unlock-how-to.md) and the captured evidence in
+[evidence/2026-10-29-unlock.txt](evidence/2026-10-29-unlock.txt).

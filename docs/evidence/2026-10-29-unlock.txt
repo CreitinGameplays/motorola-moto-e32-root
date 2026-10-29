@@ -1,0 +1,68 @@
+Unlock evidence - Moto E32 (hawaii), 2026-10-29
+================================================
+
+1. Boot properties after the marker was written to miscdata[0x2000]
+   and /data was wiped once:
+
+     ro.boot.flash.locked        = 0
+     ro.boot.verifiedbootstate   = orange
+     ro.boot.veritymode          = enforcing
+     sys.boot_completed          = 1
+
+   (adb shell getprop, captured after the first unlocked boot and again
+   after a further reboot.)
+
+2. Kernel command line passed by U-Boot, from the live uboot_log
+   partition (/dev/block/by-name/uboot_log). AVB still runs and reports
+   the unlocked device state:
+
+     fy_vbmeta() goto out. | [00005565] avb_slot_verify.c:1591: DEBUG:
+     avb_slot_verify() save slot_data to *out_data | [00005573]
+     avb_slot_verify.c:1609: DEBUG: avb_slot_verify() avb slot verify OK! |
+     [00005580] g_sprd_vboot_cmdline is androidboot.vbmeta.device=PARTUUID=1.0
+     androidboot.vbmeta.avb_version=1.1 androidboot.vbmeta.device_state=unlocked
+     androidboot.vbmeta.hash_alg=sha256 andr ...
+
+   The same partition contains no 'LOCK FLAG'/'SKIP VERIFY' line, so that
+   banner only reaches the early/serial console; the device_state argument
+   above is the authoritative on-device record.
+
+3. The 64-byte marker minted by SIP op 0x31 (AES-CBC over
+   "VerifiedBoot-UNLOCK" with the chip-unique VerifiedBoot-HUK-DERIVE key):
+
+     f5 53 44 ab 11 63 dd 2a 21 53 5f 77 db a1 7c 54
+     23 aa ad 81 5e dd be 88 42 fe e7 f2 f5 d0 71 76
+     9b b3 11 6f a0 7a 85 e4 66 9b 4c 56 a1 0f 5a 10
+     9b b3 11 6f a0 7a 85 e4 66 9b 4c 56 a1 0f 5a 10
+
+   Deterministic: identical across boots, scratch pages and module loads.
+
+4. Persistence: after a reboot the same 64 bytes read back from
+   /dev/block/by-name/miscdata at offset 0x2000 are byte-identical
+   (artifacts/marker.bin == artifacts/marker_readback.bin).
+
+5. Runtime root still works on the wiped, unlocked device:
+
+     uid=0
+     Permissive
+     ROOTPROOF_0_Permissive
+     [+] shell exited status=0
+
+6. Fastboot remains signature-gated (the marker only changes the boot-time
+   verified-boot policy):
+
+     fastboot -w
+       Erasing 'userdata' ... (bootloader) Please verify the signature!
+       FAILED (remote: 'Please verify the signature!')
+
+7. scripts/host/unlock_marker.py dry run (fresh boot):
+
+     [+] scratch: IDX=2290 PA=0xd5ead000 VA=0xffffffc055ead000
+     [*] op 0x31 attempt 0 -> rc=0
+     [+] marker: f5 53 44 ab ... (64 bytes, see above)
+     [*] op 0x33 attempt 0 -> rc=-14 status=0
+     [*] op 0x33 attempt 1 -> rc=0 status=1
+     [+] verified marker saved to artifacts/marker.bin
+
+   The -14 is the secure-world mapper refusing the first request for a
+   buffer/operation; the byte-identical retry succeeds.

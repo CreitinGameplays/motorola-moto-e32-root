@@ -1,0 +1,191 @@
+﻿device: ZF523X9NXW	 fastboot
+
+===== getvar all :: fastboot getvar all =====
+fastboot.exe : (bootloader) frp-state: Protection
+At C:\Users\Creitin\moto-root-test\scripts\host\fastboot_probe.ps1:47 char:12
++     $out = & fastboot @($c.A) 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((bootloader) frp-state: Protection:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(bootloader) serialno: ZF523X9NXW
+(bootloader) secure: true
+(bootloader) socidp2: 171b3dabd4f63743102cf2d0d0520ea1
+(bootloader) socidp1: 73d097e006ebbf9fc7d6e3bca4b5aa73
+(bootloader) tokenp1: 5a4635323358394e5857000000000000
+(bootloader) lcs: 5
+(bootloader) max-download-size: 0x36000000
+(bootloader) is-userspace: no
+(bootloader) version: 1.0
+(bootloader) battery-voltage: 4386
+(bootloader) battid: SB18D36197
+(bootloader) cpu: T606 AB
+(bootloader) radio: LATAM
+(bootloader) hwrev: PVT
+(bootloader) ram: 4GB SAMSUNG LP4X M5-M8=01 08 00 12
+(bootloader) ufs_sn: 0036003300320031003400350064003800630034003300350000
+(bootloader) ufs: 64GB SAMSUNG KM5P9001DM-B424 FV=0300
+(bootloader) storage-type: UFS
+(bootloader) ufs_ffu.change_count: 0
+(bootloader) ufs_ffu.vice_flash_retry_count: 0
+(bootloader) ufs_ffu.vice_flash_fail_count: 0
+(bootloader) ufs_ffu.vice_flash_count: 0
+(bootloader) ufs_ffu.flash_retry_count: 0
+(bootloader) ufs_ffu.flash_fail_count: 0
+(bootloader) ufs_ffu.flash_count: 0
+(bootloader) unlock_raw_data: a3ba69438ad7993682f1665ab5f25045
+(bootloader) sku: XT2227-1
+(bootloader) build_type: user
+(bootloader) product_model: Hawaii
+(bootloader) product_name: hawaii
+(bootloader) ro.build.version.incremental: 612c2
+(bootloader) ro.carrier: retbr
+(bootloader) imei2: 000000000000000
+(bootloader) imei: 358239542974870
+(bootloader) persist.radio.multisim.config: dsds
+(bootloader) fingerprint(2):: 5-58-1/612c2:user/release-keys
+(bootloader) fingerprint(1):: motorola/hawaii/hawaii:11/RORS31.33
+all: Done!!
+Finished. Total time: 0.023s
+
+===== getvar current-slot :: fastboot getvar current-slot =====
+fastboot.exe : current-slot: b
+At C:\Users\Creitin\moto-root-test\scripts\host\fastboot_probe.ps1:47 char:12
++     $out = & fastboot @($c.A) 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (current-slot: b:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Finished. Total time: 0.014s
+
+===== getvar is-userspace :: fastboot getvar is-userspace =====
+fastboot.exe : is-userspace: no
+At C:\Users\Creitin\moto-root-test\scripts\host\fastboot_probe.ps1:47 char:12
++     $out = & fastboot @($c.A) 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (is-userspace: no:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Finished. Total time: 0.012s
+
+===== getvar unlock_raw_data :: fastboot getvar unlock_raw_data =====
+fastboot.exe : unlock_raw_data: a3ba69438ad7993682f1665ab5f25045
+At C:\Users\Creitin\moto-root-test\scripts\host\fastboot_probe.ps1:47 char:12
++     $out = & fastboot @($c.A) 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (unlock_raw_data...2f1665ab5f25045:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Finished. Total time: 0.012s
+
+===== getvar secure :: fastboot getvar secure =====
+fastboot.exe : secure: true
+At C:\Users\Creitin\moto-root-test\scripts\host\fastboot_probe.ps1:47 char:12
++     $out = & fastboot @($c.A) 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (secure: true:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Finished. Total time: 0.012s
+
+===== getvar serialno :: fastboot getvar serialno =====
+fastboot.exe : serialno: ZF523X9NXW
+At C:\Users\Creitin\moto-root-test\scripts\host\fastboot_probe.ps1:47 char:12
++     $out = & fastboot @($c.A) 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (serialno: ZF523X9NXW:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Finished. Total time: 0.012s
+
+===== oem get_identifier_token :: fastboot oem get_identifier_token =====
+fastboot.exe : (bootloader) Identifier token:
+At C:\Users\Creitin\moto-root-test\scripts\host\fastboot_probe.ps1:47 char:12
++     $out = & fastboot @($c.A) 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((bootloader) Identifier token::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+(bootloader) 5a4635323358394e5857
+
+OKAY [  0.014s]
+Finished. Total time: 0.014s
+
+===== oem get_unlock_data :: fastboot oem get_unlock_data =====
+fastboot.exe : FAILED (remote: 'unknown cmd.')
+At C:\Users\Creitin\moto-root-test\scripts\host\fastboot_probe.ps1:47 char:12
++     $out = & fastboot @($c.A) 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (FAILED (remote: 'unknown cmd.'):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+fastboot: error: Command failed
+
+===== oem device-info :: fastboot oem device-info =====
+fastboot.exe : FAILED (remote: 'unknown cmd.')
+At C:\Users\Creitin\moto-root-test\scripts\host\fastboot_probe.ps1:47 char:12
++     $out = & fastboot @($c.A) 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (FAILED (remote: 'unknown cmd.'):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+fastboot: error: Command failed
+
+===== oem help :: fastboot oem help =====
+fastboot.exe : FAILED (remote: 'unknown cmd.')
+At C:\Users\Creitin\moto-root-test\scripts\host\fastboot_probe.ps1:47 char:12
++     $out = & fastboot @($c.A) 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (FAILED (remote: 'unknown cmd.'):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+fastboot: error: Command failed
+
+===== oem getversions :: fastboot oem getversions =====
+fastboot.exe : (bootloader) model=
+At C:\Users\Creitin\moto-root-test\scripts\host\fastboot_probe.ps1:47 char:12
++     $out = & fastboot @($c.A) 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((bootloader) model=:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(bootloader) sub_model=
+(bootloader) software version=
+(bootloader) SW model=
+(bootloader) build number=
+(bootloader) hardware version=
+(bootloader) RF band id=
+OKAY [  0.016s]
+Finished. Total time: 0.016s
+
+===== oem getsecurityversion :: fastboot oem getsecurityversion =====
+fastboot.exe : (bootloader) 1
+At C:\Users\Creitin\moto-root-test\scripts\host\fastboot_probe.ps1:47 char:12
++     $out = & fastboot @($c.A) 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((bootloader) 1:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+OKAY [  0.012s]
+Finished. Total time: 0.012s
+
+===== oem get_unlock_bootloader_nonce :: fastboot oem get_unlock_bootloader_nonce =====
+fastboot.exe : FAILED (remote: 'unknown cmd.')
+At C:\Users\Creitin\moto-root-test\scripts\host\fastboot_probe.ps1:47 char:12
++     $out = & fastboot @($c.A) 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (FAILED (remote: 'unknown cmd.'):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+fastboot: error: Command failed
+
+===== flashing get_unlock_ability :: fastboot flashing get_unlock_ability =====
+fastboot.exe : FAILED (remote: 'Not implement.')
+At C:\Users\Creitin\moto-root-test\scripts\host\fastboot_probe.ps1:47 char:12
++     $out = & fastboot @($c.A) 2>&1 | Out-String
++            ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (FAILED (remote: 'Not implement.'):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+fastboot: error: Command failed
