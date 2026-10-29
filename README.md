@@ -67,10 +67,17 @@ docs/
   07-unlock-how-to.md       step-by-step software bootloader unlock
   08-debloat.md             Motorola/OOBE/Facebook bloat removal
   09-gsi-proof.md           a GSI boots = independent proof of the unlock
+  10-kernel-source.md       the full kernel source: where it is, how it was
+                            verified against the phone, and the measured gap
+                            to the shipped build (closed by patches/kernel-sprd)
   evidence/                 captured successful-run logs
+patches/
+  kernel-sprd/              the measured header delta (git patch) + the
+                            reconstructed production config fragment
 scripts/
   mali/                     target-side C: exploit + primitive probes
-  host/                     host-side Python helpers
+  host/                     host-side Python/PowerShell helpers
+  device/                   on-device helper scripts (unlock, DT dump, ...)
   build.ps1 / build.sh      build the exploit with the NDK
   run_matrix.ps1            reliability matrix (N boot + run cycles)
 artifacts/                  local build output and dumps (gitignored)
@@ -250,7 +257,26 @@ hardening and measured reliability are in `docs/04-reliability-hardening.md`.
 - `docs/03-root-exploit.md` - the complete exploit chain and offsets
 - `docs/04-reliability-hardening.md` - failure analysis and hardening
 - `docs/05-bootloader-unlock-research.md` - bootloader unlock feasibility
+- `docs/10-kernel-source.md` - the full kernel source: Motorola/Unisoc
+  `kernel-sprd` @ `R-11-release-RORS`, verified against the phone (config,
+  Kconfig, headers, device tree) plus the measured gap to the shipped build
 - `docs/evidence/` - captured successful-run logs and fastboot recon
+
+## Kernel source
+
+The device runs the Motorola/Unisoc **4.14.199 "Petit Gorille"** kernel
+(qogirl6 / UMS9230 = T606). The GPL source is public:
+
+```powershell
+.\scripts\host\get_kernel_source.ps1     # -> D:\AndroidSDKTools\kernel-sprd
+```
+
+It is verified against the phone on five axes (build config, Kconfig symbol
+coverage, 4,852/4,852 header match, device tree, version string). The delta
+between the published 2022-10 snapshot and the shipped Feb-2024 build was
+measured and is closed: `patches/kernel-sprd/` holds the 7-header backport and
+the reconstructed production config fragment. Full write-up:
+`docs/10-kernel-source.md`.
 
 ## License
 
