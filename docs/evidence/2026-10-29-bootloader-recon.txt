@@ -1,0 +1,73 @@
+Bootloader reconnaissance, Moto E32 XT2227-1 (hawaii), 2026-10-29
+=================================================================
+
+# fastboot getvar all (read-only)
+(bootloader) serialno: ZF523X9NXW
+(bootloader) secure: true
+(bootloader) socidp2: 171b3dabd4f63743102cf2d0d0520ea1
+(bootloader) socidp1: 73d097e006ebbf9fc7d6e3bca4b5aa73
+(bootloader) tokenp1: 5a4635323358394e5857000000000000
+(bootloader) lcs: 5
+(bootloader) max-download-size: 0x36000000
+(bootloader) is-userspace: no
+(bootloader) cpu: T606 AB
+(bootloader) radio: LATAM
+(bootloader) hwrev: PVT
+(bootloader) ram: 4GB SAMSUNG LP4X M5-M8=01 08 00 12
+(bootloader) storage-type: UFS
+(bootloader) ufs: 64GB SAMSUNG KM5P9001DM-B424 FV=0300
+(bootloader) unlock_raw_data: a3ba69438ad7993682f1665ab5f25045
+(bootloader) sku: XT2227-1
+(bootloader) build_type: user
+(bootloader) product_model: Hawaii
+(bootloader) product_name: hawaii
+(bootloader) ro.build.version.incremental: 612c2
+(bootloader) ro.carrier: retbr
+(all: Done!!)
+
+# fastboot command probes
+oem help                        -> FAILED (remote: 'unknown cmd.')
+oem device-info                 -> FAILED (remote: 'unknown cmd.')
+oem get_unlock_data             -> FAILED (remote: 'unknown cmd.')
+flashing get_unlock_ability     -> FAILED (remote: 'Not implement.')
+oem get_unlock_bootloader_nonce -> FAILED (remote: 'unknown cmd.')
+oem get_identifier_token        -> OKAY
+   5a4635323358394e5857          (= ASCII "ZF523X9NXW", the product serial)
+
+# kernel cmdline (via runtime root, /proc/device-tree/chosen/bootargs)
+androidboot.verifiedbootstate=green androidboot.flash.locked=1
+androidboot.securefuse=true androidboot.psn=ZF523X9NXW
+androidboot.vbmeta.device_state=locked androidboot.veritymode=enforcing
+androidboot.bootloader=ums923_4h1_Natv_nv-bc83f-222927141356-22422112928
+
+# device tree: no software entry to download mode
+find /proc/device-tree -iname "*reboot*"   -> (nothing)
+find /proc/device-tree -iname "*download*" -> (nothing)
+grep -rl reboot-mode /proc/device-tree     -> (nothing)
+
+# U-Boot image (uboot_a.img, 3 MiB, DHTB)
+U-Boot 2015.07-g0bc803f (Feb 20 2024 - 11:29:28 +0800) QOGIRL6
+strings:
+  get_identifier_token / Identifier token:
+  unlock_bootloader / get_unlock_bootloader_nonce
+  Please firstly execute <fastboot oem get_identifier_token>
+  Warning: Unlock device may erase user data.
+  Unlock bootloader fail. / Info:Unlock bootloader success!
+  Bootloader can not been unlocked repeatly.
+  WARNNING: LOCK FLAG IS : UNLOCK, SKIP VERIFY!!!
+  uboot_verify_product_sn_signature() return error:param->a0=%d
+
+# RSA public keys found in the bootloader chain
+python scripts/host/analyze_bootloader.py artifacts/bootloader/bl \
+       --compare artifacts/bootloader/rsa4096_vbmeta.pem
+
+candidate key: 4096 bits sha256=36949b827927c883836897ab67eb01360795186cb81faca37ef7de583a1b65b1
+== trustos_a.img (6291456 bytes)
+   DER key @00159459 1024 bits sha256=8f31417f7ad923c6f3ec1fa07ee45763e9cfff2aa70c085bde61bd2ac9a7902a
+   DER key @00159709 1024 bits sha256=205c1515d220f0ae6ea646733f9f9b332d49156c9f1da274d6300db53ef99b9f
+== uboot_a.img (3145728 bytes)
+   DER key @000b7ac8 2048 bits sha256=20c694a8bd9179765e4849a3bc6650ae98866d931617a78172f99b42ba84a646
+== vbmeta_a.img (1048576 bytes)
+   AVB key @00003d00 4096 bits sha256=ecbe1669a209b5260e21388daea1be28b8149cc23ff5202d926a08833a308217
+
+candidate matches: 0

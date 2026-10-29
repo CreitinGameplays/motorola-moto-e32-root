@@ -53,6 +53,7 @@ docs/
   02-kallsyms-and-kernel-image.md  symbol/offset recovery
   03-root-exploit.md        full exploit write-up
   04-reliability-hardening.md  failure modes, fixes, measurements
+  05-bootloader-unlock-research.md  bootloader unlock feasibility (negative result)
   evidence/                 captured successful-run logs
 scripts/
   mali/                     target-side C: exploit + primitive probes
@@ -197,7 +198,8 @@ hardening and measured reliability are in `docs/04-reliability-hardening.md`.
 - `CONFIG_STATIC_USERMODEHELPER=y` makes the classic `modprobe_path` trick
   unusable (not needed here).
 - The bootloader is **not** unlocked and no boot image is flashed, by design
-  (brick risk on a locked bootloader).
+  (brick risk on a locked bootloader). Why unlocking is not reachable is
+  analysed in `docs/05-bootloader-unlock-research.md`.
 
 ## Documentation
 
@@ -206,7 +208,8 @@ hardening and measured reliability are in `docs/04-reliability-hardening.md`.
 - `docs/02-kallsyms-and-kernel-image.md` - kallsyms/Image recovery
 - `docs/03-root-exploit.md` - the complete exploit chain and offsets
 - `docs/04-reliability-hardening.md` - failure analysis and hardening
-- `docs/evidence/` - captured successful-run logs
+- `docs/05-bootloader-unlock-research.md` - bootloader unlock feasibility
+- `docs/evidence/` - captured successful-run logs and fastboot recon
 
 ## License
 
