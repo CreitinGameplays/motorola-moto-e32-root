@@ -10,7 +10,12 @@ Root survives until reboot and is inherited by the parent adb shell.
 
 > **Status:** working and hardened. Final build verified **5/5 fresh boots and
 > 3/3 same-boot reruns**, first attempt, 2–5 s per run, no panic.
-> Root is **runtime only** - nothing is flashed and the bootloader stays locked.
+> Root is **runtime only** - nothing is flashed.
+>
+> **Update:** the bootloader is now also unlocked, purely in software, using
+> the runtime root to mint the secure-world `VerifiedBoot-UNLOCK` marker into
+> `miscdata`. See `docs/07-unlock-how-to.md` and
+> `docs/06-secure-world-unlock-path.md`.
 
 ## Target
 
@@ -20,7 +25,7 @@ Root survives until reboot and is inherited by the parent adb shell.
 | SoC / GPU | Unisoc UMS9230 / T606, ARM64, Mali-G57 (Valhall, JM), kbase DDK r28p0 |
 | OS | Android 11, build `RORS31.335-58-1`, security patch 2024-02-05 |
 | Kernel | Linux 4.14.199+ (`#1 SMP PREEMPT`), KASLR effectively disabled |
-| Bootloader | locked / AVB green / dm-verity enforcing / SELinux enforcing |
+| Bootloader | unlocked in software (`ro.boot.flash.locked=0`, `verifiedbootstate=orange`) |
 | Access needed | USB debugging, `adb` shell (uid 2000); **no** unlock, **no** root |
 
 Kernel addresses and struct offsets in the exploit are hardcoded for this
@@ -54,6 +59,8 @@ docs/
   03-root-exploit.md        full exploit write-up
   04-reliability-hardening.md  failure modes, fixes, measurements
   05-bootloader-unlock-research.md  bootloader unlock feasibility (negative result)
+  06-secure-world-unlock-path.md  secure-world SMC signing oracle -> unlock
+  07-unlock-how-to.md       step-by-step software bootloader unlock
   evidence/                 captured successful-run logs
 scripts/
   mali/                     target-side C: exploit + primitive probes
@@ -146,6 +153,28 @@ Starts from a fresh boot each cycle and reports success:
 .\scripts\run_matrix.ps1                 # 5 cycles, reboot each
 .\scripts\run_matrix.ps1 -Cycles 3 -NoReboot
 ```
+
+### 7. (Optional) software bootloader unlock
+
+With root, the bootloader's verified-boot policy can be changed permanently:
+the secure world signs `"VerifiedBoot-UNLOCK"` with a chip-unique HUK-derived
+key, and that 64-byte marker is what U-Boot validates against `miscdata`
+offset `0x2000` on every boot. The signing SMC is not gated on lock state, so
+a rooted kernel can mint the marker itself.
+
+```bash
+adb push artifacts/sip_page   /data/local/tmp/sip_page
+adb push artifacts/mali_kroot /data/local/tmp/mali_kroot
+python scripts/host/unlock_marker.py            # dry run
+python scripts/host/unlock_marker.py --flash    # writes miscdata 0x2000
+```
+
+Then wipe `/data` once from stock recovery (same as a normal unlock) and
+reboot: `ro.boot.flash.locked=0`, `verifiedbootstate=orange`, and U-Boot logs
+`WARNNING: LOCK FLAG IS : UNLOCK, SKIP VERIFY!!!`. The full mechanism,
+constraints and the step-by-step are in `docs/06-secure-world-unlock-path.md`
+and `docs/07-unlock-how-to.md`. Note that fastboot flashing stays
+signature-gated; only the boot-time AVB policy changes.
 
 ## How it works (short version)
 
