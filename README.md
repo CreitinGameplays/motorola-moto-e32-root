@@ -61,6 +61,7 @@ docs/
   05-bootloader-unlock-research.md  bootloader unlock feasibility (negative result)
   06-secure-world-unlock-path.md  secure-world SMC signing oracle -> unlock
   07-unlock-how-to.md       step-by-step software bootloader unlock
+  08-debloat.md             Motorola/OOBE/Facebook bloat removal
   evidence/                 captured successful-run logs
 scripts/
   mali/                     target-side C: exploit + primitive probes
