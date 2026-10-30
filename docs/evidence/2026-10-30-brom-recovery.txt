@@ -1,0 +1,179 @@
+Recovery attempt: BootROM (1782:4D00) on Moto E32 XT2227-1 "hawaii"
+========================================================================
+Host: Windows, 2026-10-30. Device: ZF523X9NXW, Unisoc UMS9230-UFS.
+Tool: D:\AndroidSDKTools\spd\spd_dump_LibUSB_Release\spd_dump.exe
+      branch:stable, sha1:2a202404a7512026d146b62624f089aceb408520
+
+------------------------------------------------------------------------
+1. WHAT THE DEVICE ENUMERATES AS
+------------------------------------------------------------------------
+Only ever one of two USB nodes, never adb, never fastboot:
+
+  USB\VID_1782&PID_4D00\5&E7DA5E8&0&1     Status OK, CM_PROB_NONE
+                                          -> real Unisoc BootROM
+  USB\VID_0000&PID_0002\5&E7DA5E8&0&1     CM_PROB_FAILED_POST_START
+                                          -> "Device Descriptor Request
+                                          Failed", i.e. the device did not
+                                          answer GET_DESCRIPTOR
+
+Descriptors of the good node (pyusb):
+
+  idVendor   0x1782   idProduct 0x4d00
+  bcdUSB     0x0200   bcdDevice 0x0202
+  bDeviceClass 0x00 (specified at interface)
+  Configuration 1: 100 mA, bmAttributes 0xc0 (SELF POWERED)
+  Interface 0: Vendor Specific
+    EP 0x85 Bulk IN  512 B
+    EP 0x06 Bulk OUT 512 B
+
+`adb devices` and `fastboot devices` are empty in every state.
+
+------------------------------------------------------------------------
+2. STALE vs FRESH BOOTROM  (the core discovery)
+------------------------------------------------------------------------
+A BootROM node that has been sitting on the bus for a while ENUMERATES but
+its command handler is dead. spd_dump attaches at the USB level and gets
+nothing back:
+
+  $ spd_dump --wait 8 verbose 2 sendcmdv 0x07 0 sendcmdv 0x0D 0
+  libusb_control_transfer ok
+  usb_recv failed : LIBUSB_ERROR_TIMEOUT      (x10)
+  wrong command or wrong mode detected, reboot your phone by pressing
+  POWER and VOL_UP for 7-10 seconds.
+
+A FRESHLY entered BootROM (Power + Vol Down, then plug in) answers
+immediately and identifies itself:
+
+  libusb_control_transfer ok
+  CHECK_BAUD bootrom
+  BSL_REP_VER: "SPRD3\0"
+  CMD_CONNECT bootrom
+
+So the chip is alive and the link is good. The earlier "wrong command or
+wrong mode" failures were a stale session left by the forced power-off,
+not a dead or wrong chip.
+
+Consequence: every probe must be armed BEFORE the device appears, and must
+fire the instant a NEW enumeration shows up. Firmware idle window is only
+a couple of minutes.
+
+------------------------------------------------------------------------
+3. `chip_uid` IS NOT A BOOTROM COMMAND
+------------------------------------------------------------------------
+The 17:06 session above answered CHECK_BAUD + CONNECT and then timed out on
+`chip_uid`. That is NOT a fault: `chip_uid` is an FDL1/FDL2-stage command.
+The BootROM command table (spd_cmd.h) has:
+
+  0x1A BSL_CMD_READ_CHIP_UID   -> 0xAB BSL_REP_READ_CHIP_UID
+  0x07 BSL_CMD_READ_CHIP_TYPE  -> 0x94 BSL_REP_READ_CHIP_TYPE
+  0x0D BSL_CMD_READ_FLASH_INFO -> 0x9B BSL_REP_READ_FLASH_INFO
+  0x2D BSL_CMD_READ_PARTITION  -> 0xBA BSL_REP_READ_PARTITION
+  0x35 BSL_CMD_DUMP_UBOOT_LOG  -> 0xBB BSL_REP_DUMP_UBOOT_LOG
+  0x19 BSL_CMD_CHECK_ROOT      -> 0xA7 if ROOT_MAGIC matches, else 0x80
+
+So the correct read-only probe set for this stage is 0x07, 0x0D, 0x2D,
+0x1A, 0x19 -- and none of those has been executed on a fresh session yet.
+
+All of them are reads. None writes storage. 0x07/0x0D/0x2D/0x1A/0x19 are
+safe; 0x2A (SET_FIRST_MODE), 0x49 (WRITE_PARTITION_VALUE) and 0x47
+(WRITE_EFUSE) are NOT.
+
+------------------------------------------------------------------------
+4. WHY "NO LOGO, EVER" IS THE KEY FACT
+------------------------------------------------------------------------
+On this device the Motorola logo is drawn by the bootloader (U-Boot), from
+the `logo` partition. The one KVM-off kernel test that reached userspace
+showed: logo -> no adb -> hang (244 s). So U-Boot running == logo visible.
+
+Observed since the hang: pure black, no logo, no backlight, not even a
+flicker, on every power-on attempt, including a 3-minute untouched
+Power-alone test. Therefore U-Boot never starts.
+
+That moves the fault BELOW U-Boot:
+
+    BootROM --(load + verify SPL from UFS)--> SPL/sml --> U-Boot --> boot.img
+
+and it rules out everything we touched:
+  * boot_b (the hung kernel) cannot matter - it is loaded by U-Boot, which
+    never runs.
+  * the misc A/B block cannot matter for the same reason.
+  * the boot_a rescue cannot run for the same reason (it is boot.img too).
+
+If U-Boot were running, the slot-b-exhausted fallback would pick slot a =
+the proven restore rescue, which returns to Android in ~40-60 s of black.
+Three untouched minutes produced nothing, so that path is not executing.
+
+Also ruled out: a stuck Volume Down key. A stuck Vol-Down would make a
+plain Power-on enter download mode (and enumerate). Plain Power does not
+enumerate at all, so the strap is not stuck.
+
+------------------------------------------------------------
+5. STATE MATRIX AS OBSERVED
+------------------------------------------------------------------------
+  action                     USB result                 screen
+  -------------------------  --------------------------  ------------
+  Power alone                nothing                     black
+  Power alone + 3 min wait   nothing                     black
+  Power + Vol Down           sometimes 1782:4D00 OK      black
+                             sometimes VID_0000&PID_0002
+  plug in, no keys           nothing                     black
+  wall charger               nothing                     black
+
+------------------------------------------------------------------------
+6. BACKUP STATE USED AS REFERENCE (all on D:)
+------------------------------------------------------------------------
+  D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\
+    boot_a.img 67108864   boot_b.img 67108864   misc.img 1048576
+    miscdata.img 1048576  uboot_a.img 3145728   uboot_b.img 3145728
+    sml_a.img 1048576     sml_b.img 1048576      trustos_a/b 6291456
+    logo.img 8388608      persist  prodnv  dtbo  vbmeta*  SHA256SUMS
+
+Stock misc A/B block (offset 0x800), decoded:
+
+  5f 62 00 00 42 43 41 42 01 02 00 00 9e 00 9f 00
+  00 00 00 00 00 00 00 00 00 00 00 00 cd 53 f1 45
+
+  suffix "_b", magic "BCAB", ver 1, nb_slot 2
+  slot a = 0x009e  prio 14, tries 1, successful 1, verity 0
+  slot b = 0x009f  prio 15, tries 1, successful 1, verity 0
+  crc32_le stored 0x45f153cd == computed 0x45f153cd  (valid)
+  BCB at misc+0 = "bootonce-bootloader" (this chain ignores it)
+
+Our test block: a = 0x008e (prio 14, tries 0, succ 1),
+                b = 0x001f (prio 15, tries 1, succ 0).
+After one failed boot of b, b reads tries 0 / succ 0 -> unbootable, so
+the stock fallback is slot a = the restore rescue.
+
+NOTE: writing stock misc.img back as-is is NOT a valid fix - both stock
+slots are successful with b at the higher priority, so it would select
+slot b (the hung kernel) first.
+
+------------------------------------------------------------------------
+7. BOOTLOADER IMAGES ARE NOT FDL1/FDL2
+------------------------------------------------------------------------
+  sml_a.img     4448544201000000 ...  ("DHTB" wrapper)
+  uboot_a.img   4448544201000000 ...
+  trustos_a.img 4448544201000000 ...
+`sml_a` is ARM Trusted Firmware / secure monitor (strings: SPRD System
+Reset, teecfg, sprd_sip_svc, plat_sprd_psci_pm_ops). All three are
+DHTB-wrapped and therefore are not keys to a BootROM download: they are
+loaded BY the download.
+
+No FDL1/FDL2 is published for ums9230 - the CVE repo carries only
+custom_exec_no_verify_65015f08.bin (96 B) and stack-info-ums9230.csv.
+On UFS a wrong FDL bricks (TomKing062), so that path needs the exact
+vendor FDL from this device's own firmware package, not a guess.
+
+------------------------------------------------------------------------
+8. WHAT THIS MEANS
+------------------------------------------------------------------------
+The BootROM is healthy. The failure is that it is not getting from SPL to
+U-Boot. Two candidate causes remain, and the read-only probe separates
+them:
+
+  (a) BootROM cannot initialise/read the UFS  -> 0x0D / 0x43 / 0x2D fail
+      or return errors. Points at power/PMIC or UFS hardware.
+  (b) UFS reads fine but the SPL is corrupt or fails verification
+      -> 0x0D / 0x2D succeed. Needs an FDL-based reflash of uboot/sml.
+
+Nothing in either case is fixable by touching boot_a/boot_b or misc.
