@@ -10,21 +10,29 @@
 #                stage.  No MMIO, no clock, works at the first statement of
 #                start_kernel(); the call returns if PSCI does not implement
 #                it, so a normal boot after this build means "SMC unsupported".
-#                One bit per build: reset = the stage was reached.
+#   paint  0|1   1 = cumulative visual trace: at every stage from 2 to 8 fill
+#                another white band at the bootloader's framebuffer
+#                (phys 0x9e000000, lcd_base).  The panel keeps scanning that
+#                buffer while a half-booted kernel hangs, so the number of
+#                white bands on screen is the last stage reached - no reset,
+#                no ramoops, no console.  Combine with --entry-paint in
+#                pack_and_sign_boot.py, which paints band 0 from an entry
+#                stub that runs with the MMU off.
 # Reuses the object tree (same KCFLAGS as the v4 build), so only init/main.c
 # recompiles: seconds, not a full build.
 set -e
 panic_stage="${1:-0}"
 arm_stage="${2:-0}"
 smc_stage="${3:-0}"
-tag="p${panic_stage}a${arm_stage}s${smc_stage}"
+paint="${4:-0}"
+tag="p${panic_stage}a${arm_stage}s${smc_stage}q${paint}"
 cd "$HOME/kernel-sprd"
 export PATH="$HOME/toolchains/clang+llvm-11.0.1-x86_64-linux-gnu-ubuntu-20.10/bin:$PATH"
 
-python3 "$HOME/prepare_stage_panics.py" "$panic_stage" "$arm_stage" "$smc_stage"
-grep -n -E '^#define DIAG_(PANIC_STAGE|ARM_STAGE|ARM_TIMEOUT|SMC_STAGE)' include/linux/diag_stage.h
-echo "arm hooks in main.c: $(grep -c 'DIAG_ARM_HOOK' init/main.c)  smc hooks: $(grep -c 'DIAG_SMC_HOOK' init/main.c)"
-grep -n 'DIAG_SMC_HOOK' init/main.c | head -9
+python3 "$HOME/prepare_stage_panics.py" "$panic_stage" "$arm_stage" "$smc_stage" "$paint"
+grep -n -E '^#define DIAG_(PANIC_STAGE|ARM_STAGE|ARM_TIMEOUT|SMC_STAGE|PAINT)' include/linux/diag_stage.h
+echo "arm hooks: $(grep -c 'DIAG_ARM_HOOK' init/main.c)  smc hooks: $(grep -c 'DIAG_SMC_HOOK' init/main.c)  paint hooks: $(grep -c 'DIAG_PAINT_HOOK' init/main.c)"
+grep -n 'DIAG_PAINT_HOOK' init/main.c | head -9
 
 cp .config.diagwdt .config
 make -j2 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
