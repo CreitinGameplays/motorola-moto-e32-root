@@ -1,0 +1,171 @@
+# Channel research, 2026-10-30 - "is there an easier way to use slot_b?"
+
+Goal: find a channel that makes `boot_b` usable for custom-kernel tests, i.e.
+either (a) a way to write/restore `boot_b` that does not depend on a live
+Android, or (b) a way to run a custom kernel *with* a userspace.
+Everything below was measured on the live device (`ZF523X9NXW`, slot `_b`) or
+read out of the shipping bootloader `artifacts/bootloader/bl/uboot_b.img`.
+
+## 1. Live device: what channels exist
+
+| probe | result |
+|---|---|
+| `g_serial` gadget | built in: `/dev/ttyGS0..7`, major 508 |
+| `acm`, `usbserial`, `sprd_serial` | built in: `/dev/ttyS0` = `200a0000.serial`, `/dev/ttyS2` = `200c0000.serial` (no ttyS1) |
+| configfs | available, UDC `musb-hdrc.0.auto` state `configured`, `sys.usb.config=mtp,adb` |
+| listening sockets | only mdnsd / gms / instagram; adb-over-TCP not enabled - nothing usable |
+| `recovery` partition | **does not exist** |
+| per-slot extras | `vendor_boot_a/b` (100 MiB), `dtb_a/b`, `dtbo_a/b` |
+| `/cache` | mounted ext4 **rw** on `/dev/block/sda50`, 90 MB size, 620 KB used |
+| SELinux | `Permissive` |
+
+Partition sizes (sectors / 2048):
+
+```
+boot_a boot_b        131072 = 64 MiB
+vendor_boot_a/b      204800 = 100 MiB
+misc miscdata          2048 = 1 MiB
+metadata              32768 = 16 MiB
+cache                204800 = 100 MiB
+super              10649600 = 5200 MiB
+userdata          111767552 = ~54.5 GiB
+sysdumpdb/factory/prodnv 20480 = 10 MiB
+elabel                40960 = 20 MiB
+persist                4096 = 2 MiB
+uboot_log              8192 = 4 MiB
+logo                  16384 = 8 MiB
+```
+
+Block device numbers used later by a rescue init: `sda4` misc `8:4`,
+`sda40` boot_a `259:25`, `sda41` boot_b `259:26`, `sda50` cache `259:35`.
+
+**No `splloader` node exists** (it is generic whitelist only); the first stage
+lives on the UFS boot LUN (`sdb`), and `sdb_bootlun.img` is a `DHTB` container
+with no readable strings (compressed/ARM32) - not usable for this question.
+
+## 2. Can software ask the bootloader for download mode?
+
+The shipping U-Boot contains the whole SPRD download stack
+(`do_download`, `dl_cmd_*`, `sprd_dl_check`, `sprd_dl_vboot_verify`,
+`_download_image`, string *"choose to enter download mode"*). It is **dead
+code in this build**:
+
+* file `0x7b7c` = the function that prints *"choose to enter download mode"*
+  and returns mode 2. No `bl`/`b` caller anywhere, and no pointer to its VA
+  `0x9f00777c` in the image.
+* `0x7ad4` (console-key/autoboot probe), `0x7ba8`, `0x7c60` (mode dispatcher
+  over a 15-entry handler table) and `0x7dac` (mode-descriptor printer) are
+  equally unreferenced. (`0x7e28` *is* called, from `0x4944`, which proves the
+  caller scan works.)
+* The string *"Use Write 5A pattern to uboot partition for check download
+  status"* (`0xbf522`) is not referenced by any `adrp`+`add` pair either.
+
+The boot mode itself comes from a **mode descriptor at `0x82000000`** (magic
+`0x43454e56`, `struct` copied 0x50 bytes by `0x7e28` during board init at
+`0x4944`; mode field at `+4`, values `0x102`/`0x104`). That descriptor is
+written by the previous stage (SPL/BootROM), i.e. it is driven by straps and
+key state at power-on - **root cannot set it**.
+
+Consequence: there is no `reboot download` / BCB string that turns the
+download stack on. The BCB at `misc+0` currently reads `bootonce-bootloader`
+and is ignored by this chain (the device booted Android with it set).
+
+## 3. The real open port: BootROM / CVE-2022-38694
+
+Unisoc BootROM download mode (`SPD U2S Diag`, USB) is the only pre-Android
+interface with raw partition access, and it is reached by a **hardware key
+combination at power-on** (or when the bootloader is invalid). CVE-2022-38694
+gives arbitrary BootROM code execution from USB, then `spd_dump` can load an
+FDL and `read_part` / `write_part` anything, including `boot_b`.
+
+Addresses for this SoC family (UMS9230, eMMC and UFS), from
+`TomKing062/CVE-2022-38694_unlock_bootloader`:
+
+```
+exec_addr 0x65015f08
+FDL1      0x65000800
+FDL2      0x9efffe00
+```
+
+Caveats that matter:
+* "Motorola UFS devices: don't use fdl1/2 from other manufacturers, don't use
+  fdl1/2 of Motorola EMMC devices."
+* "UMS9230 UFS devices: don't use fdl1/2 of UMS9230 EMMC devices."
+* The Moto E13 package is explicitly EMMC-only ("THIS WILL ERASE YOUR UFS").
+* Our device is UFS (`sda`, `ufs_ffu` in the boot log), so a mismatched FDL
+  is a brick risk, not a theoretical one.
+
+This is a viable *last-resort* restore, but it needs physical key timing, an
+FDL that matches Motorola-UMS9230-UFS, and it is not needed if a recovery can
+be created from software.
+
+## 4. Boot image geometry (drives the rescue design)
+
+Stock `boot_b` (backup `D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\boot_b.img`):
+
+```
+file size            67108864 (64 MiB = whole partition)
+page_size            2048, header_version 2
+kernel_size          25358352  (24.2 MiB), kernel_addr 0x8000
+ramdisk_size          9182984  (gzip, 1f 8b 08), ramdisk_addr 0x5400000
+dtb_size               175466, dtb_addr 0x1f00000
+cmdline              "console=ttyS1,115200n8 buildvariant=user"
+AVB0 (vbmeta)        at 0x211d000, size 2304
+AVBf (footer)        at 0x3ffffc0 = partition end - 64
+original_image_size  0x211d000 (34787328)  <- payload really ends here
+```
+
+So a bootable image for this device must still be 64 MiB with the footer at
+the partition end; the bytes between `0x211d000+2304` and `0x3ffffc0` are
+zeros. Our packer already pads to the partition size and writes the footer
+there, which is why custom images boot at all (verification is skipped while
+unlocked, but a wrong footer is fatal: `ERROR_INVALID_METADATA`).
+
+## 5. A/B metadata block (misc + 0x800)
+
+Current 32 bytes, slot `_b` active:
+
+```
+5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 ef 00
+00 00 00 00 00 00 00 00 00 00 00 00 16 de b9 49
+suffix "_b"    magic "BCAB"  ver=1 nb=2  slot_info[2]  ...  crc32
+```
+
+`crc32_le(bytes[0..27]) == 0x49b9de16`, verified with zlib - so the layout is
+32 bytes with the CRC at offset 28 and it can be rewritten safely: only
+`suffix` + CRC change when switching slots. The 0x800 block and the
+`bootonce-*` command at `misc+0` are independent.
+
+## 6. Kernel capabilities needed by a rescue initramfs
+
+From the live kernel's `/proc/config.gz`:
+
+```
+CONFIG_BLK_DEV_INITRD=y   CONFIG_RD_GZIP=y   CONFIG_TMPFS=y
+CONFIG_EXT4_FS=y          CONFIG_F2FS_FS=y
+# CONFIG_DEVTMPFS is not set
+```
+
+So ext4/gzip/cpio all work from an initramfs, but **there is no devtmpfs**:
+a rescue init must create its own `/dev` nodes with `mknod` (major/minor are
+stable, listed above).
+
+## 7. Conclusion
+
+Two candidate channels for "use slot_b", in order of risk:
+
+* **(A) Software-only: make `boot_a` a self-restoring rescue**, then run the
+  custom kernels in `boot_b` (the slot that actually has Android userspace).
+  The rescue is the *stock* kernel plus a tiny initramfs that carries a copy
+  of the stock `boot_b` payload and the verified A/B block, restores
+  `boot_b`, sets `_b` and reboots. Cost: a ~60 MB `boot_a` image, no new
+  attack surface, no flash tooling, no key timing. See
+  [../12-slot-b-testing-channel.md](../12-slot-b-testing-channel.md).
+* **(B) Unisoc BootROM/FDL**: full raw flash access and a true `boot_b`
+  restore, at the price of an FDL variant that must exactly match
+  Motorola-UMS9230-UFS. Read-only validation (`read_part boot_b` +
+  sha256) is possible before any write.
+
+(A) removes the blocker that all previous tests had (boot from `boot_a` =
+no userspace) and reduces the recovery procedure to
+`power-cycle -> fastboot set_active a`.
