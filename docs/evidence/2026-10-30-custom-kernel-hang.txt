@@ -258,26 +258,52 @@ A stopped SoC cannot panic, so no reset and no dump: exactly what was observed.
 `el2_setup` installing the hyp stub unconditionally (no `CONFIG_KVM`
 conditional) stays true and is not the cause.
 
-### Why nothing resets it: the watchdog is disabled
+### The watchdog: armed, but only late (correction, measured this session)
 
-`androidboot.wdten=0` is in the stock cmdline, and
-`drivers/watchdog/sprd_pmic_wdt.c` only arms the PM-co-processor watchdog when
-that argument spells the magic `e551`
-(`sprd_pimc_wdt_en()` -> `strstr(bootargs, "androidboot.wdten=")` -> compare
-with `"e551"`). With `0` it sends `watchdog rstoff` instead, i.e. *disarms* it.
-
-The AON watchdog cannot cover for that either: `sprd_wdt_fiq_probe()` enables
-the block (both clocks, `NEW_VER_EN`) and stores a global pointer, but **never
-calls `watchdog_register_device()`**. Evidence on stock:
+An earlier note here said no watchdog is ever armed. **That was wrong.** It
+came from looking at `/sys/class/watchdog`, which is empty, and at
+`watchdogd`. Both are true, but they do not mean the hardware is unarmed:
 
 ```
-/sys/class/watchdog/            (empty)
-644e0000.watchdog -> bound to sprd-wdt-fiq   (probe ran, 0.44 ms)
-watchdogd: Failed to open /dev/watchdog: No such file or directory
+/sys/class/watchdog/                       (empty)
+644e0000.watchdog -> bound to sprd-wdt-fiq (probe ran)
+watchdogd: Failed to open /dev/watchdog    (no char device)
 ```
 
-So on this firmware **no watchdog is armed at any point**, and a hard SoC stop
-hangs for ever by design.
+`sprd_wdt_fiq_probe()` never calls `watchdog_register_device()`, so there is no
+`/dev/watchdog` - but a second piece of the same vendor block does the arming
+directly, through the exported `sprd_wdt_fiq_get_dev()`:
+`drivers/soc/sprd/debug/hang_debug/sprd_wdf.c` ("hardware watchdog feeder code
+for Phoenix II", `late_initcall(sprd_hang_debug_init)`). On the live stock
+device it is running:
+
+```
+/proc/sprd_hang_debug/wdf_timeout
+WDF: interval=8 pretimeout=20 timeout=40 bitmap=0x00000000/0x000000ff
+root 198..205  [hang_debug/0] .. [hang_debug/7]   (SCHED_FIFO per-CPU threads)
+```
+
+So on this firmware the AON watchdog **is** armed, at **40 s**
+(pretimeout 20 s), and fed every 8 s (`timeout/5`) once all 8 CPUs have checked
+in. That is `obj-$(CONFIG_SPRD_HANG_DEBUG) += debug/hang_debug/` in
+`drivers/soc/sprd/Makefile`, and `CONFIG_SPRD_HANG_DEBUG=y` is in the stock
+config *and* in every build of ours, so the mechanism is present in our kernels
+too.
+
+Two consequences, and they matter more than anything else in this document:
+
+1. A hard stop **after** `sprd_hang_debug_init` (late_initcall, ~1.6 s; stock
+   `dmesg` has `sprd_wdh: func_addr = ...` at 1.637 s) resets the board by
+   itself after 40 s. The pmic path is irrelevant: `androidboot.wdten=0` makes
+   `sprd_pmic_wdt` send `watchdog rstoff` (it wants the magic `e551`), but the
+   AON watchdog covers the same job.
+2. **Our diagnostic kernel hung for minutes without a reset.** It contains the
+   same feeder (`CONFIG_SPRD_HANG_DEBUG=y`), so it must have stopped **before
+   late_initcalls** - i.e. before roughly 1.6 s into the boot, in the
+   `early`/`core`/`device` initcall range or earlier than `start_kernel`'s
+   `rest_init()`. That is a much tighter window than "somewhere before
+   userspace", and it puts `kvm_arch_init()` (device_initcall, from
+   `virt/kvm/kvm_main.c`) squarely in the frame.
 
 Also note the device name claimed by the bootloader: `androidboot.hardware=ums9230_4h10`,
 `androidboot.auto.chipid=UMS9230-AB`, i.e. the T606 reports as UMS9230.
@@ -317,14 +343,16 @@ The pstore record also gives the timings that matter: `run init` at 2.048 s, the
 minidump section table (`section_info_log_buf ... len: 0x100000`) at 1.893 s - so
 a panic anywhere after ~1.9 s captures the 1 MiB kernel ring buffer.
 
-### DIAG build v3: arm the watchdog
+### DIAG build v3: arm the watchdog earlier than the feeder does
 
-Since the only way a hard stop can be observed is a watchdog reset, and this
-firmware arms none, the diagnostic kernel arms the AON watchdog itself. The
-patch is `patches/kernel-sprd/diag-only-arm-aon-watchdog.patch`
-(`KCFLAGS=-DDIAG_WDT_ARM`), applied in `sprd_wdt_fiq_probe()` right after
-`sprd_wdt_fiq_enable()`, i.e. where both clocks and the new-version bit are
-already configured:
+The vendor feeder already arms the AON watchdog, but at `late_initcall`. Our
+kernel dies before that, so the useful question became *where*, and the only
+way to answer it is to have a watchdog that is already running before the
+stall. The DIAG patch
+`patches/kernel-sprd/diag-only-arm-aon-watchdog.patch`
+(`KCFLAGS=-DDIAG_WDT_ARM`) arms it inside `sprd_wdt_fiq_probe()` - a
+`device_initcall`, i.e. before every `late_initcall` - right after
+`sprd_wdt_fiq_enable()` has the clocks and the new-version bit up:
 
 ```c
 wdt->wdd.timeout = 30;
@@ -332,30 +360,44 @@ sprd_wdt_fiq_set_timeout(&wdt->wdd, 30);
 sprd_wdt_fiq_start(&wdt->wdd);     /* CNT_EN | INT_EN | RST_EN */
 ```
 
-Thirty seconds is chosen so a stall resets quickly while a healthy boot still
-reaches the end-of-init panic first. Outcomes:
+Thirty seconds, so a stall resets quickly. Outcome table, now against the
+feeder's own 40 s (which covers everything after ~1.6 s):
 
 | observation | meaning |
 |---|---|
-| pstore record with `DIAG: kernel init complete` | all initcalls finished; the hang is display/USB, not the kernel |
-| reset, then bootloader dump with our log | the stall is after the watchdog arm point; the log ends where it stopped |
-| no reset at all | the stall precedes the wdt-fiq probe, or the watchdog block is not clocked |
+| reset + dump, log ends in `device_initcall` range | stall is between the wdt probe and `late_initcall` - KVM init is the prime suspect |
+| reset + dump, log ends in a `late_initcall` | feeder was disarmed/replaced by this arm; stall is late |
+| **no** reset, while `boot_diagstock_avb.img` (same tree, KVM off) resets or boots | stall happens before the wdt probe: KVM's initcall, link-order dependent, or earlier |
+| no reset for either image | stall is in our tree/build or the container, not KVM |
+
+Note the recovery risk: after a watchdog reset the bootloader boots slot `a`
+again and the same stall (and the same 30 s reset) repeats, so the device can
+loop once every ~40 s. The exit is the bootloader key combo -> fastboot ->
+`fastboot set_active b`; slot `b` is never written, so that is always available.
 
 ### Next tests, cheapest first
 
 1. ~~Stock control (`scripts/device/panic_test.sh`)~~ - **done, rebooted in 19 s
    with a full pstore record** (see above). A panic is observable; the custom
    kernel never panicked.
-2. **DIAG build v3** (KVM + detectors + end-of-init panic + AON watchdog at
-   30 s): a stall now resets the SoC, and its console record should survive in
-   ramoops if the reset is warm. This is the next write.
-3. **`boot_stock_signed.img`** (stock kernel, sha256 `55ddec27...db77`) in our
+2. **`boot_stock_signed.img`** (stock kernel, sha256 `55ddec27...db77`) in our
    signed container: if Android boots, the container/vbmeta/`dd` path is proven
-   and only the kernel binary remains as a variable.
-4. **`boot_diagstock_avb.img`** (`Image.diagstock`, sha256 `ecc9989a...324c`;
+   and only the kernel binary remains as a variable. This has never been run -
+   it is the first thing to do, because if it does not boot, every result so far
+   is about the container, not the kernel.
+3. **`boot_diagstock_avb.img`** (`Image.diagstock`, sha256 `ecc9989a...324c`;
    our tree with **KVM off** + the same diagnostics, image
    `dcbfb17d...f40b`; only 2,048 B larger than the stock kernel vs 550 KB for
-   the KVM build): separates "KVM delta" from "our tree/build".
+   the KVM build): separates "KVM delta" from "our tree/build". With KVM off the
+   feeder's own 40 s AON watchdog is already enough to make a stall visible.
+4. **`boot_diagwdt_avb.img`** (KVM + detectors + end-of-init panic + the 30 s
+   arm above): localises the stall relative to the `device_initcall` probe.
+5. If KVM is confirmed and the stall is inside `kvm_arch_init()`, build v4 with
+   `kvm_init()` moved from `module_init` to `late_initcall` in
+   `virt/kvm/kvm_main.c`: then the vendor feeder arms 40 s first, and a KVM hang
+   becomes a plain watchdog reset whose ramoops record ends in the KVM code.
+   That is the cheapest way to see the last log line, since the console is
+   `null` and ramoops only survives if something resets the SoC.
 
 ## 5. Other facts confirmed this session
 
@@ -387,3 +429,36 @@ reaches the end-of-init panic first. Outcomes:
   the GPU module.
 - `CONFIG_SPRD_SYSDUMP=y`, `CONFIG_SPRD_NATIVE_HANG_MONITOR=y`,
   `CONFIG_SPRD_HANG_DEBUG=y`; `# CONFIG_SPRD_DEBUG is not set`.
+- The bootloader reports the SoC as `androidboot.hardware=ums9230_4h10`,
+  `androidboot.auto.chipid=UMS9230-AB` (the T606 is a UMS9230 variant), and
+  `cpu: T606 AB` over fastboot.
+- `androidboot.wdten=0` and `sysdump_magic=80001000 sysdump_re_flag=1` are part
+  of the bootloader cmdline; `modem=shutdown`, `loglevel=1`,
+  `console=null` (the UART console is only reachable at 115200 8N1 on UART1).
+
+## 6. External reference for this exact signature
+
+`dikeckaan/mu300-linux`, `docs/FINDINGS.md` (ZTE F50 / MU300, Unisoc T760,
+Sept-Oct 2026) - same vendor family, modern kernels:
+
+- **31m, "Hard hangs in the first seconds"**: "In both, the heartbeat stops
+  together with the kernel log: no soft or hard lockup report ... no
+  hung-task report ... no panic. The whole SoC stops, the way it does on a bus
+  access that never completes. The PMIC watchdog (procd: 30 s) then resets the
+  board." - exactly our symptom, and the reason lockup detectors are useless
+  here. Also: "After the PMIC watchdog's reset, LK sees `hw watchdog rst int
+  pending` and goes into `sprd_sysdump`: a minidump plus a zlib-compressed full
+  RAM dump". That is how a *watchdog* reset becomes a readable dump.
+- **5, "The ~290 s power cut (PM co-processor watchdog)"**: `sprd_pmic_wdt`
+  disarms the PM co-processor watchdog by sending `watchdog rstoff` over an
+  SIPC sbuf channel; the channel is only ready after `pm_sys` is reloaded.
+- **3, "Logs without a serial console"**: pstore survives only a warm reset,
+  and their failures mostly end in a power cut; they persist stage markers into
+  spare space in a boot partition instead - a channel we do not have, since our
+  AVB image fills the whole 64 MiB partition.
+- **31d**: `softlockup_panic`/`hardlockup_panic` have nothing behind them
+  unless the detectors are built in; `sysrq-c` -> panic -> pstore is the
+  self-test we reproduced above (ours rebooted in 19 s).
+- **31o**: the firmware starts every CPU at EL2 on their boards too
+  (`CPU: All CPU(s) started at EL2`), and KVM works there (5.4 nVHE, 6.18 VHE),
+  so "KVM at EL2" is not by itself a problem on this platform.
