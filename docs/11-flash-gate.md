@@ -151,3 +151,26 @@ either the bootloader's A/B retry (U-Boot implements `ab_select_slot` /
 `ab_slot_rollback`, strings at file `0xa41e0`/`0xa4230`) or a return to slot b.
 This converts a one-way trip into a two-slot experiment, and is the only
 remaining route to run [the built kernel](10-kernel-source.md).
+
+### Probe result: slot switching works, but stock `boot_a` does not boot
+
+Tested on 2026-10-30 without writing any image
+([evidence](evidence/2026-10-30-slot-switch.txt)):
+
+* `fastboot set_active a` is accepted in 0.016 s (`current-slot: a`) - it is
+  not gated, because it only rewrites the BCB in `misc`.
+* Booting slot `a` **boot-loops**: its stock kernel is the older `abc1989`
+  (2024-01-23) and does not come up against the installed `RORS31.335-58-1`
+  system (`ab612c2`, 2024-02-20), almost certainly a vendor-module
+  `__crc_`/vermagic mismatch.
+* Recovery is proven: hold **Volume Down** during the failed boot to land in
+  fastboot, then `fastboot set_active b` + reboot returns to Android on the
+  stock kernel. `mali_kroot` regains root immediately afterwards.
+* The BCB layout is decoded (`ab_select_slot` at VA `0x9f010e30`: `BCAB` magic,
+  packed 2-byte per-slot `priority:4 / tries:3 / successful:1 / verity:1`,
+  CRC32 over the first 28 bytes). The failed boot of slot a took its
+  `tries_remaining` from 1 to 0 and `set_active b` gave slot b priority 15.
+
+So slot `a` is a *real* experiment, not a safe sandbox - but it is a
+recoverable one, with no dependence on Unisoc/Motorola tooling. The remaining
+risk is only the human step of catching fastboot after a failed boot.
