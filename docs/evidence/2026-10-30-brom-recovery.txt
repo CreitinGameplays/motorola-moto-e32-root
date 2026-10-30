@@ -524,3 +524,102 @@ spd_dump assigns it only after set_active returns).
 Rollback: readback_write\misc_before_setslot.bin is a byte-exact copy of
 the live image (sha256 DFC266B5DD8975DEB176247B3A35189C2AA16209BBFE57386D2EF88941250E01).
 Restore with a full-partition write of that file.
+
+------------------------------------------------------------------------
+22. THE FIX THAT WORKED - set_active a, 18:38 (RECOVERY COMPLETE)
+------------------------------------------------------------------------
+Command:
+  powershell -NoProfile -ExecutionPolicy Bypass -File
+    scripts\host\brom_set_slot.ps1 -Slot a -ConfirmWrite -WaitMinutes 45
+    -MaxAttempts 20
+
+Timeline:
+  18:37:14  runner start; 4 payload hashes verified
+  18:37:14  rollback copy saved: readback_write\misc_before_setslot.bin
+            sha256 DFC266B5DD8975DEB176247B3A35189C2AA16209BBFE57386D2EF88941250E01
+  18:38:01  fresh BootROM window (previous node had gone)
+  18:38:01  attempt 1, fired immediately on the transition
+            exec_addr 0x65015f08 -> fdl1 -> fdl2 -> exec
+            FDL2 read GPT (68 partitions), DISABLE_TRANSCODE
+  18:38:0x  set_active a:
+              dump misc (1 MB) -> patch 32 B at 0x800 -> write back
+            Write Part Done: misc, target: 0x100000, written: 0x100000
+  18:38:0x  r misc -> Read Part Done: misc, read 0x100000
+  18:38:09  reset, spd_dump exit 0
+  18:39:23  adb device present, uptime 0 min -> Android running
+
+Read-back block after the write (decoded by scripts/host/misc_ab.py):
+  raw: 5f 61 00 00 42 43 41 42 01 02 00 00 6f 00 1e 00 00 00 ... e6 bf ea c5
+  slot_suffix '_a', magic BCAB OK, version 1, nb_slot 2
+  slot a 0x006f prio=15 tries=6 succ=0  -> bootable, highest priority
+  slot b 0x001e prio=14 tries=1 succ=0
+  crc stored 0xc5eabfe6 = computed 0xc5eabfe6 -> VALID
+  boot order: a, b
+
+Post-boot state (adb shell):
+  uname -a                   Linux localhost 4.14.199+-ab612c2 #1 SMP PREEMPT
+                             Tue Feb 20 11:32:22 CST 2024 aarch64
+  ro.boot.slot_suffix        _b
+  ro.boot.verifiedbootstate  orange
+  ro.boot.flash.locked       0
+  ro.boot.hardware           ums9230_4h10
+  ro.build.fingerprint       motorola/hawaii/hawaii:11/RORS31.335-58-1/612c2:user/release-keys
+  ro.build.version.release   11
+  uptime                     0 min
+
+INTERPRETATION
+The SPL read the forced block, took slot a, loaded uboot_a (byte-identical
+stock) and boot_a. The boot_a rescue then repaired boot_b from its embedded
+stock image and rebooted, and Android came up on slot b with the stock
+kernel. Time from reset to adb: ~74 s.
+
+Root is gone: /data/adb does not exist, no magisk/su in PATH, no
+magisk/kernelsu/apatch package installed. That is expected - the rescue
+replaced boot_b with the STOCK image. Re-apply root (docs 03) before
+resuming the KVM kernel work in docs 12.
+
+WHY IT WORKED (one line)
+The SPL, not U-Boot, resolves the A/B slot and loads uboot_X / sml_X /
+trustos_X / teecfg_X (proven by the strings in the stock SPL). Slot b was
+priority 15 but had been retired by the failed boot (tries 0, succ 0) while
+slot_suffix still said "_b", so the SPL had no bootable U-Boot to jump to
+and fell into the BROM download loop with no logo and no backlight.
+
+ROLLBACK (still available, not needed)
+  readback_write\misc_before_setslot.bin = exact pre-write image.
+  The phone now carries a DIFFERENT, valid block (suffix _a) that has been
+  proven to boot, so there is no reason to roll back.
+
+------------------------------------------------------------------------
+23. CORRECTION: RUNTIME ROOT SURVIVED THE RECOVERY
+------------------------------------------------------------------------
+The rescue replaced boot_b with the stock image, so the Magisk patch is
+gone (no /data/adb, no magisk package, no su in PATH). That does NOT mean
+root access is gone. Immediately after the recovery the runtime exploit
+still works on the stock kernel:
+
+  $ /data/local/tmp/mali_kroot
+  [*] kroot pid=...
+  [i] memstart_addr=80000000 kimage_voffset=ffffff7f88000000
+  [+] found task ... cred=...
+  [+] cred patched (readback uid=0 gid=0 cap_eff=3fffffffff)
+  [+] selinux enforcing now: 00 00 00 01
+  [+] spawning root shell
+  uid=0(root) gid=0(root) ... context=u:r:shell:s0
+  Permissive
+  ROOTPROOF_0_Permissive
+
+  $ whoami -> root
+  $ id     -> uid=0(root) gid=0(root) ... context=u:r:shell:s0
+
+So the recovery removed the persistent root patch only; the exploit path in
+docs/01 + docs/03 still yields uid=0 on the stock 4.14.199+-ab612c2 build.
+Flashing boot_b and resuming the KVM bisection does not require re-rooting.
+
+Useful state still on the device (/data/local/tmp, survived the rescue):
+  boot_b.prev.img    67108864  2026-10-30 16:23   previous boot_b image
+  boot_custom.img    35270656  2026-10-30 09:42   custom kernel image
+  boot_a_hdr.img         4096  2026-10-30 14:20
+  ab_tries1.bin            32  2026-10-30 16:23
+  bc.img             67108864  2026-10-30 11:09
+  mali_kroot + mali_kroot.log

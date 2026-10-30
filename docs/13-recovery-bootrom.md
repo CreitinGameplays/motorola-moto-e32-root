@@ -1,10 +1,18 @@
 # 13 - Recovering the phone: state of the boot chain
 
-Status: **in progress. The read path is fully working. The flash contents are
-proven intact, and `uboot_log` shows U-Boot DOES run (LCD init + backlight),
-so the earlier "fault is below U-Boot" conclusion is superseded — see
-[U-Boot does run](#correction-uboot-does-run-proven-from-uboot_log).**
+Status: **SOLVED 2026-10-30 18:39. The phone boots Android again (stock
+`4.14.199+-ab612c2`, slot `_b`).** The fix was a single 32-byte A/B metadata
+change in `misc`: force `slot_suffix = "_a"` so the SPL loads the `boot_a`
+rescue, which repaired `boot_b` and booted Android. The reproducible
+procedure is in [The fix that worked](#the-fix-that-worked-2026-10-30-1838).
 Evidence: [evidence/2026-10-30-brom-recovery.txt](evidence/2026-10-30-brom-recovery.txt).
+
+Consequence to remember: the rescue restores a **stock** `boot_b`, so the
+Magisk patch and any custom kernel in it are lost. Runtime root survives —
+`/data/local/tmp/mali_kroot` still gives `uid=0` on the stock kernel — so the
+kernel work can resume without re-rooting.
+
+Quick copy-paste procedure: [14-brom-recovery-runbook.md](14-brom-recovery-runbook.md).
 
 Context: root/unlock is already solved and documented (docs 06, 07, 09).
 This file is only about getting the device booting again so the KVM
@@ -356,23 +364,91 @@ written first; every later byte is identical to what is already in flash. The
 runner also refuses to start unless the rollback dump matches the verified
 live SHA-256 `DFC266B5…50E01`.
 
+## The fix that worked (2026-10-30 18:38)
+
+One command, one 32-byte metadata write, phone back to Android:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File scripts\host\brom_set_slot.ps1 -Slot a -ConfirmWrite `
+  -WaitMinutes 45 -MaxAttempts 20
+```
+
+What the runner does, in order, and what was observed:
+
+1. Verifies 4 payload SHA-256s and refuses to run unless the rollback dump
+   `readback\misc.bin` matches the known live hash `DFC266B5…50E01`.
+2. Waits for a **fresh** `1782:4D00` node (the phone re-enumerates on its own
+   about every minute; a stale node only times out).
+3. `exec_addr 0x65015f08` (CVE-2022-38694 payload), `fdl fdl1 0x65000800`,
+   `fdl fdl2 0x9efffe00`, `exec` — from `withcboot\`, because `exec_addr`
+   resolves its payload from the current working directory.
+4. `set_active a` — read-modify-write of `misc`, patching 32 bytes at `+0x800`:
+   `slot_suffix "_a"`, slot a prio 15 / tries 6 / succ 0, slot b prio 14 /
+   tries 1 / succ 0, fresh CRC. Observed:
+
+   ```
+   Write Part Done: misc, target: 0x100000, written: 0x100000
+   Read Part Done: misc+0x0, target: 0x100000, read: 0x100000
+   slot_suffix '_a'  magic BCAB  version 1  nb_slot 2
+   slot a 0x006f prio=15 tries=6 succ=0
+   slot b 0x001e prio=14 tries=1 succ=0
+   crc stored 0xc5eabfe6 = computed 0xc5eabfe6 -> VALID
+   boot order: a, b
+   ```
+
+5. `reset`.
+6. ~74 s later the phone was in Android on **slot `_b`** with the stock
+   kernel. That is the `boot_a` rescue doing its job: it repairs `boot_b` from
+   its embedded stock image and reboots.
+
+Post-recovery state, measured over adb:
+
+```
+uname -a        Linux 4.14.199+-ab612c2 #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024 aarch64
+ro.boot.slot_suffix        _b
+ro.boot.verifiedbootstate  orange
+ro.boot.flash.locked       0
+ro.build.fingerprint       motorola/hawaii/hawaii:11/RORS31.335-58-1/612c2:user/release-keys
+uptime                     0 min
+```
+
+**Side effect to remember:** `boot_b` is now the stock image again, so the
+Magisk root and the custom kernel are gone from it. Runtime root is *not*
+lost, though: `/data/local/tmp/mali_kroot` still elevates to `uid=0` on the
+stock kernel (verified right after recovery, `getprop` reports `Permissive`,
+`ROOTPROOF_0_Permissive`). That is enough to flash `boot_b` and resume
+[12](12-slot-b-testing-channel.md) without re-rooting.
+
+Why this was the right lever, in one line: the SPL (not U-Boot) resolves the
+A/B slot and loads `uboot_X`; `b` was the highest-priority slot but had been
+retired by the failed boot (`tries0 succ0`) while the suffix still said `_b`,
+so the SPL had nothing bootable to jump to and fell into the download loop.
+
 ## Recovery ladder
 
-1. **RAM-only FDL diagnostic.** Run `scripts/host/brom_read_spl.ps1`. It
+1. **Force slot `a`** (PROVEN 2026-10-30, this is what fixed it). Run
+   `scripts/host/brom_set_slot.ps1 -Slot a -ConfirmWrite`. It writes a
+   CRC-valid `misc` A/B block with suffix `_a` and slot a at priority 15 /
+   6 tries, resets, and the `boot_a` rescue repairs `boot_b` and boots
+   Android. Expect ~74 s from `reset` to the launcher, then a stock
+   `boot_b` (root and any custom kernel are gone).
+2. **RAM-only FDL diagnostic.** Run `scripts/host/brom_read_spl.ps1`. It
    refuses to proceed unless the files match expected hashes, and it fires
    as soon as a fresh `1782:4D00` window appears (the phone re-enumerates on
    its own; see above). `-MaxAttempts N` retries across windows,
    `-AllowPresent` fires at whatever node is currently enumerated. It then
    executes only `p` and `r splloader`; inspect the saved SPL before
-   considering any write.
-2. **Rule out power.** Charge from a wall charger for 2-3 h, undisturbed,
-   then Power alone, untouched for 3 min. Cheap, and (a) is a live
-   hypothesis.
-3. **If UFS reads but SPL is bad:** obtain this device's own firmware
+   considering any other write. Use `-Parts misc,miscdata,uboot_a,uboot_b,sml_a,sml_b`
+   to prove the rest of the chain is intact.
+3. **Rule out power.** Charge from a wall charger for 2-3 h, undisturbed,
+   then Power alone, untouched for 3 min. Only relevant if the phone stops
+   even enumerating as BROM.
+4. **If UFS reads but SPL is bad:** obtain this device's own firmware
    package (XT2227-1, Unisoc T606) and extract its FDL1/FDL2, then reflash
    `uboot`/`sml`. Do **not** try an FDL from a different SoC: on UFS a
    mismatched FDL bricks (TomKing062).
-4. **If UFS does not read:** it is hardware. No software path remains.
+5. **If UFS does not read:** it is hardware. No software path remains.
 
 ## Things that are NOT fixes
 
@@ -392,9 +468,23 @@ live SHA-256 `DFC266B5…50E01`.
 
 ## Open questions
 
-- Can the matching FDL1-DL + patched FDL2-DL read this UFS on XT2227-1?
-- Is the SPL partition still intact on flash, or was it damaged?
-- Does the phone attempt a normal boot and stall silently (no USB) - i.e.
-  is the SoC actually resetting on each Power press?
-- What does `0x35 DUMP_UBOOT_LOG` return? If it returns bytes, U-Boot ran
-  at some point; if empty, it never did.
+Answered 2026-10-30:
+
+- ~~Can the matching FDL1-DL + patched FDL2-DL read this UFS on XT2227-1?~~
+  Yes. 68 partitions, `Storage is ufs`, `ENABLE_WRITE_RAW_DATA`.
+- ~~Is the SPL partition still intact, or was it damaged?~~ Intact — the
+  256 KB dump is byte-identical to the stock signed SPL for the first
+  65480 bytes, zero differing bytes.
+- ~~Does the phone attempt a normal boot and stall silently?~~ It reached
+  U-Boot twice (logged, backlight on, then stop). Later it stopped reaching
+  U-Boot at all because the SPL had no bootable slot after `b` was retired.
+- ~~What does `0x35 DUMP_UBOOT_LOG` return?~~ Not needed; `uboot_log` is
+  simply readable through FDL2 as an ordinary partition.
+
+Still open (not needed for recovery):
+
+- Why did the two `boot_b` custom-kernel boots hang after backlight on
+  rather than panic? `sysdumpdb` only holds stock-kernel dumps, and the hang
+  produced none, consistent with a hang before the kernel took over.
+- Whether the A/B retirement of slot `a`'s tries (1 -> 0) came from a real
+  `boot_a` attempt or from SPRD updating both slots together. Harmless.
