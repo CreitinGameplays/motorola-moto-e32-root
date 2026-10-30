@@ -1137,3 +1137,57 @@ check which 0x20000-byte bands are 0xff (scripts/host/paint_dump_check.py).
 Result: bands 1..19 all painted (band 0 is only painted by the packed entry
 stub, which the raw Image does not carry).  So the instrument is sound; the
 phone result is now a pure bisection of the kernel's own code.
+
+------------------------------------------------------------------------
+37. WINDOW NARROWED TO head.S ITSELF; TWO SUSPECTS ELIMINATED
+------------------------------------------------------------------------
+Result with the 20-band trace (boot_trace2.img, sha256 c29c6ada...f6c9):
+still exactly ONE white bar.  Band 0 (entry stub, MMU off) paints, band 1
+(first statement of start_kernel(), fixmap path) does not.  The fixmap path
+was validated in QEMU with the phone's DTB (all bands 1..19 painted, see
+scripts/host/paint_dump_check.py output), so this is not an instrument
+artefact: the kernel dies between stext and start_kernel().
+
+Everything in that window is head.S, so the following were checked:
+
+1. __primary_switch / __primary_switched code: instruction-for-instruction
+   IDENTICAL to the vendor Image, including the bss clear, the
+   kimage_voffset computation, the `tst x23,#~0x1fffff` KASLR guard and the
+   KASLR call.  (vendor 0x1370190..0x1370224 vs ours 0x13e0190..0x13e0224)
+
+2. Relocation table (the only data that code consumes): validated with
+   scripts/host/scan_relocs.py.  Ours: 85,324 entries, all R_AARCH64_RELATIVE
+   (1027), every r_offset inside the image; vendor: 83,073 entries, same
+   properties.  The table start is __rela_offset minus TEXT_OFFSET (0x80000)
+   in the file, which is the trap that made the first scan look broken.
+
+3. The vendor's KASLR entry is kaslr_early_init at file offset 0x13803f8,
+   ours at 0x13f0954 (found by scanning the Image for the `bl` that targets
+   it: the call sits at 0x13e0204, right before `b start_kernel`).
+
+So: same code, sane data.  The remaining difference is hardware behaviour or
+a Kconfig-level difference, not a source difference in head.S.
+
+------------------------------------------------------------------------
+38. THE TREE IS NOT THE VENDOR'S EXACT REVISION
+------------------------------------------------------------------------
+Diffing the extracted vendor config against our build config, 26 options
+differ: 24 are KVM/vhost (added on purpose) and exactly one is not:
+
+    CONFIG_ARM64_ERRATUM_834220   vendor: (symbol absent)   ours: y
+
+A kconfig symbol cannot be "absent" from a config extracted from a kernel
+built from the same tree - it simply would read "is not set".  So our
+reconstructed tree contains arm64 changes the vendor's 4.14.199 stream did
+not have.  CONFIG_LOCALVERSION is "" in both, so the vendor's "-ab612c2" comes
+from scripts/setlocalversion, i.e. a git hash we do not have.
+
+Consequence: "the vendor kernel boots, ours does not, with identical config"
+is NOT the whole truth - our tree is a slightly different 4.14.199.  Any
+vendor patch that is missing from our tree is a candidate, and the follow-up
+work should treat the vendor Image as the reference binary (it is, after all,
+the only ground truth available for this device).
+
+Practical effect for the current bisection: it is worth matching the vendor
+config exactly, i.e. building with CONFIG_ARM64_ERRATUM_834220=n, if the
+head.S window keeps refusing to yield.
