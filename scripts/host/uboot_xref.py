@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 """Cross-reference the U-Boot fastboot string pool.
 
-U-Boot here is linked so that ``adrp page + add imm`` lands directly on the
-file offset of the referenced string (the disassembly base is 0).  This script
-tracks ``adrp`` per register and resolves ``add reg, reg, #imm`` pairs, then
-prints every reference whose target falls inside the string pool
+``uboot_b.img`` starts with a 0x200-byte ``DHTB`` header, so the image is
+mapped with
+
+    runtime VA  = 0x9f000000 + file_offset - 0x200
+
+The disassembly below runs with base 0 on the raw file, i.e. instruction
+addresses *are* file offsets, and ``adrp page + add imm`` yields
+``runtime VA - 0x9f000000``: the referenced C string therefore sits at
+``target + 0x200`` in the file.  (An earlier version of this script used the
+target as a file offset and was off by 0x200 for every string.)
+
+This tracks ``adrp`` per register and resolves ``add reg, reg, #imm`` pairs,
+then prints every reference whose target falls inside the string pool
 (0xb0000-0xe0000).  The C string at the target is printed next to the xref.
 
 This is how we locate the fastboot command handlers: the dispatch table loads
@@ -23,6 +32,7 @@ import capstone
 DEFAULT = pathlib.Path("artifacts/bootloader/bl/uboot_a.img")
 POOL_LO = 0xB0000
 POOL_HI = 0xE0000
+STRING_BIAS = 0x200  # DHTB header at the front of the image
 
 
 def cstr(data, off, maxlen=72):
@@ -67,7 +77,7 @@ def main():
                     and src.reg in pages):
                 tgt = pages[src.reg] + imm.imm
                 if POOL_LO <= tgt < POOL_HI:
-                    hits.append((ins.address, tgt, cstr(data, tgt)))
+                    hits.append((ins.address, tgt, cstr(data, tgt + STRING_BIAS)))
             # add writes dst, invalidate stale page tracking
             if dst.type == capstone.arm64.ARM64_OP_REG:
                 pages.pop(dst.reg, None)
@@ -84,9 +94,10 @@ def main():
     last = None
     for addr, tgt, s in hits:
         if tgt != last:
-            print("\n%06x  %r" % (tgt, s))
+            print("\nVA 0x%08x (file 0x%06x)  %r"
+                  % (0x9F000000 + tgt, tgt + STRING_BIAS, s))
             last = tgt
-        print("   <- %06x" % addr)
+        print("   <- file 0x%06x (VA 0x%08x)" % (addr, addr - 0x200 + 0x9F000000))
 
 
 if __name__ == "__main__":

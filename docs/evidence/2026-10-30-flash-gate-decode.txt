@@ -1,0 +1,277 @@
+# 2026-10-30 - decoding the fastboot flash/erase signature gate
+
+Static analysis only. Nothing was written to the device in this step.
+Source image: `artifacts/bootloader/bl/uboot_b.img` (3,145,728 B).
+
+## 1. Address mapping (corrected)
+
+The image starts with a 0x200-byte `DHTB` header:
+
+```
+000000  44 48 54 42 01 00 00 00 ...   "DHTB" magic + header
+000040  f8 ec 11 00                    entry / image size fields
+000200  0a 00 00 14 ...                first instruction
+```
+
+So for every byte in the file:
+
+```
+runtime VA = 0x9f000000 + file_offset - 0x200   ( = 0x9efffe00 + file_offset )
+file_offset = runtime VA - 0x9f000000 + 0x200
+```
+
+This was cross-checked against the `adrp`+`add` pairs of the command registrar:
+`adrp x0,#0x9f0c3000 ; add x0,x0,#0xb1f` assembles to runtime VA `0x9f0c3b1f`,
+whose file offset is `0xc3d1f`, and the bytes there are `flash:` exactly.
+
+Earlier notes in this repo quoted file offsets as if they were VAs (they are
+0x200 high). Everything below lists both.
+
+## 2. fastboot command registration
+
+Registrar: runtime `0x9f02763c` (file `0x2783c`) - allocates a 0x20-byte node
+`{next, name, strlen, handler}` and links it at runtime `0x9f276000`.
+Called from the fastboot init block at file `0x2a3d0`-`0x2a52c`.
+
+```
+file 0x2a3e0  adrp x1,#0x9f028000 ; add x1,x1,#0x7c0  -> handler 0x9f0287c0
+file 0x2a3e4  adrp x0,#0x9f0c3000 ; add x0,x0,#0xb1f  -> name    "flash:"
+file 0x2a3f4  adrp x1,#0x9f027000 ; add x1,x1,#0x6b4  -> handler 0x9f0276b4
+file 0x2a3f8  adrp x0,#0x9f0c3000 ; add x0,x0,#0xb26  -> name    "erase:"
+```
+
+| name | runtime handler | file offset of handler |
+|---|---|---|
+| `flash:` | `0x9f0287c0` | `0x289c0` |
+| `erase:` | `0x9f0276b4` | `0x278b4` |
+
+Other names decoded from the same block: `getvar:`, `download:`,
+`reboot-bootloader`, `reboot-fastboot`, `reboot-recovery`, `set_active:`,
+`setdump`, `getdump`, `flashing`, `oem`, `powerdown`.
+
+## 3. fb_cmd_flash (`flash:`, runtime 0x9f0287c0, file 0x289c0)
+
+```
+0289c0  stp x29,x30,[sp,#-0x90]!      ; frame
+0289d4  mov x21,x0                    ; arg0 = partition name
+0289d8  mov x20,x1                    ; arg1
+0289e4  bl  #0x8e480                  ; GATE(partname)  [runtime 0x9f08e280]
+0289e8  uxtb w0,w0
+0289f4  cbnz w0,#0x28a0c              ; allowed -> copy name
+0289f8  adrp x0,#0x9f0c2000
+0289fc  add  x0,x0,#0xe66             ; "Please verify the signature!"
+028a00  b    #0x28e04                 ; fail the command
+...
+028a1c  mov  w0,#2
+028a20  bl   #0x8f06c                 ; efuse check (SMC op 0xa)
+028a24  cmp  w0,#1
+028a28  b.ne #0x28a58                 ; not secure -> go write
+028a40  bl   #0x1d0a0                 ; write path (returns 1 on success)
+028a44  cmp  w0,#1
+028a48  b.eq #0x28a58
+028a4c  adrp x0,#0x9f0c3000
+028a50  add  x0,x0,#0x180             ; "Secboot verify fail!"
+```
+
+So the handler is: gate(partname) -> write the image. A non-zero gate result is
+the only thing that lets the write happen.
+
+## 4. fb_cmd_erase (`erase:`, runtime 0x9f0276b4, file 0x278b4)
+
+```
+0278b4  stp x29,x30,[sp,#-0x50]!
+0278c0  mov x20,x0                    ; arg0 = partition name
+0278c4  bl  #0x8e480                  ; GATE(partname)
+0278c8  uxtb w0,w0
+0278d4  cbnz w0,#0x278ec
+0278d8  adrp x0,#0x9f0c2000
+0278dc  add  x0,x0,#0xe66             ; "Please verify the signature!"
+0278e0  b   #0x2793c
+```
+
+Erase is gated by the *same* function, so the earlier assumption that erase was
+ungated is wrong.
+
+## 5. The gate itself (file 0x8e480, runtime VA 0x9f08e280)
+
+```
+08e480  sub sp,sp,#0x270
+08e490  mov x20,x0                    ; partname
+08e494  mov w0,#2
+08e49c  bl  #0x8f06c                  ; efuse/SIP query, op 2
+08e4a0  cbnz w0,#0x8e4b4
+08e4a4  adrp x0,#0xd6000 ; add #0xe41  -> VA 0x9f0d6e41
+                                        "NON-efuse, Skip the signature!"
+08e4ac  bl  #0x277fc                  ; fastboot_info / OKAY
+08e4b0  b   #0x8e550                  ; return 1 = ALLOW
+08e4b4  adrp x0,#0x70a000
+08e4b8  ldrb w19,[x0,#1]              ; *(u8*)0x9f70a001
+08e4bc  cbnz w19,#0x8e4cc
+08e4c0  adrp x0,#0xc2000 ; add #0xe66  -> VA 0x9f0c2e66
+                                        "Please verify the signature!"
+08e4c8  b   #0x8e544                  ; return 0 = DENY
+08e4cc  add x21,x29,#0x78             ; 0x228-byte copy of the whitelist
+08e4d0  adrp x1,#0xa1000 ; add #0x5c0  -> VA 0x9f0a15c0 (69 pointers)
+08e4dc  mov x2,#0x228
+08e4e4  bl  #0x78a80                  ; memcpy
+08e4e8  ldr x22,[x21,x19]             ; for each name
+08e4f0  bl  #0x787f4                  ; strlen(name)
+08e4f4  mov x1,x20                    ; partname
+08e4fc  bl  #0x78798                  ; strncmp(name, partname, len(name))
+08e504  cbz w0,#0x8e550               ; match -> return 1 = ALLOW
+08e510  b.ne loop
+08e514  adrp x2,#0xd6000 ; add #0xf20  -> VA 0x9f0d6f20
+                                        "Partition %s is not allow to flash/erase!!"
+08e544  bl  #0x277fc
+08e548  mov w0,#0                     ; DENY
+```
+
+Behaviour summary:
+
+| condition | result |
+|---|---|
+| `efuse_query(2) == 0` (secure world says non-efuse/non-secure) | ALLOW, prints `NON-efuse, Skip the signature!` |
+| `*(u8*)0x9f70a001 != 0` **and** partname is in the 69-entry whitelist | ALLOW |
+| `*(u8*)0x9f70a001 == 0` | DENY, `Please verify the signature!` |
+| flag set but partname not whitelisted | DENY, `Partition %s is not allow to flash/erase!!` |
+
+The observed device behaviour (byte-identical stock `boot_b`, `misc`, `dtbo_a`
+all refused with `Please verify the signature!`) matches the third row: the
+secure world reports secure, and the RAM flag is 0.
+
+## 6. `efuse_query` (file 0x8f06c, runtime 0x9f08ee6c)
+
+```
+08f06c  stp x29,x30,[sp,#-0x30]!
+08f070  mov w1,w0
+08f07c  cbnz w0,#0x8f094
+08f080  ... bl #0x8c6b4                 ; op 0 path
+08f094  adrp x19,#0x9f70e000
+08f09c  mov x0,x19
+08f0a0  bl  #0x8d04c                   ; SIP/SMC op 0xa, x1=0x9f70e000, x2=4
+08f0a4  ldr w0,[x19]                   ; mailbox result
+08f0a8  cmp w0,#1
+08f0ac  cset w0,ne                     ; returns 1 when the mailbox != 1
+```
+
+`0x9f08d04c` -> `0x9f08d0e8`: `w0=0xa, x1=mailbox, x2=4, smc #0`
+(the same trampoline as the `VerifiedBoot-*` SIP calls in docs/06).
+The mailbox is filled by the secure world; nothing in U-Boot writes it.
+`cset w0,ne` means "1 = secure" when the mailbox holds 1.
+
+## 7. Exhaustive scan of the two flag pages
+
+All memory accesses whose effective address falls inside
+`0x9f70a000`/`0x9f70b000`/`0x9f70e000` (whole code region 0x1000-0xa1000):
+
+```
+08e1b8  strb 0x9f70b000  w1,[x0]      <- SETTER (flag page B)
+08e32c  strb 0x9f70a001  w1,[x0,#1]   <- SETTER (flag page A, +1)
+08e4b8  ldrb 0x9f70a001  w19,[x0,#1]  <- gate read
+08e80c  ldrb 0x9f70a000  w1,[x20]     <- read (byte 0)
+08e830  ldrb 0x9f70a000  w0,[x20]     <- read (byte 0)
+08f0a4  ldr  0x9f70e000  w0,[x19]     <- efuse mailbox read
+090694  ldr  0x9f70e000  x1,[x19]
+0906a0  str  0x9f70e000  x0,[x19]
+090980..09577c  ldr 0x9f70e0xx        (SMC/AVB helper mailbox)
+```
+
+There are exactly **two stores** to the gate-flag pages (`0x9f70a000`,
+`0x9f70b000`), both inside the password/licence functions (the third store in
+the list above, `0x906a0`, writes the SIP mailbox argument block at
+`0x9f70e000`, not a flag):
+
+Reproduce with `python scripts/host/uboot_flag_scan.py`.
+
+| file offset | runtime VA | function | writes |
+|---|---|---|---|
+| `0x8e1b8` | `0x9f08dfb8` | starts file `0x8e080` (VA `0x9f08de80`) | `0x9f70b000 = 1` |
+| `0x8e32c` | `0x9f08e12c` | starts file `0x8e1d4` (VA `0x9f08dfd4`) | `0x9f70a001 = 1` |
+
+`0x9f70b000` is never read by any code, so that store is inert.
+`0x9f70a001` is read only by the gate.
+
+Callers of both functions (searching every `bl`/`b` in the image):
+
+```
+callers of file 0x8e080 : none
+callers of file 0x8e1d4 : none
+```
+
+No absolute 64-bit pointer to either VA exists in the image either
+(the command table holds handlers for `flash:`/`erase:` only).
+Both are dead code in this build.
+
+## 8. The dead password/licence path
+
+Function at file `0x8e1d4` (VA `0x9f08dfd4`):
+
+```
+08e1e4  adrp x1,#0xc5000 ; add #0x1ce  ; gets the shared "cmd" buffer
+08e1fc  bl  #0x78940                    ; strtok-ish walk of the argument
+08e208  bl  #0x786cc                    ; strncpy into a 0x40 stack buffer
+08e218  "subcmd is null."               ; when the argument is empty
+08e228  bl  #0x8f06c                    ; efuse check, op 2
+08e230  "NON-efuse, Skip the signature!"
+08e240  "Start signature verify ...\n"
+08e260  bl  #0x8fde8                    ; RSA/licence verify(cmd, 0x100, out)
+08e26c  cbnz -> 0x8e294
+08e270  "Signature failed, Not allow flash/erase partitions.\n"
+08e27c  "Return fastboot mode\n"
+08e288  "Signature failed, Not allow flash/erase partitions!"
+08e294  "Signature verify successfully."
+08e2a0  "Start password verify ..."
+08e2cc  cmp x0,#0xa                    ; password must be 10 chars
+08e2d4  "Please use password for user version!"
+08e2fc  "Password verify fail!!!"
+08e30c  "Password verify successfully."
+08e318  "You can flash/erase partitions.\n"
+08e324  strb w1,[0x9f70a001]           ; <-- the only setter of the gate flag
+08e330  "frp-state" / 08e334 "Non-Protection"
+```
+
+The twin at file `0x8e080` is the same recipe with the OpenSSL `rsa_lib.c`
+error strings and sets `0x9f70b000` instead.
+
+`0x9f08fde8` (file `0x8fde8`, runtime `0x9f08fbe8`) is the RSA/licence verifier:
+it calls `0x9f091e28` (ASN.1 parse of a 0x126-byte blob at file `0xb98c8`) and
+`0x9f090914` with a 0xcc-byte `d2i_X509`-style parameter block, then compares a
+key exact-match (`"key used to make signature does not matches"`). This is the
+step that requires Motorola's private key.
+
+## 9. Consequence for the write path
+
+The gate cannot be opened from U-Boot's own logic:
+
+* the efuse answer comes from the secure world (SIP op `0xa`) and reflects the
+  chip's secure-boot state - the same secure world that is already trusted for
+  the unlock marker;
+* the only runtime flag that could stand in for it, `0x9f70a001`, is written by
+  code that nothing calls;
+* every fastboot write command (`flash:`, `erase:`) goes through the same gate,
+  and there is no second write entry point in the OEM command set (`upload_*`
+  commands are read-out paths: `"get addr %llx size %llx"`,
+  `"upload partition fail."`).
+
+Therefore `fastboot flash` of an unsigned image is not reachable on this
+bootloader without either a non-secure efuse state or Motorola's licence key +
+the derived 10-character password.
+
+## 10. Separate finding: boot-time verification is skipped when unlocked
+
+```
+0229a0  adrp x0,#0x9f274000
+0229ac  ldr  w0,[x0,#0x810]        ; lock/unlock state word
+0229b4  cmp  w0,#2
+0229b8  b.eq #0x229e4
+0229c4  ...                        ; state 3: long delay then reboot
+0229e4  adrp x0,#0x9f0c1000 ; add #0xa10   -> VA 0x9f0c1a10
+0229ec  "WARNNING: LOCK FLAG IS : UNLOCK, SKIP VERIFY!!!\n"
+0229f0  mov  w0,#0                  ; return 0 = verification skipped
+```
+
+So when the device is in the unlocked state (which we already achieved
+through the secure-world `miscdata` marker), the boot path deliberately skips
+image verification and returns success. A boot image written by other means
+(`dd` from rooted Android) is therefore *accepted* by U-Boot - the write gate
+guards the fastboot transport, not the boot itself.
