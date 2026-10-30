@@ -744,3 +744,110 @@ Sept-Oct 2026) - same vendor family, modern kernels:
   starting point for the stage-by-stage bisection; a hang says no, and the
   comparison target becomes a stock-config rebuild rather than a driver-level
   bug hunt.
+------------------------------------------------------------------------
+25. p0a9 (AON ARM AT EVERY STAGE >= 2) - NO RESET, SILENT HANG AGAIN
+------------------------------------------------------------------------
+Image.p0a9  sha256 05AA5A8829A698CCE52B60651D6A4CED6053E84C4353E44699DEFD663BB14F11
+boot img    sha256 59280A5165E789BCB2788D9CEDC6683F700807DEC8AB48E67936830EB009DF48
+            (config: DIAG_PANIC_STAGE=0, DIAG_ARM_STAGE=9, timeout 10 s,
+             so the AON watchdog is armed after setup_arch() and again at
+             every later stage, and never disarmed)
+
+Procedure (this time in boot_b, the slot that has a userspace):
+  dd boot_p0a9_avb.img -> /dev/block/by-name/boot_b (64 MiB, readback
+  sha256 identical), misc slot b forced to 0x001f (prio15 tries1 succ0,
+  crc 0x20a582b1), reboot at 19:00:20.
+
+Observation:
+  t+   1 s  adb gone
+  t+ 300 s  still gone; `fastboot devices` empty
+  t+ 600 s  still gone; phone sitting on the Motorola logo (operator view:
+            "stuck on boot logo")
+  no reset at any point (10 s watchdog would have fired long before)
+
+Interpretation - two possibilities, and they are NOT yet distinguishable:
+  (a) the kernel died before the end of setup_arch(), i.e. before the first
+      arm point (the earliest DIAG_ARM_HOOK is stage 2, straight after
+      setup_arch()); or
+  (b) the AON arm never took effect.  sprd_wdt_fiq_enable() first does
+      clk_prepare_enable(wdt->enable) and clk_prepare_enable(wdt->rtc_enable)
+      and only then unlocks and starts the counter; diag_arm_aon_wdt() skips
+      both clock enables.  If the APB/RTC clock is still gated at that point
+      the writes are dropped (or the APB access stalls), and the device just
+      hangs - exactly what is observed.
+
+This makes the AON-arm instrument unsuitable as the primary probe.  A
+positive control is also impossible with it: the same build cannot be shown
+to reset even at a stage known to be reached (stage 8 is reached only by a
+kernel that boots, and our kernel does not).
+
+Note on the hang: no reset means no panic, consistent with the earlier
+finding that a panic before the PSCI restart handler (an arch_initcall)
+cannot reboot anything - machine_restart() spins.
+
+NEW INSTRUMENT (added this session): PSCI SYSTEM_RESET over SMCCC
+  0x84000009, called directly with arm_smccc_smc() from a stage hook
+  (scripts/host/prepare_stage_panics.py, third knob DIAG_SMC_STAGE =
+  scripts/host/stage_build.sh <panic> <arm> <smc>).
+  Why this is sound on this device:
+   - CONFIG_ARM_PSCI_FW=y and CONFIG_HAVE_ARM_SMCCC=y in the build config,
+     so the call site links;
+   - the unlocked phone already executes vendor SMC calls from EL1: the
+     unlock path loads sip31.ko into the STOCK kernel and the gateway
+     performs SMC 0xb4000020 (docs 06, 07), i.e. EL3 is alive and reachable;
+   - it needs no MMIO mapping, so it is legal at the first statement of
+     start_kernel() (stage 1), unlike ioremap() there;
+   - it is a clean PSCI reset: instant and repeatable, one bit per boot.
+  If PSCI does not implement SYSTEM_RESET the SMC returns and the boot
+  continues, which is itself a distinguishable third outcome.
+
+Next: stage 1 (smc=1).  Reset within ~1 s => our Image executes and PSCI
+reset works; then bisect 2, 3, ... Borderline case to try after that: an SMC
+reset from the arm64 entry point (head.S), which detects "Image not entered
+at all".
+
+------------------------------------------------------------------------
+26. THE ONE-TRY SLOT BURN WORKS: POWER CYCLE ALONE RECOVERED THE PHONE
+------------------------------------------------------------------------
+Before the p0a9 boot the A/B block was forced to
+  slot a 0x008e (prio14 tries0 succ1), slot b 0x001f (prio15 tries1 succ0),
+  crc 0x20a582b1.
+The bootloader consumed slot b's single try, our kernel hung, and after a
+manual power cycle (no keys held, no BootROM, no pc) the SPL found slot b
+unusable and took slot a on its own:
+
+  power cycle -> slot a (the boot_a rescue) -> rescue rewrites stock boot_b
+  -> reboot -> Android on _b
+
+Measured: adb back 172 s after the watcher started, first adb contact at
+uptime 9.2 s, sys.boot_completed 1 at uptime 22.0 s, slot_suffix _b.
+
+  getprop ro.boot.slot_suffix  -> _b
+  cat /proc/uptime             -> fresh
+
+So a hung custom kernel in boot_b now costs exactly one power cycle and
+~2.5 min, with no button timing and no host tooling. Keep using
+/data/local/tmp/set_slot_b_tries1.sh before every boot_b test; that is what
+makes the auto-fallback work.
+
+------------------------------------------------------------------------
+27. PSCI IS PRESENT AND USES SMC - BASIS FOR THE NEW RESET PROBE
+------------------------------------------------------------------------
+Read on the recovered stock kernel (mali_kroot, then root-only sysfs):
+
+  /sys/firmware/devicetree/base/psci/method      -> "smc"
+  /sys/firmware/devicetree/base/psci/compatible  -> "arm,psci-0.2"
+  dmesg: "psci: PSCIv1.0 detected in firmware."
+         "psci: Using standard PSCI v0.2 function IDs"
+         "psci: SMC Calling Convention v1.0"
+
+Consequences:
+ - SYSTEM_RESET is the standard 32-bit PSCI 0.2 id 0x84000009, invoked as
+   arm_smccc_smc(0x84000009, 0, 0, 0, 0, 0, 0, 0, &res) - exactly what
+   drivers/firmware/psci.c::psci_sys_reset() does after probe.
+ - The conduit is SMC (not HVC), and EL3 is alive (the same monitor served
+   the vendor SIP unlock calls, docs 06/07).
+ - Therefore a reset hook placed at the FIRST statement of start_kernel()
+   is legal: no ioremap (the linear map does not cover 0x644e0000 before
+   setup_arch anyway), no clock, no driver.  See section 25 for why the AON
+   arm cannot be trusted at that point.

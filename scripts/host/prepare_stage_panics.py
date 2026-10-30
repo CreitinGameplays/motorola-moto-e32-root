@@ -10,9 +10,14 @@ kernel build:
                         handler is installed by an arch_initcall - before that
                         a panic cannot reset the board and looks like a hang.
   DIAG_ARM_STAGE    N   arm the AON watchdog (10 s, reset only, no FIQ) at
-                        stage N and keep booting.  This is the only reset
-                        source that works before arch_initcalls.  N=9 arms at
-                        every stage from 2 upwards.
+                        stage N and keep booting.  N=9 arms at every stage
+                        from 2 upwards.  0 = off.
+  DIAG_SMC_STAGE    N   reset the SoC through PSCI SYSTEM_RESET (SMCCC
+                        0x84000009) at stage N.  Unlike the AON watchdog this
+                        needs no MMIO mapping and no clock, so it works from
+                        the first instruction of start_kernel(); it is a
+                        warm reset, so pstore survives it.  If the SMC is not
+                        implemented the call returns and the boot continues.
                         0 = off.
 """
 import pathlib
@@ -39,10 +44,34 @@ HEADER = """#ifndef _LINUX_DIAG_STAGE_H
 
 #include <linux/io.h>
 #include <linux/bitops.h>
+#include <linux/arm-smccc.h>
 
 #define DIAG_PANIC_STAGE %PANIC%
 #define DIAG_ARM_STAGE %ARM%
 #define DIAG_ARM_TIMEOUT 10
+#define DIAG_SMC_STAGE %SMC%
+
+/*
+ * Reset the SoC through the PSCI SYSTEM_RESET function (SMCCC 0x84000009).
+ *
+ * This is the only reset source usable at the very first statement of
+ * start_kernel(): it is a secure-monitor call, so it needs no device mapping,
+ * no clock and no driver.  It is also a warm reset, which is what makes the
+ * ramoops/pstore region survive and be readable on the next boot.
+ *
+ * If the monitor does not implement the function the call simply returns and
+ * the boot continues, so "no reset" must be read as "the code did not run"
+ * only after a stage that is known to be reached.
+ */
+static inline void diag_psci_reset(void)
+{
+\tstruct arm_smccc_res res;
+
+\tarm_smccc_smc(0x84000009UL, 0, 0, 0, 0, 0, 0, 0, &res);
+}
+
+#define DIAG_SMC_HOOK(n) \\
+\tdo { if (DIAG_SMC_STAGE == (n)) diag_psci_reset(); } while (0)
 
 /*
  * Arm the SoC's AON watchdog directly.  This is deliberately independent of
@@ -120,12 +149,15 @@ EDITS = [
 def main():
     panic_stage = sys.argv[1] if len(sys.argv) > 1 else "0"
     arm_stage = sys.argv[2] if len(sys.argv) > 2 else "0"
+    smc_stage = sys.argv[3] if len(sys.argv) > 3 else "0"
     src = ROOT / "init" / "main.c"
     hdr = ROOT / "include" / "linux" / "diag_stage.h"
 
-    hdr.write_text(HEADER.replace("%PANIC%", panic_stage).replace("%ARM%", arm_stage))
-    print("wrote include/linux/diag_stage.h (panic=%s arm=%s, %ds)"
-          % (panic_stage, arm_stage, 10))
+    hdr.write_text(HEADER.replace("%PANIC%", panic_stage)
+                         .replace("%ARM%", arm_stage)
+                         .replace("%SMC%", smc_stage))
+    print("wrote include/linux/diag_stage.h (panic=%s arm=%s smc=%s, %ds)"
+          % (panic_stage, arm_stage, smc_stage, 10))
 
     s = src.read_text()
 
@@ -145,10 +177,27 @@ def main():
         s = s.replace(anchor, anchor + ins)
         print("inserted %s" % marker)
 
-    # the end-of-init panic must not mask either instrument
+    # The SMC hooks go in separately: main.c already carries the arm hooks
+    # from earlier builds, so the EDITS loop above would skip these anchors.
+    for n in range(1, 9):
+        marker = "DIAG_SMC_HOOK(%d);" % n
+        if marker in s:
+            continue
+        arm = "DIAG_ARM_HOOK(%d);" % n
+        if n == 1 and "\tDIAG_STAGE_1;\n" in s:
+            anchor = "\tDIAG_STAGE_1;\n"
+        elif arm in s:
+            anchor = "\t" + arm + "\n"
+        else:
+            print("WARN: no anchor for %s" % marker)
+            continue
+        s = s.replace(anchor, anchor + "\t" + marker + "\n", 1)
+        print("inserted %s" % marker)
+
+    # the end-of-init panic must not mask any instrument
     old = "#if defined(DIAG_PANIC_AFTER_INIT) && DIAG_PANIC_STAGE == 0"
     new = ("#if defined(DIAG_PANIC_AFTER_INIT) && DIAG_PANIC_STAGE == 0 && "
-           "DIAG_ARM_STAGE == 0")
+           "DIAG_ARM_STAGE == 0 && DIAG_SMC_STAGE == 0")
     if old in s and new not in s:
         s = s.replace(old, new)
         print("made DIAG_PANIC_AFTER_INIT yield to staged panics and to the arm")
