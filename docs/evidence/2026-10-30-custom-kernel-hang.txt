@@ -428,40 +428,112 @@ feeder's own 40 s (which covers everything after ~1.6 s):
 | **no** reset, while `boot_diagstock_avb.img` (same tree, KVM off) resets or boots | stall happens before the wdt probe: KVM's initcall, link-order dependent, or earlier |
 | no reset for either image | stall is in our tree/build or the container, not KVM |
 
-Note the recovery risk: after a watchdog reset the bootloader boots slot `a`
-again and the same stall (and the same 30 s reset) repeats, so the device can
-loop once every ~40 s. The exit is the bootloader key combo -> fastboot ->
-`fastboot set_active b`; slot `b` is never written, so that is always available.
+Recovery after a slot-`a` failure is better than first assumed, and this was
+measured: a slot-`a` boot that **panics** does not loop forever. The bootloader
+retries a few times and then parks itself in **fastboot** on its own
+(`reset_mode: (4)-(fastboot)` in its log). Observed on 2026-10-30: after the
+slot-`a` attempt the phone sat in fastboot without anyone touching it, and
+`persist.sys.boot.reason.history` had grown four consecutive `bootloader,...`
+entries. From fastboot, `set_active b` is a one-command recovery.
+
+Caveat that still holds: that self-recovery relies on the kernel **resetting**.
+A *hard hang* (whole SoC stopped, no reset) is not covered by it - the phone
+would sit on the logo until a manual power cycle. That asymmetry is exactly why
+an early-armed watchdog is the goal.
+
+### Three candidate test channels, and what happened to each (2026-10-30)
+
+**1. `fastboot boot <image>` - ruled out, it is a no-op on this bootloader.**
+
+It answers `OKAY` and the phone reboots, but it boots the **active slot** and
+ignores the payload. Proof, not assumption: the stock kernel was extracted from
+`boot_b`, five occurrences of its version string were patched `4.14.199+` ->
+`9.99.999+` (same length, so the image stays structurally identical), the image
+was repacked and AVB-signed (`boot_banner.img`,
+sha256 `6c3150da...0f3b`), and `fastboot boot` it. Result: `/proc/version`
+still reported `4.14.199+`, and none of the image's own cmdline tokens
+(`diagmarker=fastbootboot`) appeared in `/proc/cmdline`. `boot_a` and `boot_b`
+hashes were unchanged afterwards, so nothing was written - it simply loaded
+nothing. `fastboot boot` is dead as a channel.
+
+**2. Booting slot `a` - works, but only for the pre-`init` window.**
+
+Established earlier: stock kernel on slot `a` reaches `init`, `init` cannot
+mount `system_a`, panics, resets. So the container, the AVB signature and the
+`dd` write are all proven good, but slot `a` can never reach Android. Useful
+for exactly one question - what happens in the first ~2 s - which is
+unfortunately the question we have.
+
+**3. Append `androidboot.slot_suffix=_b` to the boot-image cmdline - does not
+work; boot-image cmdline is not honoured at all.**
+
+Idea: Android `init` takes the *last* `androidboot.slot_suffix=` token, so a
+kernel booted from `boot_a` could be told to mount slot `b`'s real userspace
+and the test slot would stop being a dead end. Built `boot_suffixb.img` (stock
+kernel + `androidboot.slot_suffix=_b diagmarker=suffixb`,
+sha256 `9ae277c0...4f58`), `dd`-wrote it to `boot_a`, verified the readback
+hash, `set_active a`, rebooted.
+
+Result: the phone went back to **fastboot** on its own (user-confirmed twice,
+without touching it). It did not come up on Android, and afterwards
+`/proc/cmdline` on slot `_b` contains `androidboot.slot_suffix=_b` exactly once
+-i.e. still only the bootloader's own token - and no `diagmarker` anywhere.
+Combined with the `console=ttyS1,115200n8` -> `console=null` replacement, the
+conclusion is: **the boot image's cmdline field is discarded**; the kernel
+cmdline is assembled by the bootloader (largely out of the DTB `/chosen`
+node, cf. `kernel/printk` suppression and `androidboot.*` tokens). Editing the
+boot header's cmdline cannot change how the kernel is booted. Only `<= 64`
+bytes of `dtb`-section or kernel-side changes remain -i.e. a rebuilt dtb, or a
+kernel that ignores the cmdline.
+
+State left behind: `boot_a` = `boot_suffixb.img` (harmless, slot `a` is not
+bootable anyway); `boot_b` untouched at `ccd0faff...7b18`; Android running on
+`_b`, `sys.boot_completed=1`.
+
+**4. `fastboot flash` - still refused.**
+
+`fastboot flash boot_a <stock boot_b backup>` ->
+`(bootloader) Please verify the signature!` / `FAILED (remote: 'Please verify
+the signature!')`. So the bootloader's flash path enforces *its* signature
+(not our AVB key), while the `dd` path with our own AVB footer is accepted and
+boots. This is also why `boot_b` cannot be restored through fastboot: the only
+way in is `dd` from a live Android, which is circular. `boot_b` stays
+hands-off.
 
 ### Next tests, cheapest first
 
 1. ~~Stock control (`scripts/device/panic_test.sh`)~~ - **done, rebooted in 19 s
-   with a full pstore record** (see above). A panic is observable; the custom
-   kernel never panicked.
-2. ~~`boot_stock_signed.img` in `boot_a`~~ - **done, bootloops** - but for the
-   Virtual A/B reason above, not because of the container. It does prove the
-   container, the AVB signature and the `dd` write are all accepted, since the
-   stock kernel ran as far as `init`.
-3. **`fastboot boot <image>`** - the only channel that tests a kernel without
-   writing any partition, and therefore without risking `boot_b`. Try it first
-   with `boot_stock_signed.img`: if a full Android boot comes up, we have a
-   zero-risk kernel test harness and every later experiment becomes safe.
-4. **`boot_diagwdt_avb.img`** via `fastboot boot`: KVM + detectors + end-of-init
-   panic + the 30 s arm in the wdt probe
-   (`patches/kernel-sprd/diag-only-arm-aon-watchdog.patch`,
-   sha256 `20dde8f6...ec4a` for `Image.diagwdt`). Localises the stall relative to
-   the `device_initcall` probe; if it resets, the device falls back to slot `b`
-   by itself, so there is no loop to escape.
-5. **`boot_diagstock_avb.img`** (`Image.diagstock`, sha256 `ecc9989a...324c`;
-   our tree with **KVM off** + the same diagnostics, image `dcbfb17d...f40b`):
-   separates "KVM delta" from "our tree/build". With KVM off the vendor feeder's
-   own 40 s AON watchdog is already enough to make a stall visible.
-6. If KVM is confirmed and the stall is inside `kvm_arch_init()`, build v4 with
-   `kvm_init()` moved from `module_init` to `late_initcall` in
-   `virt/kvm/kvm_main.c`: the vendor feeder then arms 40 s first, and a KVM hang
-   becomes a plain watchdog reset whose ramoops record ends in the KVM code.
-   That is the cheapest way to see the last log line, since the console is
-   `null` and ramoops only survives if something resets the SoC.
+   with a full pstore record**. A panic is observable; the custom kernel never
+   panicked.
+2. ~~`boot_stock_signed.img` in `boot_a`~~ - **done, bootloops**, for the
+   Virtual A/B reason above. Proves container + AVB + `dd` all work.
+3. ~~`fastboot boot`~~ - **done, no-op, ruled out** (banner-patch proof above).
+4. ~~`androidboot.slot_suffix=_b` in the boot cmdline~~ - **done, no effect**,
+   boot-image cmdline is discarded. Slot `a` stays a pre-`init`-only channel.
+5. **`boot_diagwdt_avb.img` in `boot_a`** (`Image.diagwdt`, sha256
+   `20dde8f6...ec4a`; image sha256 `ca3caec0...9d61`): KVM + detectors +
+   end-of-init panic + the 30 s AON arm in `sprd_wdt_fiq_probe()`
+   (`patches/kernel-sprd/diag-only-arm-aon-watchdog.patch`). This is now the
+   *only* informative experiment left, and it is a two-outcome binary:
+   - SoC resets ~30 s after kernel start -> the stall is **after** the wdt
+     probe, i.e. in the `device_initcall`/`late_initcall` window where
+     `kvm_init()` runs and `sprd_wdf` has not armed yet. (Predicted, given link
+     order `core-y libs-y2 drivers-y net-y virt-y`: `virt/kvm` initialises
+     after `drivers/watchdog`.)
+   - Nothing happens for minutes -> the stall is **before** the probe and no
+     in-kernel watchdog can ever report it; the approach has to change (e.g.
+     a `dtb` edit or reading `sysdumpdb`).
+   Either way the phone ends in fastboot (resets) or sits hung (no reset ->
+   manual power cycle); recovery is `set_active b`, and pstore/sysdump is read
+   on the next boot.
+6. **`boot_diagstock_avb.img`** (`Image.diagstock`; our tree with **KVM off** +
+   the same diagnostics, image `dcbfb17d...f40b`): separates "KVM delta" from
+   "our tree/build", and with KVM off the vendor feeder's own 40 s AON
+   watchdog is already enough to make a stall visible.
+7. Only if KVM init is confirmed: build v4 with `kvm_init()` moved from
+   `module_init` to `late_initcall` in `virt/kvm/kvm_main.c`, so the vendor
+   feeder arms 40 s first and any KVM hang becomes a plain watchdog reset whose
+   ramoops record ends in the KVM code.
 
 ## 5. Other facts confirmed this session
 
