@@ -174,3 +174,46 @@ Tested on 2026-10-30 without writing any image
 So slot `a` is a *real* experiment, not a safe sandbox - but it is a
 recoverable one, with no dependence on Unisoc/Motorola tooling. The remaining
 risk is only the human step of catching fastboot after a failed boot.
+
+### Result: the custom kernel is rejected by the secure world (`a0=6`)
+
+The custom kernel was written to `boot_a` (`dd`, read back byte-identical),
+`set_active a` was issued and the phone boot-looped
+([evidence](evidence/2026-10-30-custom-kernel-a0-6.txt)). The bootloader log
+shows the failure precisely:
+
+```
+[00004454] uboot_vboot_verify_img() return error:param->a0=6
+```
+
+`uboot_vboot_verify_img` is the SIP trampoline (VA `0x9f08cedc`,
+`FUNCTYPE 0x20`) and its wrapper tolerates **nothing**: any non-zero `a0`
+prints and reboots. Passing slot-b boots map to `a0=0`; the callers' tolerated
+`5` is `AvbSlotVerifyResult` **ERROR_PUBLIC_KEY_REJECTED**, the value an
+unlocked device returns for a vbmeta it cannot chain to the OEM key.
+
+`a0=6` is **ERROR_INVALID_METADATA** (the enum is visible as strings in
+`trustos_b.img`: `ERROR_VERIFICATION`, `ERROR_ROLLBACK_INDEX`,
+`ERROR_INVALID_METADATA`, plus `avb_slot_verify result is %d`). It is not a
+signature failure: U-Boot's own tolerant AVB never even runs on slot a - the
+log goes straight from `sprd_get_all_imgversion` to the `a0` line, while
+slot b runs the whole `avb_slot_verify` chain (`allow_verification_error is 1`,
+`avb slot verify OK!`).
+
+The reason is structural. Stock boot images are laid out as
+
+```
+[ ANDROID! payload ][ 0x2b000 template trailer ][ vbmeta 'AVB0' ][ pad ][ 'AVBf' ]
+```
+
+while our built image ends after the 176,128-byte trailer: **no vbmeta, no
+footer**. TrustOS therefore finds no metadata to verify and returns 6.
+
+The 176 KB trailer is byte-identical in stock `boot_a`, stock `boot_b` and our
+build, even though stock a and b differ in kernel content, so it is a static
+template rather than a per-image signature - keeping it is harmless.
+
+The obvious next experiment is to add a *self-signed* AVB footer
+(`scripts/host/build_avb_boot.py`, `SHA256_RSA4096`, rollback index 2): the
+vbmeta then validates, the public-key check fails, and the secure world should
+return the tolerated `5` instead of `6`. Not yet tested on the device.
