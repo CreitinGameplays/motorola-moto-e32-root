@@ -23,7 +23,7 @@ cat /proc/uptime
 # marker: sysdumpdb + 0x900000, 128 bytes (4096 * 2304)
 echo
 echo "=== DRESCUE1 marker (sysdumpdb+0x900000, 128 B) ==="
-dd if="$D/sysdumpdb" of="$OUT/marker.bin" bs=4096 skip=2304 count=1 2>&1 | tail -1
+dd if="$D/sysdumpdb" of="$OUT/marker.bin" bs=1 skip=9437184 count=128 2>&1 | tail -1
 ls -l "$OUT/marker.bin"
 od -An -tx1 -v "$OUT/marker.bin"
 echo "--- ascii ---"
@@ -32,8 +32,8 @@ strings -n 1 "$OUT/marker.bin" | head -3
 # A/B block at misc+0x800 (32 B) and the BCB at misc+0 (64 B)
 echo
 echo "=== misc A/B block (+0x800, 32 B) ==="
-dd if="$D/misc" of="$OUT/ab.bin" bs=4096 skip=1 count=1 2>&1 | tail -1
-dd if="$OUT/ab.bin" of="$OUT/ab32.bin" bs=1 skip=2048 count=32 2>&1 | tail -1
+dd if="$D/misc" of="$OUT/misc8k.bin" bs=4096 count=2 2>&1 | tail -1
+dd if="$OUT/misc8k.bin" of="$OUT/ab32.bin" bs=1 skip=2048 count=32 2>&1 | tail -1
 od -An -tx1 -v "$OUT/ab32.bin"
 echo "=== misc BCB (+0, 64 B) ==="
 dd if="$D/misc" of="$OUT/bcb.bin" bs=1 count=64 2>&1 | tail -1

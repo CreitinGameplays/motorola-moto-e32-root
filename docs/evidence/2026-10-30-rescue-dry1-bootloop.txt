@@ -94,17 +94,33 @@ New init also writes marker status 99 immediately after creating the device
 nodes, so the next run distinguishes "init never ran" from "init ran and the
 patch was ignored".
 
-## Still unknown
+## Confirmed by the marker (after recovery)
 
-Whether the first rescue's `/init` ran at all. The `DRESCUE1` marker at
-`sysdumpdb+0x900000` (status 10/11/12) and pstore answer that, but both need
-Android booting again, i.e. physical recovery:
+Recovered with force-off + Vol Down -> fastboot -> `set_active b`; Android came
+back on `_b` in ~15 s. `scripts/device/rescue_forensics.sh` +
+`scripts/host/decode_rescue_marker.py` then read the record the rescue had
+written to `sysdumpdb+0x900000`:
 
 ```
-force off (hold Power ~10 s) -> hold Vol Down + Power -> fastboot
-fastboot set_active b
+DRESCUE1  ver 1  mode 0 (dry)  status 11  "A/B block written and read back OK"
+blob size  34724096 (0x211d900)                          exact
+blob fnv   0xfd5a5d08100c292e   == FNV-1a of stock boot_b[0:0x211d900]
+footer fnv 0x433f66d2762083ce   == FNV-1a of stock AVBf
+misc before: suffix "_a"  a=0x00ef (prio 15)  b=0x008e (prio 14)
+misc after:  suffix "_b"  a=0x00ef (prio 15)  b=0x008e (prio 14)
 ```
 
-If the marker says 11, the init ran and only the handoff failed -> confirms
-this analysis. If it says nothing at all, the initramfs never reached
-userspace and the priority theory is not the whole story.
+So the rescue worked completely - initramfs unpacked, `/init` ran, the
+34.79 MB embedded blob and the footer were read back byte-exactly (hashes
+match the host-side computation), `misc+0x800` was written and verified - and
+the *only* failure was the handoff, because slot a kept priority 15.
+
+`fastboot set_active` is a plain **swap** of the two `slot_info` records: the
+state before the loop was a=(14,0,1) b=(15,6,1), after `set_active a` it was
+a=(15,6,1) b=(14,0,1). Since both slots have `successful_boot = 1`, the
+tries_remaining never ran out and the bootloader never fell back by itself -
+hence an endless loop rather than a timeout.
+
+The block this rescue writes is byte-identical to what `set_active b` leaves
+behind (verified by re-reading `misc+0x800` after the recovery), so dry run #2
+should now land on slot `_b`.

@@ -126,6 +126,20 @@ at runtime and reads the block back. It also writes marker status 99 right
 after creating the device nodes, so the next run can tell "init never ran"
 from "init ran, handoff ignored".
 
+The recorded marker proved the rescue itself is sound (status 11; the
+embedded 34.79 MB blob and footer hash-match the host-side stock bytes; the
+`misc` write was verified), and that `fastboot set_active` merely *swaps* the
+two `slot_info` records. The block the fixed init writes is byte-identical to
+what `set_active b` leaves behind, re-read from the device after recovery.
+
+## Dry run #2 (pending approval)
+
+`artifacts/rescue/boot_rescue_dry2.img` (`f46ded7b...672c`) to `boot_a`, then
+`set_active a`. Expected: rescue runs (~1 marker), writes the full A/B block,
+reboots, bootloader picks slot `b`, Android comes up on `_b` with the marker
+still reading status 11 and `misc+0x800` = `_b / a=0x008e / b=0x00ef`.
+Recovery if it loops again: key combo -> `set_active b` (used twice, works).
+
 ## Risks
 
 * The initramfs is large (34.8 MB uncompressed); if the bootloader or kernel
