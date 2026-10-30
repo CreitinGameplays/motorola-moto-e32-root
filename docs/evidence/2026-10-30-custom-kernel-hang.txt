@@ -1051,3 +1051,89 @@ reserved-memory node (no `no-map`) is linearly mapped.
 Build: scripts/host/stage_build.sh 0 0 0 2  ->  Image.p0a0s0q2, packed with
 pack_and_sign_boot.py --entry-paint.  The number of white bands on the frozen
 logo is then the last milestone reached.
+
+------------------------------------------------------------------------
+35. WEB RESEARCH: THE STANDARD PLAYBOOKS, AND WHICH ONE APPLIES HERE
+------------------------------------------------------------------------
+Looked for how other people debug "bootloader jumped to the kernel, then
+nothing" on arm64.  Three relevant sources:
+
+1. Guilherme Piccoli, "Debugging early boot issues on ARM64 (without
+   console!)", Igalia, 2023
+   https://blogs.igalia.com/gpiccoli/2023/02/debugging-early-boot-issues-on-arm64-without-console/
+   The standard trick is to *reboot the board from kernel code* and use
+   "does it reset?" as a one-bit probe, bisecting head.S -> start_kernel ->
+   setup_machine_fdt().  His probe is exactly PSCI SYSTEM_RESET over SMCCC
+   0x84000009 (`smc #0`), i.e. what section 27 tried here.
+   -> It cannot work on this phone: section 29 shows the vendor kernel has no
+      psci_sys_reset and no arm_pm_restart at all, and the bootloader passes
+      androidboot.wdten=0.  That is why every reset probe returned "nothing".
+      The framebuffer bands (31/34) are the replacement for exactly this.
+   He also mentions a "really early console": copying the UART write routine
+   with a hard-coded MMIO base into early arch code so printf works before
+   earlycon.  We cannot read this phone's UART, but the same idea is what the
+   framebuffer bands do visually.
+
+2. `spd_dump` / spreadtrum_flash (ilyakurdyukov), and the FDL toolchain
+   https://github.com/ilyakurdyukov/spreadtrum_flash
+   BootROM/FDL access to Unisoc phones from Linux: `fdl fdl1.bin <base>`,
+   `fdl fdl2.bin <base>`, `read_part`, `read_flash`, `write_part`, `power_off`.
+   Note from that README that the phone's own `uboot` partition is the same
+   binary as FDL2, which matches the FDL1/FDL2 pair already used here
+   (D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\).  If the FDL command set
+   turns out to include a memory read, a DRAM dump after a hang would expose
+   the kernel's log_buf (the panic text) directly - the most valuable
+   remaining channel.  Requires the BROM window at next reset, so it only
+   works if DRAM content survives the reset (see 36 for why it probably does).
+
+3. arm64 mm work "cover entire kernel image in initial ID map" (2023,
+   lists.infradead.org) confirms the 4.14 behaviour relied on in 34: the
+   initial identity mapping is *small* (__idmap_text only), which is exactly
+   why the entry stub has to run with the MMU off, and why everything before
+   paging_init() must paint through the fixmap.
+
+------------------------------------------------------------------------
+36. INSTRUMENT v3: PAINT FROM THE FIRST STATEMENT OF start_kernel()
+------------------------------------------------------------------------
+The bands in 34 covered setup_arch() but not the statements *before* it, i.e.
+exactly the window left after the "one bar only" result.  A paint there needs
+a mapping, and the linear map only exists from paging_init() onwards.  The
+fixmap, however, can map any physical page from very early:
+
+        early_fixmap_init();     /* fixmap PGD entries, bm_pud/bm_pmd */
+        early_ioremap_init();    /* early_ioremap() slots */
+
+Both are __init, idempotent, and setup_arch() calls them again a few lines
+later anyway (and KASLR calls early_fixmap_init() even before start_kernel),
+so calling them from the first statement of start_kernel() is safe.  The
+paint then goes through early_ioremap(0x9e000000 + band*0x20000).
+
+Band map in this mode (DIAG_PAINT=2, stage_build.sh 0 0 0 2):
+
+   0  entry stub, MMU off, before head.S
+   1  first statement of start_kernel()      <- new
+   2  after set_task_stack_end_magic()       <- new
+   3  after smp_setup_processor_id()
+   4  after debug_objects_early_init()
+   5  after cgroup_init_early()
+   6  after early_boot_irqs_disabled = true
+   7  after boot_cpu_init()
+   8  after page_address_init()
+   9  after pr_notice(linux_banner)
+  10  first statement of setup_arch()        <- new
+  11  after early_ioremap_init()
+  12  after setup_machine_fdt()
+  13  after parse_early_param()
+  14  after arm64_memblock_init()
+  15  after paging_init()
+  16  after unflatten_device_tree()
+  17  after request_standard_resources()
+  18  after smp_init_cpus()
+  19  after smp_build_mpidr_hash()           (end of setup_arch)
+
+Offline validation before spending a phone boot: boot the image in QEMU with
+the phone's DTB, then `pmemsave 0x9e000000 0x280000` from the QEMU monitor and
+check which 0x20000-byte bands are 0xff (scripts/host/paint_dump_check.py).
+Result: bands 1..19 all painted (band 0 is only painted by the packed entry
+stub, which the raw Image does not carry).  So the instrument is sound; the
+phone result is now a pure bisection of the kernel's own code.

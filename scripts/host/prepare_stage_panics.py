@@ -48,6 +48,7 @@ HEADER = """#ifndef _LINUX_DIAG_STAGE_H
 #include <linux/mm.h>
 #include <asm/barrier.h>
 #include <asm/early_ioremap.h>
+#include <asm/fixmap.h>
 
 #define DIAG_PANIC_STAGE %PANIC%
 #define DIAG_ARM_STAGE %ARM%
@@ -133,8 +134,31 @@ static inline void diag_paint_early(unsigned int band)
 
 /* setup_arch() milestones (mode 2); e = 1 for the early_ioremap path */
 #define DIAG_TRACE_HOOK(n, e) \\
-\tdo { if (DIAG_PAINT == 2) \\
-\t\tif (e) diag_paint_early(n); else diag_paint(n); } while (0)
+\tdo { if (DIAG_PAINT == 2) { \\
+\t\tif (e) { diag_paint_early(n); } else { diag_paint(n); } \\
+\t} } while (0)
+
+/*
+ * Pre-arch paint: start_kernel() and the first statements of setup_arch()
+ * run before paging_init() has mapped RAM, so diag_paint() cannot be used.
+ * The fixmap, however, can map any physical page very early, so we set it up
+ * ourselves and paint through early_ioremap().  Both helpers are idempotent
+ * and setup_arch() calls them again a few lines later.
+ */
+static bool diag_prearch_ready;
+
+static inline void diag_paint_prearch(unsigned int band)
+{
+\tif (!diag_prearch_ready) {
+\t\tearly_fixmap_init();
+\t\tearly_ioremap_init();
+\t\tdiag_prearch_ready = true;
+\t}
+\tdiag_paint_early(band);
+}
+
+#define DIAG_EARLY_HOOK(n) \\
+\tdo { if (DIAG_PAINT == 2) diag_paint_prearch(n); } while (0)
 
 /*
  * Arm the SoC's AON watchdog directly.  This is deliberately independent of
@@ -210,16 +234,32 @@ EDITS = [
 
 # setup_arch() milestones for paint mode 2, in execution order.  Bands 1..4
 # use early_ioremap() (before paging_init()), bands 5..9 phys_to_virt().
+# setup_arch() milestones for paint mode 2, in execution order.  Bands 11..14
+# use early_ioremap() (before paging_init()), bands 15..19 phys_to_virt().
 SETUP_TRACE = [
-    ("\tearly_ioremap_init();\n", "\tDIAG_TRACE_HOOK(1, 1);\n"),
-    ("\tsetup_machine_fdt(__fdt_pointer);\n", "\tDIAG_TRACE_HOOK(2, 1);\n"),
-    ("\tparse_early_param();\n", "\tDIAG_TRACE_HOOK(3, 1);\n"),
-    ("\tarm64_memblock_init();\n", "\tDIAG_TRACE_HOOK(4, 1);\n"),
-    ("\tpaging_init();\n", "\tDIAG_TRACE_HOOK(5, 0);\n"),
-    ("\t\tunflatten_device_tree();\n", "\t\tDIAG_TRACE_HOOK(6, 0);\n"),
-    ("\trequest_standard_resources();\n", "\tDIAG_TRACE_HOOK(7, 0);\n"),
-    ("\tsmp_init_cpus();\n", "\tDIAG_TRACE_HOOK(8, 0);\n"),
-    ("\tsmp_build_mpidr_hash();\n", "\tDIAG_TRACE_HOOK(9, 0);\n"),
+    ("\tearly_ioremap_init();\n", "\tDIAG_TRACE_HOOK(11, 1);\n"),
+    ("\tsetup_machine_fdt(__fdt_pointer);\n", "\tDIAG_TRACE_HOOK(12, 1);\n"),
+    ("\tparse_early_param();\n", "\tDIAG_TRACE_HOOK(13, 1);\n"),
+    ("\tarm64_memblock_init();\n", "\tDIAG_TRACE_HOOK(14, 1);\n"),
+    ("\tpaging_init();\n", "\tDIAG_TRACE_HOOK(15, 0);\n"),
+    ("\t\tunflatten_device_tree();\n", "\t\tDIAG_TRACE_HOOK(16, 0);\n"),
+    ("\trequest_standard_resources();\n", "\tDIAG_TRACE_HOOK(17, 0);\n"),
+    ("\tsmp_init_cpus();\n", "\tDIAG_TRACE_HOOK(18, 0);\n"),
+    ("\tsmp_build_mpidr_hash();\n", "\tDIAG_TRACE_HOOK(19, 0);\n"),
+]
+
+# start_kernel()'s statements before setup_arch(), paint mode 2 bands 1..9.
+# These run before paging_init(), so they go through the fixmap.
+EARLY_TRACE = [
+    ("\tDIAG_STAGE_1;\n", 1),
+    ("\tset_task_stack_end_magic(&init_task);\n", 2),
+    ("\tsmp_setup_processor_id();\n", 3),
+    ("\tdebug_objects_early_init();\n", 4),
+    ("\tcgroup_init_early();\n", 5),
+    ("\tearly_boot_irqs_disabled = true;\n", 6),
+    ("\tboot_cpu_init();\n", 7),
+    ("\tpage_address_init();\n", 8),
+    ("\tpr_notice(\"%s\", linux_banner);\n", 9),
 ]
 
 
@@ -287,12 +327,31 @@ def main():
         s = s.replace(anchor, anchor + "\t" + marker + "\n", 1)
         print("inserted %s" % marker)
 
+    # start_kernel()'s statements before setup_arch() (paint mode 2, bands 1..9)
+    for anchor, band in EARLY_TRACE:
+        hook = "\tDIAG_EARLY_HOOK(%d);\n" % band
+        if hook.strip() in s:
+            continue
+        if s.count(anchor) != 1:
+            print("WARN: early anchor occurs %d times: %r"
+                  % (s.count(anchor), anchor))
+            continue
+        s = s.replace(anchor, anchor + hook, 1)
+        print("inserted %s" % hook.strip())
+
     # setup_arch() trace (paint mode 2): milestones inside
     # arch/arm64/kernel/setup.c, bands 1..9.  The first ones must use
     # early_ioremap() because the linear mapping of 0x9e000000 only appears
     # with paging_init(); the later ones use phys_to_virt().
     setup = ROOT / "arch" / "arm64" / "kernel" / "setup.c"
     t = setup.read_text()
+    # Drop any trace hooks from an earlier run so the band numbering is never
+    # a mix of two generations (they are re-inserted below under the current
+    # numbering).
+    stripped = re.sub(r"[ \t]*DIAG_TRACE_HOOK\([0-9]+, [01]\);\n", "", t)
+    if stripped != t:
+        print("removed stale DIAG_TRACE_HOOK lines from setup.c")
+        t = stripped
     if "diag_stage.h" not in t:
         inc = "#include <linux/init.h>\n"
         if t.count(inc) == 1:
@@ -309,6 +368,12 @@ def main():
             continue
         t = t.replace(anchor, anchor + hook, 1)
         print("inserted %s in setup.c" % hook.strip())
+    # band 10: the first statement of setup_arch() itself
+    entry = "void __init setup_arch(char **cmdline_p)\n{\n"
+    hook10 = "\tDIAG_EARLY_HOOK(10);\n"
+    if hook10.strip() not in t and t.count(entry) == 1:
+        t = t.replace(entry, entry + hook10, 1)
+        print("inserted %s in setup.c" % hook10.strip())
     setup.write_text(t)
 
     # the end-of-init panic must not mask any instrument

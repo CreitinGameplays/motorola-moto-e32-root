@@ -91,3 +91,34 @@ At C:\Users\Creitin\moto-root-test\scripts\host\run_boot_b_test.ps1:51 char:30
 +                              ~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (adb.exe: no devices/emulators found:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
+
+========================================================================
+boot_b test, 2026-10-30 20:17:27
+image : artifacts/kernel-build/boot_p0a0s0q2_trace.img
+        67108864 bytes, sha256 80B78D57DF0AB6A7A3E3D512D53616B17AC3DA25019B9D1DCBEDD0A0B2CF7DD2
+========================================================================
+--- pre-flight ---
+slot            : _b
+running kernel  : Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020) (Android (6443078 based on r383902) clang version 11.0.1 (https://android.googlesource.com/toolchain/llvm-project b397f81060ce6d701042b782172ed13bee898b79), LLD 11.0.1 (/buildbot/tmp/tmp6_m7QH b397f81060ce6d701042b782172ed13bee898b79)) #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024
+--- push ---
+pushed sha256   : 80b78d57df0ab6a7a3e3d512d53616b17ac3da25019b9d1dcbedd0a0b2cf7dd2
+--- flash boot_b (root) ---
+attempt 1 : 67108864 bytes (64 M) copied, 0.582178 s, 110 M/s | 80b78d57df0ab6a7a3e3d512d53616b17ac3da25019b9d1dcbedd0a0b2cf7dd2
+read-back match : YES
+--- one-attempt slot b ---
+uid=2000
+before:
+block 32 bytes
+dd: /dev/block/by-name/misc: Permission denied
+after:
+--- reboot ---
+reboot issued at 20:17:36
+t+   4s  absent
+
+VERDICT: HANG  (adb back after 331s)
+  => no adb, no reset: the CPU is hung before that stage
+     recover with a power cycle (slot b's try is spent, the SPL takes slot a
+     and the rescue restores Android), or brom_set_slot.ps1 -Slot a -ConfirmWrite
+post-reset state:
+5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 ef 00
+ 00 00 00 00 00 00 00 00 00 00 00 00 16 de b9 49
