@@ -104,12 +104,112 @@ Consequences for the next attempt:
   `no-dump-oops`/ECC tweaks) to the existing node is a cheap, low-risk DTB edit
   worth testing, but it is not what makes records appear.
 
-## 3. Other facts confirmed this session
+## 3. Diagnosis plan: turn the hang into a panic
+
+The hang is silent because nothing ever calls `panic()`. On this device a
+*panic* is observable in two independent ways, a hang is not:
+
+| channel | needs | survives |
+|---|---|---|
+| `sysdumpdb` partition | `panic()` -> `sysdump_panic_event` -> U-Boot writes the minidump | a cold power cycle (it is on eMMC) |
+| `/sys/fs/pstore` | `panic()` -> pstore -> ramoops | a **warm** reset only (DRAM) |
+
+The sysdump path is the reliable one, and it is set up earlier than expected:
+
+- `early_initcall(sysdump_early_init)` registers the panic notifier
+  (`drivers/soc/sprd/debug/sysdump/sysdump.c:1639`), i.e. before essentially
+  every driver initcall.
+- `minidump_info_g` is *statically* initialized with the section table,
+  including a `log_buf` entry, and `prepare_minidump_info()` resolves it at
+  panic time via `section_info_log_buf()` -> `log_buf_addr_get()` /
+  `log_buf_len_get()`. So the kernel printk ring buffer is captured.
+- `CONFIG_PANIC_ON_OOPS=y` and `CONFIG_PANIC_TIMEOUT=5`: a panic reboots by
+  itself after 5 s, and that reset is a PSCI reset (warm), so ramoops also
+  survives it.
+- The BCB `tries_remaining` counter decrements on each failed boot, so after a
+  few panic-reboot cycles U-Boot gives up on slot a and boots stock slot b on
+  its own.
+
+What is missing is only a *detector*: `# CONFIG_SOFTLOCKUP_DETECTOR is not set`.
+The softlockup watchdog is what converts "CPU spinning forever" into
+`BUG: soft lockup - CPU#0 stuck for 22s!` plus a full backtrace, and with
+`softlockup_panic=1` into a panic. It is armed in `lockup_detector_init()`
+(`init/main.c:1105`, just before `rest_init()`), so it covers the whole initcall
+sequence.
+
+Diagnostic build (`Image.slpanic`), identical to the hanging kernel except:
+
+```
+CONFIG_SOFTLOCKUP_DETECTOR=y
+CONFIG_BOOTPARAM_SOFTLOCKUP_PANIC=y          -> 1
+CONFIG_DETECT_HUNG_TASK=y
+CONFIG_BOOTPARAM_HUNG_TASK_PANIC=y           -> 1
+CONFIG_DEFAULT_HUNG_TASK_TIMEOUT=60
+CONFIG_PANIC_TIMEOUT=5                       (unchanged)
+```
+
+No cmdline change is needed (the values come from `CONFIG_*_VALUE`), which
+matters because the stock cmdline is `console=ttyS1,115200n8 buildvariant=user`
+and rewriting it would risk dropping bootloader-supplied arguments.
+
+The diagnostic kernel also carries one deliberate extra hunk
+(`patches/kernel-sprd/diag-only-panic-after-init.patch`, compiled in only with
+`KCFLAGS=-DDIAG_PANIC_AFTER_INIT`): a `panic()` at the very end of
+`kernel_init()`, after `free_initmem()` and just before `run_init_process()`.
+
+Reason: "hangs at the logo, no adb, no fastboot" has a second explanation that
+fits perfectly - **the kernel boots fine but display and USB never come up**,
+because the vendor modules were built against the shipping tree (125/282
+`__crc_` mismatches for `mali_kbase.ko` alone). In that case the phone would
+look dead while Android actually runs. A panic at the end of init separates the
+two hypotheses within the same boot:
+
+| observation | meaning |
+|---|---|
+| dump appears, reason `DIAG: kernel init complete` | all initcalls finished: the kernel is healthy, display/USB is the problem |
+| dump appears, reason `BUG: soft lockup` + backtrace | the kernel really stalls, and the backtrace names the function |
+| no dump, device sits still | stall with IRQs masked or before `rest_init()` |
+
+Expected sequence, no manual intervention required:
+
+```
+boot slot a -> kernel hangs -> 20-40 s -> soft lockup -> panic()
+            -> sysdump prepared, panic timeout 5 s -> reset
+            -> U-Boot sees the dump request -> writes sysdumpdb
+            -> tries_remaining decrements -> after N cycles boots slot b
+```
+
+Then: root the device, `scripts/device/dump_sysdump_full.sh`, pull
+`sysdumpdb_full.img`, and run `scripts/host/sysdump_extract.py` - which prints
+the crash banner, every `soft lockup` / `Call trace` / `PC is at` line, and the
+whole recovered kernel log.
+
+Limitation worth knowing: a softlockup is only detected while interrupts are
+*enabled*. If the hang is a spinlock deadlock with IRQs masked, the detector
+cannot fire; `DETECT_HUNG_TASK` then only helps for tasks stuck in D state.
+
+## 4. Other facts confirmed this session
 
 - Boot image header is equivalent in stock and custom: page 2048, header v2,
   `os_version 0x16000182`, `kernel_addr 0x8000`, `ramdisk_addr 0x5400000`,
   kernel = valid ARM64 `Image` (magic `ARMd`, `text_offset 0x80000`,
   `flags 0xa`, `image_size 0x1b29000`).
+- The stock cmdline lives at header offset `0x40` (the `name` field at `0x30`
+  is empty, which is why early probes reported an empty cmdline):
+  **`console=ttyS1,115200n8 buildvariant=user`** - the console is UART1, which
+  is why nothing reaches USB/adb.
+- The DTB is a v2 `dtb` section: `dtb_size 175466`, loaded to
+  `dtb_addr 0x1f00000`, at file offset `0x20f2000`. The FDT magic starts 0x40
+  bytes into that section. Packing must copy the *whole section*, not just the
+  FDT, to stay faithful to stock.
+- Address budget: kernel load `0x8000` + stock `image_size 0x1b29000` ends at
+  `0x1b31000`; the DTB is at `0x1f00000` and the ramdisk at `0x5400000`, so
+  there is ~3.5 MB of slack. A slightly larger kernel does not collide.
+- `scripts/host/pack_and_sign_boot.py` repacks any `Image` into the stock
+  container and AVB-signs it; a round-trip with the stock kernel reproduces the
+  stock payload region byte-for-byte (only the informational SHA-1 `id` field
+  differs, and the bootloader does not validate it - the earlier custom image
+  booted with a recomputed one).
 - Build config vs stock `/proc/config.gz`: exactly 2 value deltas
   (`CONFIG_VIRTUALIZATION`, `CONFIG_VSOCKETS`) plus 24 derived KVM/VHOST
   symbols. No config drift, so the hang is not a config problem.
