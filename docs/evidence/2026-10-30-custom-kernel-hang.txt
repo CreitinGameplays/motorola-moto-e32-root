@@ -851,3 +851,123 @@ Consequences:
    is legal: no ioremap (the linear map does not cover 0x644e0000 before
    setup_arch anyway), no clock, no driver.  See section 25 for why the AON
    arm cannot be trusted at that point.
+
+------------------------------------------------------------------------
+28. THE EXACT VENDOR CONFIG, EXTRACTED FROM THE STOCK KERNEL IMAGE
+------------------------------------------------------------------------
+`scripts/extract-ikconfig` on `Image.vendor` (the kernel payload of the
+stock `boot_b.img`) yields the vendor's full build configuration:
+`artifacts/kernel-build/vendor.config`, 3907 entries, 4888 lines.
+
+Diff against `artifacts/kernel-build/built_config.txt` (our build):
+
+  total differences: 26
+  enabled by vendor but not by us: 0
+  enabled by us but not by vendor: 24, and *all* of them are KVM/vhost:
+      CONFIG_KVM, KVM_ARM_HOST, KVM_ARM_PMU, KVM_COMPAT,
+      KVM_GENERIC_DIRTYLOG_READ_PROTECT, KVM_MMIO, KVM_VFIO,
+      HAVE_KVM_ARCH_TLB_FLUSH_ALL, HAVE_KVM_CPU_RELAX_INTERCEPT,
+      HAVE_KVM_EVENTFD, HAVE_KVM_IRQCHIP, HAVE_KVM_IRQFD,
+      HAVE_KVM_IRQ_ROUTING, HAVE_KVM_MSI, MMU_NOTIFIER,
+      PREEMPT_NOTIFIERS, VHOST, VHOST_CROSS_ENDIAN_LEGACY, VHOST_NET,
+      VHOST_VSOCK, VIRTIO_VSOCKETS_COMMON, VSOCKETS, VIRTUALIZATION,
+      ARM64_ERRATUM_834220
+  plus CONFIG_VIRTUALIZATION=vsockets differences only.
+
+Therefore:
+ - the vendor really does build with CONFIG_LTO=y, THINLTO=y,
+   LTO_CLANG=y, CFI_CLANG=y, CFI_CLANG_SHADOW=y, VA_BITS=39, PAGE_SHIFT=12,
+   RELOCATABLE=y, RANDOMIZE_BASE=y, ARM_PSCI_FW=y, HAVE_ARM_SMCCC=y;
+ - our `.config.diagwdt` is the vendor config plus KVM, nothing else.  Config
+   drift is *not* the cause of the hang;
+ - image sizes agree with that: vendor 25,358,352 B / image_size 0x1b29000,
+   ours 25,909,264 B / image_size 0x1bb1000 - the difference is the KVM code.
+
+------------------------------------------------------------------------
+29. WHY EVERY RESET-BASED PROBE FAILED: THIS KERNEL HAS NO PSCI RESET
+------------------------------------------------------------------------
+Three independent facts, all read from the vendor tree and the live phone:
+
+1. `grep -c reset drivers/firmware/psci.c`  ->  0.  There is no
+   `psci_sys_reset`, no `PSCI_0_2_FN_SYSTEM_RESET` call, no
+   `arm_pm_restart = ...` anywhere in the tree (the only reference is
+   `include/uapi/linux/psci.h` and the KVM emulation).  `psci_0_2_set_functions()`
+   installs suspend/cpu_off/cpu_on/migrate only.
+2. `arch/arm64/kernel/process.c::machine_restart()` therefore falls through to
+   `do_kernel_restart()`, and the only registered restart handler in the whole
+   tree is the modem control one (`drivers/soc/sprd/modem/mcd/modem_ctrl.c`).
+   If it does not act, the kernel prints "Reboot failed -- System halted" and
+   spins.  Observed in QEMU: `Reboot failed -- System halted` (see 30).
+3. The bootloader passes `androidboot.wdten=0` in the kernel command line
+   (`/proc/cmdline` on the stock kernel), i.e. the watchdog is told to stay
+   disabled.  `sprd-wdt-fiq` (0x644e0000.watchdog) and `sprd-pmic-wdt`
+   (sc27xx-wdt) both probe at 1.478 s, but nothing arms them for a timeout
+   that would survive a hang, and `watchdogd` cannot even open /dev/watchdog
+   ("Failed to open /dev/watchdog: No such file or directory").
+
+Consequences:
+ - `smc 0x84000009` (PSCI SYSTEM_RESET) returns instead of resetting: the
+   stage-1 SMC build (p0a0s0s1) hanging is *not* evidence that start_kernel()
+   was not reached;
+ - `panic()` cannot reboot either (same fall-through), which explains both the
+   end-of-init panic test and the AON-arm tests;
+ - a hang therefore has to be observed *without* any reset.  Section 31.
+
+------------------------------------------------------------------------
+30. OUR IMAGE BOOTS FINE UNDER QEMU - THE TREE AND THE BUILD ARE SANE
+------------------------------------------------------------------------
+QEMU (`qemu-system-aarch64 -M virt -cpu cortex-a57 -smp 1 -m 2048`) with the
+same tree and config, plus CONFIG_SERIAL_AMBA_PL011 so the kernel has a console
+(`scripts/host/qemu_build.sh` -> `Image.qemu`, sha256 48c975d6...6376):
+
+    [    0.000000] Linux version 4.14.199++ ... clang 11.0.1 ...
+    [    0.000000] Machine model: linux,dummy-virt
+    [    0.000000] psci: PSCIv1.1 detected in firmware.
+    [    0.000000] Memory: 2031716K/2097152K available (14404K kernel code, ...)
+    [    0.000000] Virtual kernel memory layout: ... memory : ... (2048 MB)
+    ... 1129 lines, all the way through initcalls ...
+    [    0.100000] lr : sprd_sip_svc_init+0x60/0x268
+    [    0.100000] __arm_smccc_smc+0x0/0x2c
+    [    0.100000] do_one_initcall+0x18c/0x298
+    [    0.100000] Rebooting in 5 seconds..
+    [    0.100000] Reboot failed -- System halted
+
+The only crash is the vendor SIP service calling `smc` with QEMU's fake EL3
+present but not implementing the function: an undefined-instruction trap in
+`sprd_sip_svc_init`, which an actual Unisoc EL3 would answer.  Full log:
+`artifacts/kernel-build/qemu_run.log` (gitignored).
+
+So the kernel core, the toolchain (upstream clang/LLD 11.0.1 vs the vendor's
+AOSP clang 11.0.1) and the config produce a bootable kernel.  The hang must be
+in device-specific code (SPRD drivers / board setup), not in `head.S`,
+`start_kernel()` or the scheduler.
+
+------------------------------------------------------------------------
+31. NEW INSTRUMENT: PAINT THE BOOTLOADER'S FRAMEBUFFER
+------------------------------------------------------------------------
+The panel keeps scanning out the bootloader's framebuffer while a half-booted
+kernel hangs - that is exactly the Motorola logo the operator sees.  The
+command line names that buffer: `lcd_base=9e000000`, `logo_bpix=24`,
+`lcd_size=1600x720`.  Painting it is therefore a *visible* progress log that
+needs no reset, no ramoops and no console.
+
+Two paint sources:
+
+  * band 0 - `scripts/host/entry_paint.py` + `scripts/host/paint_entry.S`.
+    The packer (`pack_and_sign_boot.py --entry-paint`) replaces the Image
+    header in the loaded copy with a 64-byte stub: 14 instructions that fill
+    256000 bytes at physical 0x9e000000 with 0xff, then the Image's original
+    `b stext` word verbatim.  It runs with the MMU off, before `head.S`, so it
+    answers "did the bootloader enter our Image at all?" with a white bar.
+  * bands 1..7 - `DIAG_PAINT` in `scripts/host/prepare_stage_panics.py`, i.e.
+    `stage_build.sh <panic> <arm> <smc> 1`.  Stage n (2..8) fills band n-1
+    through the linear mapping that `setup_arch()` installed; stage 1 is
+    excluded because the initial head.S mapping covers only the kernel image.
+
+Bands are contiguous 256000-byte strips (about 40 rows each at
+1600x720x32), so the *number of white bands* is the last stage reached:
+0 = entered stext, 1 = setup_arch done, 2 = page allocator done, 3 = check_bugs
+done, 4 = rest_init reached, 5 = kernel_init entered, 6 = SMP initcalls done,
+7 = every initcall done.  The region is a reserved-memory node *without*
+`no-map` (`/reserved-memory/logobuffer@9e000000`), so the linear map keeps it
+mapped.

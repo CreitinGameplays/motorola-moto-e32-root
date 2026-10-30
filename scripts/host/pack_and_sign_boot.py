@@ -104,6 +104,11 @@ def main():
                     help="append this token to the boot image cmdline")
     ap.add_argument("--ramdisk", default=None,
                     help="replace the base ramdisk (e.g. rescue initramfs cpio)")
+    ap.add_argument("--entry-paint", action="store_true",
+                    help="replace the Image header in the loaded copy with the "
+                         "framebuffer-paint stub (scripts/host/entry_paint.py); "
+                         "paints a white band before head.S so a hang proves "
+                         "the bootloader entered the Image")
     args = ap.parse_args()
 
     kernel = pathlib.Path(args.kernel).read_bytes()
@@ -115,6 +120,15 @@ def main():
         sys.exit("%s is not an arm64 Image" % args.kernel)
 
     img, h = build(base, kernel, args.cmdline_extra, ramdisk)
+    ps = h["page_size"]
+    if args.entry_paint:
+        import entry_paint  # noqa: E402  (sibling module)
+        stub = entry_paint.build_stub(kernel[:4])
+        img = bytearray(img)
+        img[ps:ps + len(stub)] = stub
+        img = bytes(img)
+        print("\nentry-paint stub written at payload offset 0x%x:" % ps)
+        print("  %s" % stub.hex())
     out.write_bytes(img)
     print("\nbase %s (%d bytes)" % (base.name, base.stat().st_size))
     print("wrote %s: %d bytes  sha256 %s" % (out.name, len(img), sha256(img)))
@@ -126,7 +140,12 @@ def main():
     # the payload prefix must be byte-identical to what we intended to write
     # (img = [header page][kernel][...], so compare from the first payload page)
     ps = h["page_size"]
-    print("  payload prefix matches kernel: %s" % (img[ps:ps + len(kernel)] == kernel))
+    if args.entry_paint:
+        print("  payload prefix matches kernel: %s (first %d bytes are the stub)"
+              % (img[ps + entry_paint.STUB_SIZE:ps + len(kernel)] ==
+                 kernel[entry_paint.STUB_SIZE:], entry_paint.STUB_SIZE))
+    else:
+        print("  payload prefix matches kernel: %s" % (img[ps:ps + len(kernel)] == kernel))
 
     if args.no_sign:
         print("\nunsigned (--no-sign); not bootable past TrustOS")

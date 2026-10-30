@@ -45,6 +45,8 @@ HEADER = """#ifndef _LINUX_DIAG_STAGE_H
 #include <linux/io.h>
 #include <linux/bitops.h>
 #include <linux/arm-smccc.h>
+#include <linux/mm.h>
+#include <asm/barrier.h>
 
 #define DIAG_PANIC_STAGE %PANIC%
 #define DIAG_ARM_STAGE %ARM%
@@ -72,6 +74,43 @@ static inline void diag_psci_reset(void)
 
 #define DIAG_SMC_HOOK(n) \\
 \tdo { if (DIAG_SMC_STAGE == (n)) diag_psci_reset(); } while (0)
+
+#define DIAG_PAINT %PAINT%
+
+/*
+ * Visual stage trace: paint a white band at the bootloader's framebuffer.
+ *
+ * The bootloader leaves the panel scanning out of lcd_base=0x9e000000, and
+ * that picture stays up while a half-booted kernel hangs (the operator sees
+ * the Motorola logo).  Filling a horizontal band therefore gives a progress
+ * bar that needs no reset, no ramoops and no console:
+ *
+ *   band 0   painted by the entry stub in scripts/host/entry_paint.py, which
+ *            runs with the MMU off before head.S, so it proves the bootloader
+ *            entered the Image at all;
+ *   band n   stage n reached, painted through the linear mapping installed by
+ *            setup_arch(), so only stages 2..8 can use this path.
+ *
+ * Bands are 256000 bytes each (1600x720x32 is about 40 rows), laid out
+ * contiguously from the base, so the number of white bands is the answer.
+ * The region is a reserved-memory node without `no-map`, so it stays mapped.
+ */
+#define DIAG_PAINT_BASE 0x9e000000UL
+#define DIAG_PAINT_BAND 0x3e800UL\t/* 256000 bytes */
+
+static inline void diag_paint(unsigned int stage)
+{
+\tvolatile u64 *p = (volatile u64 *)phys_to_virt(DIAG_PAINT_BASE +
+\t\t\t\t\t      (stage - 1) * DIAG_PAINT_BAND);
+\tunsigned int i;
+
+\tfor (i = 0; i < DIAG_PAINT_BAND / sizeof(u64); i++)
+\t\tp[i] = ~0ULL;
+\tdsb(sy);
+}
+
+#define DIAG_PAINT_HOOK(n) \\
+\tdo { if (DIAG_PAINT) diag_paint(n); } while (0)
 
 /*
  * Arm the SoC's AON watchdog directly.  This is deliberately independent of
@@ -150,14 +189,16 @@ def main():
     panic_stage = sys.argv[1] if len(sys.argv) > 1 else "0"
     arm_stage = sys.argv[2] if len(sys.argv) > 2 else "0"
     smc_stage = sys.argv[3] if len(sys.argv) > 3 else "0"
+    paint = sys.argv[4] if len(sys.argv) > 4 else "0"
     src = ROOT / "init" / "main.c"
     hdr = ROOT / "include" / "linux" / "diag_stage.h"
 
     hdr.write_text(HEADER.replace("%PANIC%", panic_stage)
                          .replace("%ARM%", arm_stage)
-                         .replace("%SMC%", smc_stage))
-    print("wrote include/linux/diag_stage.h (panic=%s arm=%s smc=%s, %ds)"
-          % (panic_stage, arm_stage, smc_stage, 10))
+                         .replace("%SMC%", smc_stage)
+                         .replace("%PAINT%", paint))
+    print("wrote include/linux/diag_stage.h (panic=%s arm=%s smc=%s paint=%s, %ds)"
+          % (panic_stage, arm_stage, smc_stage, paint, 10))
 
     s = src.read_text()
 
@@ -194,10 +235,24 @@ def main():
         s = s.replace(anchor, anchor + "\t" + marker + "\n", 1)
         print("inserted %s" % marker)
 
+    # Same for the paint hooks (stages 2..8: stage 1 runs before setup_arch()
+    # has installed the linear mapping that 0x9e000000 needs).
+    for n in range(2, 9):
+        marker = "DIAG_PAINT_HOOK(%d);" % n
+        if marker in s:
+            continue
+        smc = "DIAG_SMC_HOOK(%d);" % n
+        if smc not in s:
+            print("WARN: no smc hook as anchor for %s" % marker)
+            continue
+        anchor = "\t" + smc + "\n"
+        s = s.replace(anchor, anchor + "\t" + marker + "\n", 1)
+        print("inserted %s" % marker)
+
     # the end-of-init panic must not mask any instrument
     old = "#if defined(DIAG_PANIC_AFTER_INIT) && DIAG_PANIC_STAGE == 0"
     new = ("#if defined(DIAG_PANIC_AFTER_INIT) && DIAG_PANIC_STAGE == 0 && "
-           "DIAG_ARM_STAGE == 0 && DIAG_SMC_STAGE == 0")
+           "DIAG_ARM_STAGE == 0 && DIAG_SMC_STAGE == 0 && DIAG_PAINT == 0")
     if old in s and new not in s:
         s = s.replace(old, new)
         print("made DIAG_PANIC_AFTER_INIT yield to staged panics and to the arm")

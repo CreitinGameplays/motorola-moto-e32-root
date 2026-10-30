@@ -13,3 +13,42 @@ pushed sha256   : 4f3c1573183fee04458eb27c5915674134d59062de4c491606f8b4fa889990
 2000
 dd: /dev/block/by-name/boot_b: Permission denied
 ABORT: boot_b read-back does not match the image (read back: )
+
+========================================================================
+boot_b test, 2026-10-30 19:13:49
+image : artifacts\kernel-build\boot_p0a0s1.img
+        67108864 bytes, sha256 4F3C1573183FEE04458EB27C5915674134D59062DE4C491606F8B4FA8899908E
+========================================================================
+--- pre-flight ---
+slot            : _b
+running kernel  : Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020) (Android (6443078 based on r383902) clang version 11.0.1 (https://android.googlesource.com/toolchain/llvm-project b397f81060ce6d701042b782172ed13bee898b79), LLD 11.0.1 (/buildbot/tmp/tmp6_m7QH b397f81060ce6d701042b782172ed13bee898b79)) #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024
+--- push ---
+pushed sha256   : 4f3c1573183fee04458eb27c5915674134d59062de4c491606f8b4fa8899908e
+--- flash boot_b (root) ---
+attempt 1 : 67108864 bytes (64 M) copied, 0.587236 s, 109 M/s | 4f3c1573183fee04458eb27c5915674134d59062de4c491606f8b4fa8899908e
+read-back match : YES
+--- one-attempt slot b ---
+uid=0
+before:
+ 5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 ef 00
+ 00 00 00 00 00 00 00 00 00 00 00 00 16 de b9 49
+block 32 bytes
+32 bytes (32 B) copied, 0.017375 s, 1.7 K/s
+after:
+ 5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 1f 00
+ 00 00 00 00 00 00 00 00 00 00 00 00 b1 82 a5 20
+--- reboot ---
+reboot issued at 19:14:03
+t+   3s  absent
+
+VERDICT: HANG  (adb back after 333s)
+  => no adb, no reset: the CPU is hung before that stage
+     recover with a power cycle (slot b's try is spent, the SPL takes slot a
+     and the rescue restores Android), or brom_set_slot.ps1 -Slot a -ConfirmWrite
+post-reset state:
+adb.exe : adb.exe: no devices/emulators found
+At C:\Users\Creitin\moto-root-test\scripts\host\run_boot_b_test.ps1:51 char:30
++ function Sh([string]$cmd) { (& $Adb shell $cmd 2>&1 | Out-String).Tri ...
++                              ~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (adb.exe: no devices/emulators found:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
