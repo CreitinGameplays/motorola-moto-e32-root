@@ -1,0 +1,178 @@
+# 2026-10-30 - slot switch probe (`fastboot set_active`)
+
+Goal: prove that slot switching works without writing any image, so slot a can
+be used as a sandbox for the custom kernel. No kernel image was written in this
+test.
+
+Baseline: device on slot `_b`, kernel `4.14.199+-ab612c2`, `ro.boot.flash.locked=0`,
+`verifiedbootstate=orange`, misc BCB backed up (root `dd`) to
+`artifacts/slot-probe/misc_before.img`
+(sha256 `71230f27c10383170aa34ca014aa517ed58482b6371838ce6289e27b15fbab35`).
+
+## 1. `set_active a` is accepted and is not gated
+
+```
+$ adb reboot bootloader
+$ fastboot devices
+ZF523X9NXW     fastboot
+$ fastboot getvar is-userspace
+is-userspace: no                       <- real bootloader, not fastbootd
+$ fastboot getvar current-slot
+current-slot: b
+$ fastboot getvar slot-count
+slot-count: 2
+
+$ fastboot set_active a
+Setting current slot to 'a'                        OKAY [  0.016s]
+$ fastboot getvar current-slot
+current-slot: a
+```
+
+`set_active` is **not** a `flash:`/`erase:` command and therefore never reaches
+the signature gate from [11](../11-flash-gate.md). It only rewrites the BCB in
+`misc`. The switch is instant and reports `OKAY`.
+
+## 2. Stock `boot_a` does not boot the current system
+
+Booting slot a produced a **boot loop** (black screen, repeating Motorola
+logo, no adb, no fastboot on the bus):
+
+```
+11:51:16 FASTBOOT: ZF523X9NXW   fastboot     <- only after Volume Down was held
+...
+11:51:38 FASTBOOT: ZF523X9NXW   fastboot
+11:51:55 ADB:      ZF523X9NXW   device       <- after set_active b + reboot
+```
+
+`boot_a` holds the older stock kernel (`abc1989`, 2024-01-23) while the system
+and vendor modules are from `RORS31.335-58-1` (kernel `ab612c2`, 2024-02-20).
+The older kernel does not come up against the installed system - most likely
+the vendor module `__crc_` / vermagic mismatch. **Slot a with its stock image
+is not a bootable fallback on this phone.**
+
+Important: while boot-looping, the phone did not stay in fastboot by itself.
+It had to be forced there with Volume Down (Power + Volume Down also works).
+The USB bus only showed the device once fastboot was entered.
+
+## 3. Recovery: `set_active b` + reboot, verified
+
+```
+$ fastboot set_active b
+Setting current slot to 'b'                        OKAY [  0.016s]
+$ adb shell getprop ro.boot.slot_suffix ; cat /proc/version
+_b
+Linux version 4.14.199+-ab612c2 ... #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024
+```
+
+* slot `_b`, stock kernel `ab612c2`, `verifiedbootstate=orange`,
+  `flash.locked=0`
+* Android booted normally, `mali_kroot` regained root on the first attempt
+  (`attempt 1 -> uid 0`)
+* boot_b was never written; misc is unchanged apart from the A/B block
+
+So the sandbox round trip is proven end to end:
+
+```
+set_active a -> (failed kernel) -> hold Volume Down at power-on -> fastboot
+             -> set_active b -> reboot -> Android on the stock kernel
+```
+
+The only step that needs a human is catching fastboot after a failed boot.
+
+## 4. What `set_active` changed in misc
+
+Diff of the 8 KiB `misc` dump before/after (the BCB command at `0x000` is
+untouched, `bootonce-bootloader` is still there):
+
+```
+offset  before  after
+0x80c   9e      8e      slot a metadata byte 0
+0x80e   9f      ef      slot b metadata byte 0
+0x81c   cd      16      crc32 (bytes 0x81c..0x81f)
+0x81d   53      de
+0x81e   f1      b9
+0x81f   45      49
+```
+
+No other byte in the first 8 KiB changed. Raw blocks:
+
+```
+before 0800  5f 62 00 00 42 43 41 42 01 02 00 00 9e 00 9f 00
+             00 00 00 00 00 00 00 00 00 00 00 00 cd 53 f1 45
+after  0800  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 ef 00
+             00 00 00 00 00 00 00 00 00 00 00 00 16 de b9 49
+```
+
+`5f 62 00 00` = `"_b\0\0"`, `42 43 41 42` = `"BCAB"`, `01 02 00 00` =
+version 1 / 2 slots. The last 4 bytes of the block are a CRC32.
+
+## 5. BCB layout, decoded from `ab_select_slot`
+
+The `BCAB` magic is not stored as a byte literal; it is assembled at VA
+`0x9f010e60` (`mov w0,#0x4342 ; movk w0,#0x4241,lsl #16`), which locates
+`ab_select_slot` at VA `0x9f010e30` (file `0x11030`). The field accesses show
+a packed 16-bit `slot_metadata` per slot:
+
+```
+struct bootloader_control {           /* misc + 0x800 */
+    char     slot_suffix[4];          /* +0x00  "_b"        */
+    uint32_t magic;                   /* +0x04  "BCAB"      */
+    uint8_t  version;                 /* +0x08  must be <= 1 */
+    uint8_t  nb_slot;                 /* +0x09  <= 4        */
+    uint8_t  recovery_tries_remaining;/* +0x0a              */
+    uint8_t  reserved;                /* +0x0b              */
+    struct {                          /* +0x0c, 2 bytes each */
+        uint16_t priority        : 4; /* bits 0..3  */
+        uint16_t tries_remaining : 3; /* bits 4..6  */
+        uint16_t successful      : 1; /* bit 7      */
+        uint16_t verity_corrupted: 1; /* byte1 bit0 */
+    } slot_info[4];
+    uint32_t crc32;                   /* +0x1c over the 28 bytes above */
+};
+```
+
+Evidence in the disassembly:
+
+* magic compared at `0x9f010e64` (`cmp w1,w0`), `version <= 1` checked at
+  `0x9f010eac` (`cmp w0,#1 ; b.ls`), `nb_slot` masked with `& 7` and clamped
+  to 4 at `0x9f010ee8..0x9f010f04`
+* slot i addressed as `x19 + 0xc + 2*i` (`add x0,x19,w2,sxtw #1 ;
+  ldrb w0,[x0,#0xc]`)
+* `tries_remaining` = `ubfx w0, byte0, #4, #3` at `0x9f010ef8`
+* `verity_corrupted` = `tbnz byte1, #0` at `0x9f010f30`
+* `successful` = `ubfx byte0, #7, #1` at `0x9f011164`
+* priority = `byte0 & 0xf` at `0x9f01116c` and `0x9f0111d0`
+* CRC = `crc32(&control, 0x1c)` at `0x9f0111fc..0x9f011220`, stored at
+  `+0x1c` by `ab_control_store` (VA `0x9f010ddc`, file `0x10fdc`)
+
+Rollback path (`0x9f0111b4`..`0x9f011248`): when selection cannot produce a
+bootable slot, it swaps the priority nibbles of the two slots, clears the
+`successful` bits (`and w0,w0,#0x7f`), recomputes the CRC and writes the BCB
+back with `ab_control_store`.
+
+Decoded values for our two snapshots:
+
+| slot | before | after | reading (priority / tries / successful) |
+|---|---|---|---|
+| a | `0x9e` | `0x8e` | 14/1/1 -> 14/**0**/1 |
+| b | `0x9f` | `0xef` | 15/1/1 -> 15/**6**/1 |
+
+So the failed boot of slot a consumed its retry (`tries` 1 -> 0) and
+`set_active b` gave slot b priority 15 with 6 retries. Selection compares
+priority first, so slot b now wins every boot.
+
+## 6. Consequences
+
+1. Slot switching is free, ungated and reversible, but **slot a is not a safe
+   sandbox yet**: its stock kernel does not boot the installed system. Writing
+   the custom kernel there is a real experiment, not a no-op.
+2. Recovery does not depend on Motorola/Unisoc tooling: holding Volume Down
+   during/after a failed boot always lands in fastboot, and `set_active b`
+   restores the stock slot. That is the missing piece the `dd` route needed.
+3. The A/B block in `misc` is fully understood and restorable: `misc_before.img`
+   plus root `dd` can put back the exact 28-byte control block and CRC.
+4. The failure of stock `boot_a` is a warning for the custom kernel too: the
+   built kernel was compiled from `ab612c2` sources but has 125/282 `__crc_`
+   mismatches against `mali_kbase.ko`, so at least the GPU module would refuse
+   to load. Booting it may well reach a shell, but it is not expected to be a
+   fully working Android.
