@@ -2,7 +2,7 @@
  * Runs at the arm64 Image entry point, before head.S, with the MMU still off:
  * every store below is a physical store, so no page tables are needed.
  *
- * It paints a white band (256000 bytes = the top ~40 rows of 1600x720x32)
+ * It paints a white band (131072 bytes = the top ~45 rows of 1600x720x32)
  * at the bootloader's framebuffer base (lcd_base=9e000000 from /proc/cmdline)
  * and then branches to the real stext.  The Image header it overwrites has
  * already been parsed by the bootloader, which jumps to the image start.
@@ -23,7 +23,7 @@ entry_paint:
 	mov	x22, x3
 	movz	x9, #0x9e00, lsl #16		/* x9 = 0x9e000000 (lcd_base) */
 	movn	x11, #0				/* x11 = 0xffff...ff (white) */
-	movz	x10, #16000			/* 16000*16 = 256000 bytes */
+	movz	x10, #8192			/* 8192*16 = 131072 bytes = 128 KB */
 1:	stp	x11, x11, [x9], #16
 	subs	x10, x10, #1
 	b.ne	1b

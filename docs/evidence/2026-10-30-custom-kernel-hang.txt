@@ -971,3 +971,83 @@ done, 4 = rest_init reached, 5 = kernel_init entered, 6 = SMP initcalls done,
 7 = every initcall done.  The region is a reserved-memory node *without*
 `no-map` (`/reserved-memory/logobuffer@9e000000`), so the linear map keeps it
 mapped.
+
+------------------------------------------------------------------------
+32. RESULT: THE BOOTLOADER *DOES* ENTER OUR IMAGE - BAND 0 IS VISIBLE
+------------------------------------------------------------------------
+Image under test: boot_p0a0s0q1_paint.img, sha256
+5c6a1a1c5ddd267bc2c59c60c0f4aae86a0181bace2775dc4e9cc93750459c22
+(Image.p0a0s0q1 = vendor config + KVM, DIAG_PAINT=1, entry-paint stub).
+
+Flashed to boot_b, read back identical, slot b forced to one attempt
+(misc 0x001f), reboot at 19:59:29.  Verdict from the runner: HANG (no adb
+in 331 s).  Operator view: "a white rectangle behind the front camera
+area, at the top", nothing else, panel frozen on the Motorola logo.
+
+Interpretation:
+ - the entry stub runs: the bootloader jumps to the start of our Image and
+   the arm64 code executes with the MMU off, therefore the Image, the
+   container, the AVB signature and the load address are all fine;
+ - no stage band appeared, so the kernel dies *before* the hook that sits
+   immediately after setup_arch() in start_kernel();
+ - combined with 29, every earlier "no reset" was meaningless, not negative.
+
+That single white bar therefore moves the whole investigation from "does
+our kernel even start?" to "where in stext..setup_arch does it die?".
+
+------------------------------------------------------------------------
+33. QEMU WITH THE PHONE'S OWN DTB COMPLETES setup_arch
+------------------------------------------------------------------------
+The boot image's DTB is an MTK-style container (magic d7b7ab1e) with the FDT
+at offset 0x40 (175402 bytes, artifacts/kernel-build/device_fdt.dtb).  Decoded
+with dtc:
+
+  memory@80000000  reg = <0x00 0x80000000 0x02 0x00>   DRAM starts at 2 GiB
+  logobuffer/framebuffer-mem nodes are NOT in the boot image DTB - the
+  bootloader adds them together with lcd_base=9e000000 in the command line
+  chosen/stdout-path = "serial1:115200n8"
+
+Booting our Image under QEMU with that DTB:
+
+  qemu-system-aarch64 -M virt -cpu cortex-a57 -smp 4 -m 4096 \
+      -dtb device_fdt.dtb -kernel Image.qemu -append 'console=ttyAMA0 ...'
+
+  [0.000000] Machine model: Spreadtrum UMS9230 1H10 SoC
+  [0.000000] Memory: 3749652K/4194240K available (14404K kernel code, ...)
+  [0.000000] Kernel panic - not syncing: No interrupt controller found.
+
+i.e. the machine table matches the device, and DTB parsing, memblock setup and
+paging_init all succeed with the real DTB.  It only panics later in init_IRQ()
+because QEMU has its GIC at 0x08000000 while the DTB points at SPRD's.
+
+So the death is not "our tree cannot parse this DTB"; it is either earlier in
+start_kernel than setup_arch(), or a hardware-dependent step inside
+setup_arch() that QEMU papers over.
+
+NOTE on memstart: with DRAM at 0x80000000, physical lcd_base 0x9e000000 is the
+linear address 0xffffff801e000000, not 0xffffff809e000000.
+
+------------------------------------------------------------------------
+34. INSTRUMENT v2: A TRACE *INSIDE* setup_arch, 9 MILESTONES IN ONE BOOT
+------------------------------------------------------------------------
+Bands are now 131072 bytes (0x20000) each so ten of them fit in 1.28 MB:
+band 0 entry stub, bands 1..9 the setup_arch milestones:
+
+  1  after early_ioremap_init()      early_ioremap() path
+  2  after setup_machine_fdt()       (DTB parsed, machine matched)
+  3  after parse_early_param()
+  4  after arm64_memblock_init()
+  5  after paging_init()             phys_to_virt() path from here on
+  6  after unflatten_device_tree()
+  7  after request_standard_resources()
+  8  after smp_init_cpus()
+  9  after smp_build_mpidr_hash()    (end of setup_arch)
+
+Why two paths: before paging_init() only the kernel image is in the linear
+map, so 0x9e000000 must be reached through early_ioremap() (256 KB per fixmap
+slot, NR_FIX_BTMAPS = SZ_256K/PAGE_SIZE); from paging_init() onwards the
+reserved-memory node (no `no-map`) is linearly mapped.
+
+Build: scripts/host/stage_build.sh 0 0 0 2  ->  Image.p0a0s0q2, packed with
+pack_and_sign_boot.py --entry-paint.  The number of white bands on the frozen
+logo is then the last milestone reached.
