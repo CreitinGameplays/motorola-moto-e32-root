@@ -5,6 +5,9 @@ param(
     [switch]$AllowPresent,
     # Number of fresh-BROM windows to try. 0 = a single attempt.
     [int]$MaxAttempts = 0,
+    # Partitions to read back (read-only). FDL2 `r <name>` per entry.
+    # Comma-separated string so it survives `-File` invocation.
+    [string]$Parts = 'splloader',
     [string]$FirmwareDir = "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\withcboot",
     [string]$Fdl2Path = "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\candidate_fdl2_readonly.bin",
     [string]$ReadDir = "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\readback"
@@ -82,10 +85,16 @@ $sequence = @(
     "fdl $Fdl2Path 0x9efffe00",
     "exec",
     "path $ReadDir",
-    "p",
-    "r splloader",
-    "poweroff"
-) -join " "
+    "p"
+)
+foreach ($part in ($Parts -split ',')) {
+    $part = $part.Trim()
+    if (-not $part) { continue }
+    if ($part -notmatch '^[A-Za-z0-9_]+$') { throw "Unsafe partition name: $part" }
+    $sequence += "r $part"
+}
+$sequence += "poweroff"
+$sequence = $sequence -join " "
 $argv = @("--wait", "30") + @($sequence -split '\s+')
 
 function Invoke-Attempt {
@@ -98,16 +107,26 @@ function Invoke-Attempt {
     # the executable's normal version banner terminate the capture pipeline.
     $oldPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
+    # exec_addr resolves custom_exec_no_verify_<addr>.bin relative to the
+    # current working directory, so spd_dump MUST run inside $FirmwareDir.
+    Push-Location -LiteralPath $FirmwareDir
     try {
         $output = & $exe @argv 2>&1 | ForEach-Object { "$_" }
         $exitCode = $LASTEXITCODE
     } finally {
+        Pop-Location
         $ErrorActionPreference = $oldPreference
     }
     foreach ($line in $output) { Write-Log $line }
     Write-Log "spd_dump exit code: $exitCode"
 
     $text = ($output -join "`n")
+    # A missing CVE payload means the bypass never ran, so FDL1 would be
+    # refused. That is a host configuration fault: stop instead of retrying.
+    if ($text -match 'does not exist' -or $text -match 'current exec_addr is 0x0') {
+        Write-Log "FATAL: exec_addr payload was not found; bypass did not run. Fix the working directory."
+        throw "exec_addr payload missing - refusing to continue"
+    }
     $staleMode = $text -match 'wrong command or wrong mode'
     $anyConnect = $text -match 'CMD_CONNECT'
     $fdl2Reached = $text -match 'FDL2'
@@ -120,6 +139,7 @@ function Invoke-Attempt {
     return [pscustomobject]@{
         StaleMode   = $staleMode
         Connected   = $anyConnect
+        PayloadSent = ($text -match 'SEND custom_exec_no_verify')
         Fdl2Reached = $fdl2Reached
         NewFiles    = $newFiles
         ExitCode    = $exitCode
@@ -151,8 +171,12 @@ while ($true) {
     Write-Log "Starting RAM-only FDL sequence at $(Get-Date -Format o)."
     $result = Invoke-Attempt -Number $attempt
 
-    if (-not $result.StaleMode) { break }
-    Write-Log "Node was a dead BootROM session (timeouts, no reply). Will retry on the next fresh window."
+    # Any outcome that did not actually reach FDL2 and produce a dump is
+    # retryable: expired windows fail in several different ways (silent
+    # timeouts, endpoint STALL, send timeout). Only FDL2 is a real result.
+    $reachedFdl2 = $result.Fdl2Reached -or ($result.NewFiles.Count -gt 0)
+    if ($reachedFdl2) { break }
+    Write-Log "Attempt did not reach FDL2. Will retry on the next fresh window."
     if (($MaxAttempts -gt 0) -and ($attempt -ge $MaxAttempts)) {
         Write-Log "Reached MaxAttempts=$MaxAttempts; stopping."
         break
@@ -160,8 +184,8 @@ while ($true) {
 }
 
 if ($result) {
-    Write-Log ("Summary: connected={0} fdl2={1} stale={2} newFiles={3}" -f
-        $result.Connected, $result.Fdl2Reached, $result.StaleMode, ($result.NewFiles -join ","))
+    Write-Log ("Summary: connected={0} payloadSent={1} fdl2={2} stale={3} newFiles={4}" -f
+        $result.Connected, $result.PayloadSent, $result.Fdl2Reached, $result.StaleMode, ($result.NewFiles -join ","))
 } else {
     Write-Log "Summary: no attempt was executed."
 }

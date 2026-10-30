@@ -292,3 +292,67 @@ Device reaction after the stall: node REMOVEd at 18:19:23 and re-ADDed at
 attempt costs nothing and leaves no state on the phone.
 
 Nothing has been written to the phone's storage at any point.
+
+------------------------------------------------------------------------
+13. READ PATH FULLY WORKING, 18:21 AND 18:25
+------------------------------------------------------------------------
+Attempt on a fresh window completed the whole chain:
+
+  exec_addr 0x65015f08 -> fdl1 -> fdl2 -> exec
+  FDL2: incompatible partition      <- expected, the 0x7234 patch lets it go on
+  DISABLE_TRANSCODE
+  Reading Partition List ... 68 partitions
+  Storage is ufs
+  ENABLE_WRITE_RAW_DATA
+  Device is using slot b
+  Read Part Done: splloader+0x0, target: 0x40000, read: 0x40000
+  spd_dump exit code: 0
+
+68 partitions enumerated, UFS confirmed, partitions dumped to
+D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\readback\.
+
+NOTE on the FDL2 patch: the FIRST attempt (18:19) died in the FDL2 bulk
+upload with LIBUSB_ERROR_PIPE on a window that was already 78 s old. On a
+just-enumerated window the same files uploaded and executed cleanly. So the
+PIPE was an expired window, not a bad loader.
+
+------------------------------------------------------------------------
+14. FLASH INTEGRITY: THE BOOT CHAIN IS NOT CORRUPT
+------------------------------------------------------------------------
+SHA-256 of live dumps vs the pre-failure backups in
+D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup:
+
+  uboot_a   SAME  9218339EF2B051A28C31BE002A0DC87E030B53480353084F85B9A18982492B4F
+  uboot_b   SAME  9218339EF2B051A28C31BE002A0DC87E030B53480353084F85B9A18982492B4F
+  sml_a     SAME  A353453838E86F8FCD742FB214E301A99BA9681617D05EFB8617EBFF584F313B
+  sml_b     SAME  24F0EF27DEEE28EC8D9963F96A98A328B6557166910389EB9EE30BF36630199F
+  miscdata  SAME  A8AAB192FD8D5D6BD925A5979B04425BF9E542CA2BD9E3AF3150602896CF939F
+  misc      DIFF  (only because we patched its A/B block)
+
+splloader dump (256 KB partition, 262144 bytes):
+  first 16 bytes: 44 48 54 42 01 00 00 00 66 f7 19 33 72 b4 c4 94   ("DHTB")
+  the stock u-boot-spl-16k-ufs-sign.bin (65480 B) sits at offset 0 with
+  ZERO differing bytes, sha256 2163524D98FA0877D3BC72DDC559FDADF5A12A5AE01E3BE3EE8C62DE99DDEE23
+
+Live misc A/B block at misc+2048 (decoded by scripts/host/misc_ab.py):
+
+  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 0f 00 00 00 ... dd be 17 46
+    slot_suffix "_b", magic BCAB OK, version 1, nb_slot 2
+    slot a : 0x008e  prio=14 tries=0 succ=1   -> bootable
+    slot b : 0x000f  prio=15 tries=0 succ=0   -> NOT bootable
+    crc    : stored 0x4617bedd = computed 0x4617bedd -> VALID
+
+So after the failed single-attempt boot, slot b was correctly retired
+(tries 0, successful 0) and slot a is the only bootable slot. This is
+exactly the designed fallback state, and the CRC is valid. The patch we
+wrote is therefore NOT a corrupting write.
+
+CONCLUSION: there is no corrupt partition and no unsigned image in the
+boot chain. splloader, uboot, sml and miscdata all match the working state
+byte for byte. A reflash of uboot/sml would change nothing, so the earlier
+"reflash the bootloader" plan is retired.
+
+The fault is therefore either
+  (i)  outside flash and outside the images: power/PMIC/battery, or a
+       display path failure, or
+  (ii) something the SPL halts on that is not stored in these partitions.
