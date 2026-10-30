@@ -58,11 +58,13 @@ fire the instant a NEW enumeration shows up. Firmware idle window is only
 a couple of minutes.
 
 ------------------------------------------------------------------------
-3. `chip_uid` IS NOT A BOOTROM COMMAND
+3. TOOL COMMAND PARSING: `sendcmdv` IS RUNTIME ONLY
 ------------------------------------------------------------------------
 The 17:06 session above answered CHECK_BAUD + CONNECT and then timed out on
-`chip_uid`. That is NOT a fault: `chip_uid` is an FDL1/FDL2-stage command.
-The BootROM command table (spd_cmd.h) has:
+`chip_uid`. In addition, `sendcmdv` is a runtime command, not an initial
+CLI command. Putting `sendcmdv ...` after `--wait` made spd_dump print its
+usage and enter interactive `BROM >`; it did not run any query. Therefore
+the earlier 0x07/0x2D attempt did not read anything. `spd_cmd.h` lists:
 
   0x1A BSL_CMD_READ_CHIP_UID   -> 0xAB BSL_REP_READ_CHIP_UID
   0x07 BSL_CMD_READ_CHIP_TYPE  -> 0x94 BSL_REP_READ_CHIP_TYPE
@@ -71,8 +73,22 @@ The BootROM command table (spd_cmd.h) has:
   0x35 BSL_CMD_DUMP_UBOOT_LOG  -> 0xBB BSL_REP_DUMP_UBOOT_LOG
   0x19 BSL_CMD_CHECK_ROOT      -> 0xA7 if ROOT_MAGIC matches, else 0x80
 
-So the correct read-only probe set for this stage is 0x07, 0x0D, 0x2D,
-0x1A, 0x19 -- and none of those has been executed on a fresh session yet.
+These opcodes describe the protocol but this spd_dump CLI does not expose
+them as normal commands. The matched UMS9230-UFS path is to load the
+published FDL1-DL and FDL2-DL into RAM, then use only FDL2 `p` and
+`r splloader`. The device-specific report confirms FDL1-DL hash
+153F3A...C259C15; its FDL2-DL has hash 499F75...2F6BF and needs the call
+at offset 0x7234 NOPed to access the partition table. It also reports the
+five NOPs at 0x812bc. This is untested on our XT2227-1.
+
+Downloaded report artifacts are under
+D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\. Their ZIP hashes:
+  hawaii_XT2227-4_fdl.zip        B1F08937497299578F3ECA88CDDD9D8BFA687E0AE4B68C7DDC5EBF4D8DA3868F
+  hawaii_XT2227-4_fdl-dl.zip     828A398025B117BECBD3378507A76DBA31C9506D8E8CF1B90BF2FC54779388BF
+  hawaii_XT2227-4_fdl-dl_withcboot.zip 3EA68BE7D3AA0B800CC7F79F57A803E73679262A547CC3CBD3E73F98DBFDC5D0
+
+The offline candidate has SHA-256 06ED520CB4B273782649B1481BC3860DB790BFFAC1594A6DC8180882A61D29C2.
+No `fdl2-cboot.bin` is used. No device storage has been written by this work.
 
 All of them are reads. None writes storage. 0x07/0x0D/0x2D/0x1A/0x19 are
 safe; 0x2A (SET_FIRST_MODE), 0x49 (WRITE_PARTITION_VALUE) and 0x47

@@ -90,11 +90,17 @@ So "wrong command or wrong mode" means *stale session*, not wrong chip and
 not a dead phone. Each fresh session lasts only a couple of minutes, then
 the node goes idle again.
 
-## `chip_uid` is the wrong command at this stage
+## Tool command-line parsing and `chip_uid`
 
 The 17:06 fresh session answered CHECK_BAUD and CONNECT and then timed out
-on `chip_uid`. That is expected: `chip_uid` is an **FDL1/FDL2** command.
-The BootROM-stage reads are (from `spd_cmd.h`):
+on `chip_uid`. That is expected: `chip_uid` is a legacy/debug command, not
+the BootROM read API. Also, `sendcmdv` is a **runtime command**: it belongs
+after the device connects, not in the initial command-line argument list.
+Passing `sendcmdv ...` directly after `--wait` makes this `spd_dump` print
+its usage and an interactive `BROM >` prompt; it does not execute those
+reads. The earlier `0x07`/`0x2D` attempt therefore did not query the chip.
+
+The correct BROM read commands are listed in `spd_cmd.h`:
 
 | cmd | meaning | reply |
 |---|---|---|
@@ -105,9 +111,28 @@ The BootROM-stage reads are (from `spd_cmd.h`):
 | `0x19` | CHECK_ROOT | `0xA7` if rooted, else `0x80` |
 | `0x35` | DUMP_UBOOT_LOG | `0xBB` |
 
-Our earlier probes therefore proved nothing: they asked an FDL question at
-the BootROM, or they asked anything at all of an idle node. The correct
-read-only probe set has **not yet run on a fresh session**.
+The only read-only way supported by this `spd_dump` build to access the UFS
+is to load an FDL1/FDL2 pair into RAM. A real-time report for the same
+UMS9230-UFS family (XT2227-4, same RORS31.335-58-1 build) reports:
+
+* `fdl1-dl.bin` SHA-256
+  `153F3A33074D6EE9AE22EBD9580ADDCBBA6970B45C5D6A6E6D5B23723C259C15`;
+  it reaches FDL1 on that phone.
+* `fdl2-dl.bin` SHA-256
+  `499F75FBC911CFFD8E44ED8E8F23F83C8090F677F79E3885FFD011FDCBA2F6BF`;
+  it needs the documented patch at FDL2 file offset `0x7234` before the
+  partition table works. This report also documented five NOPs at `0x812bc`.
+* Its attached `fdl2-cboot.bin` is a separate persistent-unlock payload and
+  is **not** part of recovery. It must not be loaded or written in this plan.
+
+Those artifacts are staged under
+`D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\`. The guarded offline
+patcher verifies the known input bytes and writes a separate candidate
+`candidate_fdl2_readonly.bin`. The read runner verifies all hashes, loads
+only the CVE payload + FDL1-DL + FDL2-DL to RAM, then runs only `p` and
+`r splloader`. It contains no write, erase, repartition, cboot or reset
+operation. This is still untested on our XT2227-1, so treat it as a
+controlled diagnostic, not a proven recovery.
 
 Commands that must *not* be sent are `0x2A` (SET_FIRST_MODE), `0x49`
 (WRITE_PARTITION_VALUE) and `0x47` (WRITE_EFUSE): they touch `miscdata` or
@@ -134,10 +159,11 @@ The probe set separates them:
 
 ## Recovery ladder
 
-1. **Fresh read-only BootROM probe.** The only action that produces new
-   information. `scripts/host/brom_catch.ps1` waits for the stale node to
-   vanish, then fires `0x07/0x0D/0x2D/0x1A/0x19` the moment a new
-   `1782:4D00` appears.
+1. **RAM-only FDL diagnostic.** Run `scripts/host/brom_read_spl.ps1`. It
+   refuses to proceed unless the files match expected hashes and waits for
+   the stale node to disappear. Enter a fresh BROM with Power + Vol Down,
+   then plug in. It then executes only `p` and `r splloader`; inspect the
+   saved SPL before considering any write.
 2. **Rule out power.** Charge from a wall charger for 2-3 h, undisturbed,
    then Power alone, untouched for 3 min. Cheap, and (a) is a live
    hypothesis.
@@ -165,7 +191,7 @@ The probe set separates them:
 
 ## Open questions
 
-- Does the BootROM read this UFS at all (`0x0D`, `0x2D`)?
+- Can the matching FDL1-DL + patched FDL2-DL read this UFS on XT2227-1?
 - Is the SPL partition still intact on flash, or was it damaged?
 - Does the phone attempt a normal boot and stall silently (no USB) - i.e.
   is the SoC actually resetting on each Power press?
