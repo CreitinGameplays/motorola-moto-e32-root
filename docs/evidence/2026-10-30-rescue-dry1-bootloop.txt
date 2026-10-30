@@ -1,0 +1,110 @@
+# Dry-run rescue #1: bootloop - slot selection is by priority, not by suffix
+
+Date: 2026-10-30
+Device: ZF523X9NXW (hawaii, Unisoc UMS9230)
+Image under test: artifacts/rescue/boot_rescue_dry.img
+  sha256 40cdc04e51d82e9f98b36eea48df6bc4930f8b5a3be129576a9e0bc32285727c
+  written to boot_a via dd (readback == sha256), then `fastboot set_active a`
+
+## Observation
+
+`set_active a` rebooted the phone. It never came back:
+
+* 120 s poll (`adb devices`, every 4 s) -> `no devices/emulators found`
+* no fastboot, no adb, no userspace: the phone reboots roughly every few
+  seconds and boots slot a again.
+
+`boot_b` was never written (dry build), so this is not boot_b damage.
+
+## Root cause
+
+The dry init patched only the 4-byte `slot_suffix` field at misc+0x800
+(`_a` -> `_b`) and fixed the CRC. That is not how this bootloader picks a
+slot.
+
+Measured A/B block, taken from the device while it was running slot `_b`
+(stock, working):
+
+```
+offset  bytes
++0      5f 62 00 00                     slot_suffix "_b\0\0"
++4      42 43 41 42                     magic "BCAB" (u32 0x42414342 LE)
++8      01                             version
++9      02                             nb_slot
++10     00 00                          reserved
++12     8e 00                          slot a info = 0x008e
++14     ef 00                          slot b info = 0x00ef
++16     00 * 12                       reserved
++28     16 de b9 49                    crc32_le(bytes[0..27]) = 0x49b9de16
+```
+
+`zlib.crc32(bytes[0..27]) == 0x49b9de16` - reproduced exactly.
+
+slot info is a little-endian u16:
+
+```
+bits 0..3   priority
+bits 4..6   tries_remaining
+bit  7      successful_boot
+bit  8      verity_corrupted
+```
+
+so the captured block decodes as:
+
+```
+slot a: priority 14, tries 0, successful 1, verity 0
+slot b: priority 15, tries 6, successful 1, verity 0
+```
+
+This matches the earlier finding in docs/11 (the disassembly of
+`ab_select_slot` at VA 0x9f010e30): "the failed boot of slot a took its
+`tries_remaining` from 1 to 0 and `set_active b` gave slot b priority 15".
+
+The `slot_suffix` field is the bootloader's *report* of the slot it booted,
+not the selector. After `fastboot set_active a` slot a had priority 15, so on
+every reboot:
+
+```
+boot -> pick slot a (priority 15) -> rescue /init -> suffix := "_b",
+        priorities untouched -> reboot -> pick slot a again -> ...
+```
+
+An infinite loop, exactly as observed. The rescue did its job; the handoff
+was a no-op.
+
+## Fix (unproven until the device is reachable again)
+
+Write the whole known-good 32-byte block instead of patching the suffix:
+
+```
+5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 ef 00
+00 00 00 00 00 00 00 00 00 00 00 00 16 de b9 49
+```
+
+Now slot b has priority 15 and slot a 14, so the next boot goes to slot b
+regardless of what the previous suffix said. The init also verifies the
+constant's CRC at runtime (0x49b9de16) so a typo in the table aborts the
+patch instead of bricking the handoff, and reads the block back after
+writing it.
+
+Rebuild: artifacts/rescue/boot_rescue_dry2.img
+  sha256 f46ded7b95ad23bb0c075e040cc4a92cf86234f46c54c52adab50f229265672c
+
+New init also writes marker status 99 immediately after creating the device
+nodes, so the next run distinguishes "init never ran" from "init ran and the
+patch was ignored".
+
+## Still unknown
+
+Whether the first rescue's `/init` ran at all. The `DRESCUE1` marker at
+`sysdumpdb+0x900000` (status 10/11/12) and pstore answer that, but both need
+Android booting again, i.e. physical recovery:
+
+```
+force off (hold Power ~10 s) -> hold Vol Down + Power -> fastboot
+fastboot set_active b
+```
+
+If the marker says 11, the init ran and only the handoff failed -> confirms
+this analysis. If it says nothing at all, the initramfs never reached
+userspace and the priority theory is not the whole story.
