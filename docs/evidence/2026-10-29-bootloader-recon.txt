@@ -71,3 +71,47 @@ candidate key: 4096 bits sha256=36949b827927c883836897ab67eb01360795186cb81faca3
    AVB key @00003d00 4096 bits sha256=ecbe1669a209b5260e21388daea1be28b8149cc23ff5202d926a08833a308217
 
 candidate matches: 0
+
+# ---------------------------------------------------------------------
+# Addendum 2026-10-30: A/B slot check
+#
+# The device boots slot _b (ro.boot.slot_suffix=_b, current-slot: b), while
+# the dumps above are the _a partitions. Checked on the device:
+#
+# $ adb shell 'sha256sum /dev/block/by-name/uboot_a  /dev/block/by-name/uboot_b \
+#                       /dev/block/by-name/sml_a    /dev/block/by-name/sml_b \
+#                       /dev/block/by-name/trustos_a /dev/block/by-name/trustos_b \
+#                       /dev/block/by-name/vbmeta_a  /dev/block/by-name/vbmeta_b'
+# 9218339ef2b051a28c31be002a0dc87e030b53480353084f85b9a18982492b4f  uboot_a
+# 9218339ef2b051a28c31be002a0dc87e030b53480353084f85b9a18982492b4f  uboot_b
+# a353453838e86f8fcd742fb214e301a99ba9681617d05efb8617ebff584f313b  sml_a
+# 24f0ef27deee28ec8d9963f96a98a328b6557166910389eb9ee30bf36630199f  sml_b
+# 7467775ed4699d7530556aa2c457a20ea6922ad7300a182e1136193a49575801  trustos_a
+# 6a6080c82a895ad95e669ea268eed7e569ea78c338dc762ad7ca91f990fb805b  trustos_b
+# 801648773ec649d32057155eebdf721338774afd6e5c5c22938eec163ed9123e  vbmeta_a
+# 801648773ec649d32057155eebdf721338774afd6e5c5c22938eec163ed9123e  vbmeta_b
+#
+# => uboot and vbmeta are byte-identical across slots (so the U-Boot strings
+#    and the Motorola AVB key above are the active ones).
+# => sml and trustos differ. trustos_b was dumped and analysed:
+#
+# $ python scripts/host/analyze_bootloader.py artifacts/bootloader/bl
+# == trustos_a.img (6291456 bytes)
+#    DER key @00159459 1024 bits sha256=8f31417f7ad923c6...9a7902a
+#    DER key @00159709 1024 bits sha256=205c1515d220f0ae...99b9f
+# == trustos_b.img (6291456 bytes)
+#    DER key @00159459 1024 bits sha256=8f31417f7ad923c6...9a7902a
+#    DER key @00159709 1024 bits sha256=205c1515d220f0ae...99b9f
+# == uboot_a.img  ... == uboot_b.img  (same key @000b7ac8)
+# == vbmeta_a.img ... == vbmeta_b.img (same key @00003d00)
+#
+# The VerifiedBoot-* / FUNCTYPE_* strings are also at identical offsets in both
+# trustos images (decimal / hex, from the 2026-10-30 scan):
+#   VerifiedBoot-LOCK           536896  0x83140
+#   VerifiedBoot-HUK-DERIVE     537072  0x831f0
+#   FUNCTYPE_CRYPTO_DATA        537775  0x834af
+#   FUNCTYPE_CHECK_LOCK_STATUS  538015  0x8359f
+#   VerifiedBoot-UNLOCK         538048  0x835c0
+#
+# So every conclusion in docs/05 and docs/06 holds for the active slot _b.
+

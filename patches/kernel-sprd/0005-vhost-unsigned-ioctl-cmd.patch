@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: OpenCode <opencode@localhost>
+Date: Fri, 30 Oct 2026 10:55:00 +0000
+Subject: [PATCH] vhost: take the ioctl command as unsigned int in
+ vhost_vring_ioctl()
+
+Only needed when vhost is enabled, which is *not* the case on the phone:
+the shipped artifacts/System.map contains no vhost symbols, so this file
+was never compiled by the vendor and the tree carries the pre-fix
+signature.  CONFIG_VHOST=y comes from the KVM host options that this build
+adds, so the error is ours to fix:
+
+  drivers/vhost/vhost.c:1440:7: error: overflow converting case value to
+      switch condition type (3221794578 to 18446744072636378898)
+      [-Werror,-Wswitch]
+        case VHOST_GET_VRING_BASE:
+
+The _IOC() macros build the command word from unsigned operands, so
+VHOST_GET_VRING_BASE is 0xC008AF12 (3221794578).  A switch over a signed
+`int` cannot faithfully compare that, and clang says so; the kernel builds
+with -Werror, so it fails.
+
+Change the parameter (and its two prototypes) to `unsigned int`, which is
+both the upstream form and the one the vendor's own later trees use:
+
+  android-14-release-ula34   long vhost_vring_ioctl(struct vhost_dev *d, unsigned int ioctl, ...)
+  andriod-15-release-vuoa35  long vhost_vring_ioctl(struct vhost_dev *d, unsigned int ioctl, ...)
+
+No behaviour change: every caller already passes an `unsigned int ioctl`
+straight from its file_operations, and the calling convention is the same.
+
+ drivers/vhost/vhost.c | 2 +-
+ drivers/vhost/vhost.h | 4 ++--
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/vhost/vhost.c b/drivers/vhost/vhost.c
+index 85edacc0be47..287b2c76e73a 100644
+--- a/drivers/vhost/vhost.c
++++ b/drivers/vhost/vhost.c
+@@ -1376,7 +1376,7 @@ static long vhost_set_memory(struct vhost_dev *d, struct vhost_memory __user *m)
+ 	return -EFAULT;
+ }
+ 
+-long vhost_vring_ioctl(struct vhost_dev *d, int ioctl, void __user *argp)
++long vhost_vring_ioctl(struct vhost_dev *d, unsigned int ioctl, void __user *argp)
+ {
+ 	struct file *eventfp, *filep = NULL;
+ 	bool pollstart = false, pollstop = false;
+diff --git a/drivers/vhost/vhost.h b/drivers/vhost/vhost.h
+index 6e8f67ff1e1c..ab9ef2a25a13 100644
+--- a/drivers/vhost/vhost.h
++++ b/drivers/vhost/vhost.h
+@@ -49,7 +49,7 @@ void vhost_poll_stop(struct vhost_poll *poll);
+ void vhost_poll_flush(struct vhost_poll *poll);
+ void vhost_poll_queue(struct vhost_poll *poll);
+ void vhost_work_flush(struct vhost_dev *dev, struct vhost_work *work);
+-long vhost_vring_ioctl(struct vhost_dev *d, int ioctl, void __user *argp);
++long vhost_vring_ioctl(struct vhost_dev *d, unsigned int ioctl, void __user *argp);
+ 
+ struct vhost_log {
+ 	u64 addr;
+@@ -189,7 +189,7 @@ void vhost_dev_reset_owner(struct vhost_dev *, struct vhost_umem *);
+ void vhost_dev_cleanup(struct vhost_dev *, bool locked);
+ void vhost_dev_stop(struct vhost_dev *);
+ long vhost_dev_ioctl(struct vhost_dev *, unsigned int ioctl, void __user *argp);
+-long vhost_vring_ioctl(struct vhost_dev *d, int ioctl, void __user *argp);
++long vhost_vring_ioctl(struct vhost_dev *d, unsigned int ioctl, void __user *argp);
+ int vhost_vq_access_ok(struct vhost_virtqueue *vq);
+ int vhost_log_access_ok(struct vhost_dev *);
+ 
+-- 
+2.39.5
+

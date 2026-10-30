@@ -12,12 +12,22 @@
 - `ro.debuggable=0`, `ro.adb.secure=1`, ADB shell runs as uid 2000
 
 ## Security posture
-- Bootloader locked, AVB green, dm-verity enforcing, SELinux enforcing
+- **As shipped:** bootloader locked, AVB green, dm-verity enforcing, SELinux
+  enforcing.
+- **Current state of the test device (2026-10-29):** bootloader unlocked in
+  software (`ro.boot.flash.locked=0`, `verifiedbootstate=orange`,
+  `vbmeta.device_state=unlocked`). SELinux is still `Enforcing` at boot; the
+  runtime exploit switches it to `Permissive` per shell session.
 - Bootloader: U-Boot `2015.07-g0bc803f` (QOGIRL6, Ontim build), `secure: true`,
-  `androidboot.securefuse=true`, `androidboot.vbmeta.device_state=locked`,
-  `lcs: 5`; AVB algorithm `SHA256_RSA4096` (Motorola key `ecbe1669...`)
-  - Unlock feasibility (Unisoc token flow present, BootROM route blocked):
-    see `docs/05-bootloader-unlock-research.md`
+  `androidboot.securefuse=true`, `androidboot.vbmeta.device_state=locked`
+  as shipped, `lcs: 5`; AVB algorithm `SHA256_RSA4096` (Motorola key
+  `ecbe1669...`)
+  - Unlock history: the key/legacy routes (Motorola code, Unisoc identifier
+    token, CVE-2022-38694 BootROM) are **not** usable - see
+    `docs/05-bootloader-unlock-research.md`. The working route is the
+    secure-world `miscdata` `VerifiedBoot-UNLOCK` marker, decoded in
+    `docs/06-secure-world-unlock-path.md` and applied with
+    `docs/07-unlock-how-to.md`.
 - Kernel config highlights (`artifacts/kernel-config`):
   - `CONFIG_RANDOMIZE_BASE=y` but panic log shows `Kernel Offset: disabled` -> KASLR effectively off; static kernel addresses usable
   - `CONFIG_KALLSYMS=y`, `CONFIG_KALLSYMS_ALL=y` (but `/proc/kallsyms` denied to shell)

@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: OpenCode <opencode@localhost>
+Date: Fri, 30 Oct 2026 10:50:00 +0000
+Subject: [PATCH] sprd: put drivers/staging/sprd/sfp on its own include path
+
+Second build stop of the same kind, this time in the vendor SFP
+(Stateless Flow Processing / IPA offload) driver:
+
+  drivers/staging/sprd/sfp/sfp_tuple.c:35:10: error: 'sfp.h' file not
+      found with <angled> include; use "quotes" instead
+  #include <sfp.h>
+
+Every other file in that directory includes the header as "sfp.h"; only
+sfp_tuple.c uses angle brackets, and the Makefile never puts its own
+directory on the include path, so the angled form cannot resolve.
+
+This is not dead code: the shipping kernel of this very firmware contains
+102 sfp_* symbols in artifacts/System.map, i.e. the vendor build did
+compile this driver.  The published Makefile is simply missing the flag
+(no public branch has it either), so add the standard
+
+  ccflags-y += -I$(src)
+
+Build-only change: it adds an include directory and does not alter the
+objects produced.
+
+ drivers/staging/sprd/sfp/Makefile | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/staging/sprd/sfp/Makefile b/drivers/staging/sprd/sfp/Makefile
+index e24c63d848e9..7648f674a222 100644
+--- a/drivers/staging/sprd/sfp/Makefile
++++ b/drivers/staging/sprd/sfp/Makefile
+@@ -11,3 +11,9 @@ obj-$(CONFIG_SPRD_SFP_SUPPORT)  += sfp_ipa.o
+ obj-$(CONFIG_SPRD_IPA_V3_SUPPORT)  += sfp_netlink.o
+ obj-$(CONFIG_SPRD_IPA_V3_SUPPORT)  += sfp_filter.o
+ obj-$(CONFIG_SPRD_SFP_TEST)  += sfp_test.o
++
++# sfp_tuple.c includes <sfp.h>, and sfp.h itself includes "sfp_hash.h";
++# the shipping kernel builds this driver (102 sfp_* symbols in System.map),
++# so the published Makefile is simply missing its own directory on the
++# include path.
++ccflags-y += -I$(src)
+-- 
+2.39.5
+

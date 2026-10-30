@@ -30,7 +30,7 @@ Root survives until reboot and is inherited by the parent adb shell.
 | OS | Android 11, build `RORS31.335-58-1`, security patch 2024-02-05 |
 | Kernel | Linux 4.14.199+ (`#1 SMP PREEMPT`), KASLR effectively disabled |
 | Bootloader | unlocked in software (`ro.boot.flash.locked=0`, `verifiedbootstate=orange`) |
-| Access needed | USB debugging, `adb` shell (uid 2000); **no** unlock, **no** root |
+| Access needed | USB debugging, `adb` shell (uid 2000); the exploit needs **no** unlock and **no** pre-existing root |
 
 Kernel addresses and struct offsets in the exploit are hardcoded for this
 firmware. Other builds need their symbols re-derived - see
@@ -49,7 +49,8 @@ firmware. Other builds need their symbols re-derived - see
 **Device**
 - Moto E32 XT2227-1 on the firmware above (`adb shell getprop ro.build.fingerprint`)
 - USB debugging enabled, host key authorized
-- Bootloader **can stay locked**
+- Bootloader: the exploit works whether it is locked or unlocked (this unit has
+  since been unlocked in software - see `docs/07-unlock-how-to.md`)
 
 ## Repository layout
 
@@ -62,7 +63,7 @@ docs/
   02-kallsyms-and-kernel-image.md  symbol/offset recovery
   03-root-exploit.md        full exploit write-up
   04-reliability-hardening.md  failure modes, fixes, measurements
-  05-bootloader-unlock-research.md  bootloader unlock feasibility (negative result)
+  05-bootloader-unlock-research.md  initial unlock research: why the key/legacy routes fail
   06-secure-world-unlock-path.md  secure-world SMC signing oracle -> unlock
   07-unlock-how-to.md       step-by-step software bootloader unlock
   08-debloat.md             Motorola/OOBE/Facebook bloat removal
@@ -245,9 +246,14 @@ hardening and measured reliability are in `docs/04-reliability-hardening.md`.
   that sufficient for DAC/capability access, not a policy come domain.
 - `CONFIG_STATIC_USERMODEHELPER=y` makes the classic `modprobe_path` trick
   unusable (not needed here).
-- The bootloader is **not** unlocked and no boot image is flashed, by design
-  (brick risk on a locked bootloader). Why unlocking is not reachable is
-  analysed in `docs/05-bootloader-unlock-research.md`.
+- The runtime exploit does not need an unlocked bootloader and no boot image is
+  flashed by it. This unit's bootloader was later unlocked **in software**
+  (`miscdata` marker, no flashing of the boot chain - see
+  `docs/07-unlock-how-to.md`). The key/legacy unlock routes are dead ends
+  (`docs/05-bootloader-unlock-research.md`), and the separate fastboot
+  *download* gate still rejects unsigned images, so "unlocked" here means the
+  verified-boot/AVB policy is skipped, not that arbitrary fastboot flashing
+  works.
 
 ## Documentation
 

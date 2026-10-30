@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: OpenCode <opencode@localhost>
+Date: Fri, 30 Oct 2026 10:40:00 +0000
+Subject: [PATCH] sprd: put drivers/devfreq/sprd on its own include path so
+ sprd_dfs_trace.h resolves
+
+With the RORS31.335-58-1 headers and .c delta applied the tree builds up
+to drivers/devfreq and then fails in the vendor DDR-DFS tracepoint:
+
+  In file included from drivers/devfreq/sprd/sprd_dfs_auto_drv.c:32:
+  In file included from drivers/devfreq/sprd/sprd_dfs_trace.h:78:
+  ./include/trace/define_trace.h:89:10: fatal error:
+      './sprd_dfs_trace.h' file not found
+  #include TRACE_INCLUDE(TRACE_INCLUDE_FILE)
+
+Reason: sprd_dfs_trace.h sets
+
+  #define TRACE_INCLUDE_PATH .
+  #define TRACE_INCLUDE_FILE sprd_dfs_trace
+
+so include/trace/define_trace.h expands the include to the relative path
+"./sprd_dfs_trace.h", which is resolved against the compilation directory
+(the top of the tree), not against the source file's directory.  kbuild
+only works for such a header when the directory is on the include path.
+
+This is the standard kernel pattern; arch/arm64/kvm solves the identical
+problem with "ccflags-y += -Iarch/arm64/kvm" for arch/arm64/kvm/trace.h,
+and drivers/gpu/drm/sprd uses "subdir-ccflags-y += -I$(src)".
+
+No public branch fixes this (checked R-11-release-RORS, RONS, RON,
+android-11-release-rtas31.68-66-3, android-14-release-ula34,
+andriod-15-release-vuoa35 - all carry the same 4-line Makefile), and the
+shipped kernel does not contain the driver's symbols, so there is no
+shipping binary to diff against.  The change is build-only: it adds an
+include directory, it does not alter the objects that are produced.
+
+ drivers/devfreq/sprd/Makefile | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/devfreq/sprd/Makefile b/drivers/devfreq/sprd/Makefile
+index bdb1391fa941..a684bfdddeb5 100644
+--- a/drivers/devfreq/sprd/Makefile
++++ b/drivers/devfreq/sprd/Makefile
+@@ -2,3 +2,9 @@ obj-$(CONFIG_DEVFREQ_SPRD_AUTO_DFS)     += sprd_dfs_auto_drv.o
+ obj-$(CONFIG_DEVFREQ_GOV_SPRD_SCENE)     += sprd_scene_governor.o
+ obj-$(CONFIG_DEVFREQ_SPRD_EXT_VOTE_UMS512)     += sprd_dfs_vote_ums512.o
+ obj-$(CONFIG_DEVFREQ_SPRD_EXT_VOTE_ROC1)     += sprd_dfs_vote_roc1.o
++
++# sprd_dfs_trace.h uses TRACE_INCLUDE_PATH "."; the trace machinery
++# includes "./sprd_dfs_trace.h" from include/trace/define_trace.h, so the
++# source directory must be on the include path (same pattern as
++# drivers/gpu/drm/sprd).
++ccflags-y += -I$(src)
+-- 
+2.39.5
+
