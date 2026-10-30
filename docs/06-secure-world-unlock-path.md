@@ -5,10 +5,12 @@ U-Boot image found the **actual unlock state machine** and the SMC service it
 talks to. This document records the mechanism, the reversing evidence, and the
 first in-kernel experiment plan.
 
-Status: mechanism fully decoded; the signing call is being tested from Linux
-with an unsigned kernel module (see [Test plan](#test-plan)).
-Everything below was derived **offline** from dumps taken with the runtime-root
-exploit; nothing here writes to the device.
+Status: **mechanism decoded, tested on the device, applied and verified.** The
+signing call was exercised from Linux with an unsigned kernel module
+(`docs/07-unlock-how-to.md`), the resulting `miscdata` marker survives reboots,
+and an unsigned Android 15 GSI boots on the stock boot chain
+(`docs/09-gsi-proof.md`). Sections 1-6 below are the reverse-engineering record
+and the original test plan; section 7 is the result log.
 
 ## 1. `oem unlock` and `oem unlock_bootloader` are different code paths
 
@@ -106,6 +108,11 @@ Known operations used by U-Boot:
 `unlock status isn't matched, return lock.`
 (`VerifiedBoot-HUK-DERIVE` shows the marker key is derived from a
 hardware-unique key, so the marker cannot be computed offline.)
+
+The device boots slot `_b`; `trustos_b` differs in hash from `trustos_a` but
+carries the same keys and the same strings at the same offsets, so the offsets
+in this section are valid for the image the device actually runs (see the slot
+table in [05](05-bootloader-unlock-research.md#what-the-u-boot-image-contains)).
 
 ### Why this is interesting
 

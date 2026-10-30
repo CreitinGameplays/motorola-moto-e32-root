@@ -9,8 +9,9 @@ build is closed by a backport** (2026-10-29).
 |---|---|
 | Where is the source? | `https://github.com/MotorolaMobilityLLC/kernel-sprd`, branch **`R-11-release-RORS`** (tag `MMI-RORS31.193-14-6`, HEAD `c4e610cd833c47f08969678fa58f9bfcb57bd3a5`) |
 | Is it the right tree? | **Yes**: it is the Unisoc 4.14.199 "Petit Gorille" kernel for `qogirl6`/UMS9230 = T606, the board file matches the running device tree byte for byte in every `compatible`/`model` string |
-| Is it the *exact* source of our firmware? | **Almost.** Motorola's published snapshot is from **2022-10-25**; our kernel was built **2024-02-20** (`RORS31.335-58-1`). The delta was measured (7 headers + 2 exported symbols + 1 config fragment) and is now **backported**: with `patches/kernel-sprd/` applied, **4,852 of 4,852** shipped headers are code-identical to the tree and the build config reproduces `/proc/config.gz` with **0 conflicts** |
-| What is still missing? | the *implementation* behind the two exported symbols (`fget_many`/`fput_many` - upstream, easy) and the Unisoc SIPC/JPG/VSP/sensor **.c** changes (the headers are known, the code is not published); plus the prebuilt `mali_kbase` GPU module |
+| Is it the *exact* source of our firmware? | **Almost.** Motorola's published snapshot is from **2022-10-25**; our kernel was built **2024-02-20** (`RORS31.335-58-1`). The delta was measured (7 headers + 3 `.c` files + 1 config fragment) and is now **backported**: with `patches/kernel-sprd/` applied, **4,852 of 4,852** shipped headers are code-identical to the tree and the build config reproduces `/proc/config.gz` with **0 conflicts** |
+| Does it build? | **Yes** - full `Image dtbs modules` build on a Linux host, see [Building the tree](#building-the-tree) |
+| What is still missing? | the Unisoc SIPC/JPG/VSP/sensor **.c** changes (the headers are known, the code is not published); plus the prebuilt `mali_kbase` GPU module |
 | How close can we get? | public tree + exact `.config` + exact generated headers (both extracted from the phone) + the measured backport; every step is verifiable against the dumped kernel image |
 | What is not public at all? | the **Mali `mali_kbase` module source** (prebuilt `.ko` in the vendor image) and the unpublished per-build history |
 
@@ -205,17 +206,42 @@ After applying it the header comparison reports **0 differences** (4,852 of
 `check_copy_size()` + `kasan_check_write()` pattern - so the backport compiles
 against the public tree.
 
-### What the backport does *not* give us
+### The matching `.c` half (patch 0002)
 
-The headers are known, the **implementations** behind them are not:
+The header delta alone does not build: `rmap.h` renames a field the tree's
+`mm/rmap.c` still uses, and `file.h` declares two functions nobody defines.
+The missing code was found in a **sibling vendor branch of the same tree**:
 
-* `fget_many()` / `fput_many()` are exported by the running kernel
-  (`artifacts/System.map`: `ffffff8008415f5c T fput_many`,
-  `ffffff800843fbac T fget_many`) but their `.c` implementation (upstream
-  `fs/file.c` + the `get_file_rcu_many()` callers in `fs/` and `overlayfs/`)
-  is not part of the header delta and has to be taken from upstream stable.
-* the Unisoc SIPC/JPG/VSP/sensor **.c** changes are not published; only their
-  UAPI/header side is visible.
+```
+R-11-release-RONS  (tag MMI-RONS31.267-94-14)
+   same base: 4.14.199 "Petit Gorille", Unisoc qogirl6, secured Android 11
+```
+
+`git diff R-11-release-RORS R-11-release-RONS -- mm/rmap.c fs/file.c
+fs/file_table.c` is *nothing but* the missing changes, so patch
+`patches/kernel-sprd/0002-sprd-backport-rors31.335-58-1-mc-delta.patch`
+uses it verbatim:
+
+| file | change |
+|---|---|
+| `mm/rmap.c` | `anon_vma->degree` -> `num_children` / `num_active_vmas`, incl. the corrected `anon_vma_clone()` reuse test (`num_children < 2 && num_active_vmas == 0`, upstream `2555283eb40d`) |
+| `fs/file.c` | `__fget()` gains a `refs` argument, `fget_many()` added, and `__fget()` re-checks the fd slot after taking the refs |
+| `fs/file_table.c` | `fput()` split into `fput_many(file, refs)` + `fput()` |
+
+Two checks show RONS is the right source and not a lookalike:
+
+* the shipped `System.map` has **`T fput_many`** and **`T fget_many`** as
+  out-of-line global functions. Upstream 4.19 implements `fput_many()` as a
+  `static inline` in `include/linux/fs.h`, which would leave no such symbol;
+  the RONS split (`fs/file_table.c`) matches the shipped kernel exactly.
+* `include/linux/fs.h` already provides `get_file_rcu_many()` from patch 0001,
+  so `fs/file.c` needs no further header work.
+
+### What the backport still does *not* give us
+
+* the Unisoc SIPC/JPG/VSP/sensor **`.c`** changes are not published; only their
+  UAPI/header side is visible. They are not needed to build the tree.
+* the Mali `mali_kbase` module source (see below).
 
 Not public at all:
 
@@ -270,8 +296,21 @@ These are ground truth and can be extracted from the device itself (no guessing)
 
 * headers: `patches/kernel-sprd/0001-sprd-backport-rors31.335-58-1-header-delta.patch`
   -> 4,852/4,852 identical, 0 differences
+* the `.c` half: `patches/kernel-sprd/0002-sprd-backport-rors31.335-58-1-mc-delta.patch`
+  (taken from the sibling branch `R-11-release-RONS`) -> `mm/rmap.c`,
+  `fs/file.c`, `fs/file_table.c` now match the shipped symbols
 * build config: `artifacts/kernel-src/reconstructed_release_diff_config`
   -> 0 conflicts, 0 uncovered symbols
+* build fixes: `patches/kernel-sprd/0003-sprd-build-fix-devfreq-trace-include.patch`
+  and `0004-sprd-build-fix-sfp-include-path.patch` (the vendor tree as
+  published does not compile its own DDR-DFS tracepoint or its SFP driver)
+* `0005-vhost-unsigned-ioctl-cmd.patch` - only needed with `CONFIG_VHOST`
+  enabled (the phone has no vhost symbols in `System.map`, so the vendor never
+  built that file); it matches the signature used by upstream and by Motorola's
+  own android-14/15 trees
+
+`scripts/host/apply_shipping_code_delta.py` applies 0002-0005 in order and is
+idempotent (it reverse-checks first, so re-running is a no-op).
 
 ### 4. Close the remaining gap and *prove* it
 
@@ -283,8 +322,10 @@ The loop that turns "close" into "exact":
 2. compare the resulting `kallsyms` table against `artifacts/System.map`
    (names, addresses, sizes);
 3. every symbol that is missing, extra or at a different address is a missing
-   (or extra) patch. The first candidates are known: `fget_many`/`fput_many`
-   (upstream `fs/file.c`) and the Unisoc SIPC/JPG/VSP/sensor `.c` changes.
+   (or extra) patch. The first two candidates (`fget_many`/`fput_many`) are
+   already resolved by patch 0002 - both are `T` symbols in the shipped
+   `System.map`, so the RONS split matches the shipping build; the remaining
+   known gap is the Unisoc SIPC/JPG/VSP/sensor `.c` side.
 
 Unisoc publishes its monthly security bulletins (CVE lists with the affected
 kernel areas); those plus the header delta are the shopping list for the
@@ -306,7 +347,87 @@ patched kernel, but it is *not* the source of the shipped 4.14 kernel.
 `https://github.com/sprd-linux/kernel4.14` (branch `sprdroid10_trunk`) is the
 generic Unisoc 4.14 tree the Motorola tree is derived from.
 
-## Windows notes (this tree needs two fixes)
+## Building the tree
+
+| item | value |
+|---|---|
+| host | Debian 13 x86_64 (clang + LLD, no cross-gcc required) |
+| toolchain | upstream **clang/LLD 11.0.1** (`clang+llvm-11.0.1-x86_64-linux-gnu-ubuntu-20.10`) - the same version as the `Android clang 11.0.1 r383902` / `LLD 11.0.1` that built the shipping kernel |
+| config | `artifacts/kernel-config` (the phone's own `/proc/config.gz`) with every KVM option switched on |
+| tree | `R-11-release-RORS` + patches 0001-0005 |
+| script | `scripts/host/build_kernel_vps.sh` (applies the patches, sets the config, builds, prints the artifact sizes) |
+
+```sh
+make -j"$(nproc)" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+     CC="clang --target=aarch64-linux-gnu-" LD=ld.lld \
+     LLVM_AR=llvm-ar LLVM_NM=llvm-nm \
+     Image dtbs modules
+```
+
+### Build results (2026-10-30, Debian 13 x86_64)
+
+The tree builds clean with patches 0001-0005 and the phone's own config
+(`artifacts/kernel-config` + the KVM options enabled):
+
+| artifact | size | note |
+|---|---|---|
+| `Image` | 25,907,216 B | uncompressed ARM64 kernel; sha256 `ecb8a9ff8e593c4004a53b8d4f68a66af1a26df3c0460a26d8bd4d23a4e8f21c` |
+| `System.map` | 97,197 symbols | vs 94,911 in the shipped map: 93,488 common, 3,709 extra (extra built-ins such as KVM/vhost that our config enables), 1,423 only in the shipped build |
+| `dtbs` | - | `ums9230-4h10*` devicetrees build |
+| `modules` | - | all in-tree modules build |
+| version banner | - | `Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020) ... #3 SMP PREEMPT Fri Oct 30 11:33:04 UTC 2026` |
+
+The release string is reproduced exactly (`4.14.199+-ab612c2`) using a
+`localversion` file containing `+` plus `CONFIG_LOCALVERSION="-ab612c2"`, so
+vendor `.ko` files would at least pass the `vermagic` check.
+
+Config parity was re-checked against the *shipping* config extracted from the
+`IKCFG_ST` blob inside the stock `kernel.bin` (`artifacts/kernel-build/
+stock_config.txt`): **0 differing entries** versus the config we build with, so
+the build config is not a variable.
+
+The built image header was decoded and is self-consistent with the stock one
+(`0x00` `b stext`, `0x08` text_offset `0x80000`, `0x10` `_end-_text`
+`0x1bb1000` vs stock `0x1b29000`, `0x18` flags `0xa`, magic `ARM\x64`).
+
+**Booting it is the open problem.** `fastboot boot` is not a RAM-boot path on
+this bootloader - it acknowledges any payload (including random bytes) and
+reboots, so nothing in the image is ever executed. This was proven with
+byte-patched stock controls; details and controls are in
+[05-bootloader-unlock-research.md](05-bootloader-unlock-research.md) ("Can the
+bootloader run a kernel from RAM?") and
+[evidence/2026-10-30-fastboot-ram-boot-dead-end.txt](evidence/2026-10-30-fastboot-ram-boot-dead-end.txt).
+Running the built kernel therefore needs a write to `boot_b` (restore image:
+`artifacts/bootloader/bl3/boot_b.img`, sha256 `CCD0FAFF…`).
+
+Known risk if it is flashed: the vendor modules (notably `mali_kbase.ko`) are
+built against the shipping tree, and 125 of 282 `__crc_` values differ, so they
+will refuse to load on our image - the GPU (and possibly the UI) may not come
+up.
+
+### The published tree does not compile as it stands
+
+Three separate defects block a build; none of them is a difference against the
+shipping kernel, they are just bugs in what Motorola published:
+
+| # | symptom | cause | patch |
+|---|---|---|---|
+| 1 | `mm/rmap.c`: `anon_vma` has no member `degree`; `fget_many`/`fput_many` undeclared | only the header half of the 2024 backport was measured into the tree | 0001 + 0002 |
+| 2 | `drivers/devfreq/sprd/sprd_dfs_auto_drv.c`: `'./sprd_dfs_trace.h' file not found` | `sprd_dfs_trace.h` uses `TRACE_INCLUDE_PATH .`, but the directory is not on the include path | 0003 |
+| 3 | `drivers/staging/sprd/sfp/sfp_tuple.c`: `'sfp.h' file not found with <angled> include` | `#include <sfp.h>` where every sibling uses `"sfp.h"`, and no `-I$(src)` | 0004 |
+
+A fourth stop only appears **because we enable KVM**: `CONFIG_VHOST=y` compiles
+`drivers/vhost/vhost.c`, a file the phone never built (its `System.map` has no
+`vhost_*` symbol). Modern clang rejects `switch (int ioctl)` over the unsigned
+`_IOC()` command word under `-Werror`; patch 0005 changes the parameter to
+`unsigned int`, which is what upstream and Motorola's own android-14/15 trees
+use. This is a property of *our* config, not of the shipping kernel.
+
+## Windows notes (checkout gotchas)
+
+`get_kernel_source.ps1` sets these automatically; they are listed because a
+plain `git clone` will silently produce a tree that no longer matches the
+phone.
 
 * `core.protectNTFS=false` - the tree contains `aux.h` / `aux.c`
   (`include/soc/arc/aux.h`, `drivers/gpu/drm/nouveau/nvkm/subdev/i2c/aux.*`),
@@ -328,14 +449,20 @@ generic Unisoc 4.14 tree the Motorola tree is derived from.
 
 | file | purpose |
 |---|---|
-| `scripts/host/get_kernel_source.ps1` | clone + Windows-safe checkout + apply the delta + optional verification |
+| `scripts/host/get_kernel_source.ps1` | clone + Windows-safe checkout + apply the deltas (header, `.c`, build fix) + optional verification |
 | `scripts/host/compare_kernel_source.py` | config / Kconfig / header comparison tree vs phone |
 | `scripts/host/apply_shipping_header_delta.py` | apply (or dry-run) the measured 7-header delta on a checkout |
+| `scripts/host/apply_shipping_code_delta.py` | apply (or dry-run) patches 0002 + 0003, idempotent |
+| `scripts/host/build_kernel_vps.sh` | full `Image dtbs modules` build on a Linux host with upstream clang/LLD 11.0.1 |
 | `scripts/host/reconstruct_release_config.py` | reconstruct the unpublished release config fragment from `/proc/config.gz` |
 | `scripts/host/extract_kheaders.py` | extract the IKHEADERS tarball on Windows (skips reserved names) |
 | `scripts/host/compare_device_tree.py` | live `/proc/device-tree` vs public DTS |
 | `scripts/device/dump_device_tree.sh` | dump `/proc/device-tree` from the phone (needs root) |
 | `patches/kernel-sprd/0001-sprd-backport-rors31.335-58-1-header-delta.patch` | the measured header delta as a git patch |
+| `patches/kernel-sprd/0002-sprd-backport-rors31.335-58-1-mc-delta.patch` | the matching `.c` half, taken verbatim from branch `R-11-release-RONS` |
+| `patches/kernel-sprd/0003-sprd-build-fix-devfreq-trace-include.patch` | `ccflags-y += -I$(src)` for `drivers/devfreq/sprd` (the tree does not build as published) |
+| `patches/kernel-sprd/0004-sprd-build-fix-sfp-include-path.patch` | `ccflags-y += -I$(src)` for `drivers/staging/sprd/sfp` (`<sfp.h>` cannot resolve otherwise) |
+| `patches/kernel-sprd/0005-vhost-unsigned-ioctl-cmd.patch` | `unsigned int ioctl` in `vhost_vring_ioctl()` - required only when `CONFIG_VHOST` is on |
 | `patches/kernel-sprd/reconstructed_release_diff_config` | the reconstructed production config fragment (Motorola/Unisoc format) |
 | `patches/kernel-sprd/reconstructed_release.config` | the same fragment in classic diffconfig format |
 | `artifacts/kernel-src/source_vs_device.md` | full comparison report (config + symbols + headers) |

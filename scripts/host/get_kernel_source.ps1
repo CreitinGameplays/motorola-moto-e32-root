@@ -83,6 +83,13 @@ $deltaScript = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent)
 if (Get-Command python -ErrorAction SilentlyContinue) {
     Write-Host "[*] applying the measured RORS31.335-58-1 header delta ..."
     python $deltaScript --tree $Dest | ForEach-Object { "    $_" }
+
+    # ... and the matching .c half (fs/file.c, fs/file_table.c, mm/rmap.c):
+    # without it the backported headers do not compile.
+    $codeScript = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) `
+                           'scripts\host\apply_shipping_code_delta.py'
+    Write-Host "[*] applying the matching RORS31.335-58-1 code delta + build fixes ..."
+    python $codeScript --tree $Dest | ForEach-Object { "    $_" }
 }
 
 if ($Verify) {

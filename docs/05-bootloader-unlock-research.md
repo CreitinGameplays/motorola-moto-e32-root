@@ -5,11 +5,20 @@ this device? The Moto E32 has no official Motorola unlock support
 (`hawaii` is not in Motorola's unlock program), so the only options are the
 Unisoc-specific unlock paths.
 
-Short answer: **the unlock machinery is present, but it is signature-gated by
-Motorola/ODM keys, and the public Unisoc key leak does not match this device.
-The BootROM (CVE-2022-38694) route is blocked by device-specific FDL
-requirements and a high brick risk. No working unlock exists with public
-tooling as of 2026-10-29.**
+Short answer for the **key/legacy routes: no.** The unlock machinery is
+present, but it is signature-gated by Motorola/ODM keys, and the public Unisoc
+key leak does not match this device. The BootROM (CVE-2022-38694) route is
+blocked by device-specific FDL requirements and a high brick risk.
+
+That is not the final answer, though. The persisted unlock state turned out to
+be a secure-world marker in `miscdata` that a *root* caller can have signed
+(SIP service `0xb4000020` op `0x31`) with no private key at all. The follow-up
+analysis decoded that path and it **works**: mechanism in
+[06-secure-world-unlock-path.md](06-secure-world-unlock-path.md), procedure in
+[07-unlock-how-to.md](07-unlock-how-to.md), proof in
+[09-gsi-proof.md](09-gsi-proof.md). Read this document as the survey of the
+key-based routes and of what the stock bootloader exposes - not as a verdict
+that the device cannot be unlocked.
 
 ## Device bootloader facts
 
@@ -49,11 +58,96 @@ So Motorola's own unlock commands are stripped, but **Unisoc's identifier-token
 unlock is present** — this is the same protocol used by
 `patrislav1/unisoc-unlock` and the "Identifier Token" guides.
 
+## Can the bootloader run a kernel from RAM? (checked 2026-10-30)
+
+The natural way to test a locally built kernel without writing flash is
+`fastboot boot <boot.img>`. On this device it **does not work**, and the reason
+is worth recording because the command replies `OKAY`.
+
+**First, there are two different fastboot implementations:**
+
+| entry point | `is-userspace` | `fastboot boot` |
+|---|---|---|
+| `adb reboot fastboot` (fastbootd, inside Android) | `yes` | `FAILED (remote: 'Unrecognized command boot')` |
+| `fastboot reboot bootloader` (real U-Boot) | `no` | `Sending OKAY` + `Booting OKAY`, then a reset |
+
+Every probe must first check `fastboot getvar is-userspace`; only `no` is the
+real bootloader, and only there is `boot` even dispatched.
+
+**In the real bootloader the command is a stub.** It accepts *any* payload,
+including a 6,144-byte file of random bytes with no `ANDROID!` magic, prints
+`Booting OKAY [ 0.012s]`, and resets the phone ~6 s later; Android then boots
+the flashed stock kernel. Controls that all behaved identically:
+
+| image | size | result |
+|---|---|---|
+| `boot_vtest.img` (stock repack, version banner patched `ab612c2` -> `ab612cX`) | 34.7 MB | OKAY, reset, stock `ab612c2` boots |
+| `boot_vtest_full.img` (full stock `boot_b`, 1 banner byte patched) | 64 MB | OKAY, reset, stock `ab612c2` boots |
+| `boot_addrfix.img` (stock `boot_b` + load addresses set to real DRAM `0x80080000`/`0x82000000`/`0x80000100`) | 64 MB | OKAY, reset, stock `ab612c2` boots |
+| `boot_b.img` (pristine stock image, sha256 `CCD0FAFF…`) | 64 MB | OKAY, reset, stock `ab612c2` boots |
+| 4 KiB of random bytes (client wraps it into a 6 KB boot image) | 6 KB | OKAY, reset, Android boots |
+
+Two independent checks prove nothing was ever executed:
+
+* **No idle timeout.** Sitting in the real bootloader with no command, the
+  device stayed in fastboot for >119 s (29 probes, 4 s apart). So the reset is
+  caused by `boot`, not by a timeout.
+* **The bootloader's own log is consistent with a reboot.** The `uboot_log`
+  ring records the cause of each reset as `reset_mode`; over the whole ring the
+  only `(c)-(kernel_crash)` record is a historical one, while fastboot-initiated
+  resets appear as `(4)-(fastboot)`. Caveat: the ring was not rewritten by these
+  attempts (the same 14 records and the same maximum boot counter appear in the
+  dumps taken before and after), so it corroborates but does not prove the
+  per-run cause.
+* **No kernel-side trace.** `console-ramoops-0` after the attempts is 2.6 KB
+  with no `Linux version` line and no `ab612cX` marker.
+
+The U-Boot binary is consistent with this: its fastboot command string pool
+contains `getvar:`, `download:`, `flash:`, `erase:`, `powerdown`, `reboot-*`,
+`set_active:`, `oem`, `setdump`/`getdump`, `getlcs`, `setrma`, `getsocid` -
+with **no standalone `boot` entry** (the only `boot:` bytes in the image are
+part of `Hit any key to stop autoboot:`), and no load/jump path for a RAM
+payload was found in the disassembly. The empirical garbage-payload test above
+is the decisive part: the command never looks at the image.
+
+The other candidate RAM-execution doors are closed as well:
+
+| door | state |
+|---|---|
+| `kexec` / `crash_dump` in the stock kernel | `# CONFIG_KEXEC is not set`, `# CONFIG_CRASH_DUMP is not set` |
+| `/dev/mem`, `/dev/kmem`, `/proc/kcore` | all absent (`# CONFIG_DEVMEM is not set`, `# CONFIG_PROC_KCORE is not set`); `/proc/kallsyms` is permission-denied |
+| SPRD download mode | full command set recovered (`dl_cmd_auth_request`, `..._check_partition`, `..._read_vcur`, `..._write_vcur`, `..._repartition`, `..._set_debuginfo`, ...) - all read/write partition operations, **no boot/jump/exec**, writes signature-gated by `dl_secure_process_flow` |
+| U-Boot console (`bootm`, `booti`, `go`, `fatload`, `setenv`, `run`) | UART-only: the image has **no USB keyboard driver** (`usbkbd`/`keyboard` = 0 hits) and no USB console, so it needs physical UART pads |
+| `fastboot oem ...` | real bootloader answers `unknown cmd.` for unknown subcommands; the known ones are unlock/dump/NV operations (`get_identifier_token`, `unlock_bootloader`, `getlcs`, `setrma`, `getsocid`, `setdump`, `getdump`, `frp-state`) - none executes code. (In fastbootd every `oem` call blindly returns `OKAY`, which is easy to misread as acceptance.) |
+
+Conclusion: **`fastboot boot` cannot be used to run the built kernel.** The only
+remaining way to run it on the phone is to write it to `boot_b`, which is a
+flash operation and requires a deliberate decision (the stock image is dumped
+in `artifacts/bootloader/bl3/boot_b.img`, sha256 `CCD0FAFF…`, for restore).
+Full probe log: [evidence/2026-10-30-fastboot-ram-boot-dead-end.txt](evidence/2026-10-30-fastboot-ram-boot-dead-end.txt).
+
 ## What the U-Boot image contains
 
 Dumped `uboot_a` (3 MB), `sml_a` (1 MB), `trustos_a` (6 MB), `miscdata` (1 MB),
 `prodnv` (10 MB), `vbmeta_a`, `boot_a` (first 8 MB) for offline analysis
 (`artifacts/bootloader/bl/`, gitignored).
+
+**Slot note (checked 2026-10-30).** The device boots **slot `_b`**
+(`ro.boot.slot_suffix=_b`, `fastboot getvar current-slot` -> `b`), while the
+dumps above are the `_a` copies. Verified on the device:
+
+| partition pair | sha256 | identical? |
+|---|---|---|
+| `uboot_a` / `uboot_b` | `9218339e…` | **yes** |
+| `vbmeta_a` / `vbmeta_b` | `80164877…` | **yes** |
+| `sml_a` / `sml_b` | `a3534538…` / `24f0ef27…` | no |
+| `trustos_a` / `trustos_b` | `7467775e…` / `6a6080c8…` | no |
+
+For TrustOS the hash differs, but `trustos_b` carries the **same two RSA keys
+at the same offsets** (`0x159459`, `0x159709`) and the same
+`VerifiedBoot-*` / `FUNCTYPE_*` strings at the same offsets (`0x82e70` …
+`0x83540`), so the secure-world analysis below applies to the active slot too.
+
 
 Relevant U-Boot strings (offsets in `uboot_a.img`):
 
@@ -94,7 +188,7 @@ sends the raw `flashing unlock_bootloader` packet.
 | leaked `rsa4096_vbmeta.pem` | Anbernic/T618 leak | 4096 | `36949b827927c883…` (head `d804afe3d3846c7e`) |
 | Motorola AVB key | `vbmeta_a` aux block (AVB, `SHA256_RSA4096`) | 4096 | `ecbe1669a209b526…` (head `f6ab7d9f81f0ed40`) |
 | U-Boot embedded key | `uboot_a` @ `0xb7ac8` (DER SPKI) | 2048 | `20c694a8bd917976…` (head `c0cb16e76cf37aca`) |
-| TrustOS keys | `trustos_a` @ `0x159459`, `0x159709` | 1024 | `8f31417f7ad923c6…`, `205c1515d220f0ae…` |
+| TrustOS keys | `trustos_a` @ `0x159459`, `0x159709` (also present at the same offsets in `trustos_b`) | 1024 | `8f31417f7ad923c6…`, `205c1515d220f0ae…` |
 
 The leaked key's modulus appears **nowhere** in `uboot`, `sml`, `trustos`,
 `prodnv`, `miscdata`, `vbmeta` or the boot image. The unlock verifier either
@@ -186,6 +280,7 @@ their fingerprints, and compares them against a candidate leaked key.
 | Unisoc identifier-token unlock | **no** (mechanism present) | needs Motorola/ODM private key; leaked key does not match |
 | CVE-2022-38694 BootROM exploit | **no** (platform matches) | needs physical download mode + hawaii UFS FDLs; Moto UFS falls back to AutoD; brick risk |
 | secure-world `miscdata` marker (SMC `0xb4000020` op `0x31`) | **yes - works** | mechanism decoded in [06](06-secure-world-unlock-path.md), applied and verified; a GSI boots as independent proof, see [07](07-unlock-how-to.md) and [09](09-gsi-proof.md) |
+| run a custom kernel from RAM (`fastboot boot`) | **no** | real bootloader ACKs and reboots without executing the payload; fastbootd has no `boot` at all; kexec/devmem absent; no exec command in download mode; U-Boot console is UART-only (see the section above) |
 | runtime root (this repo) | **yes** | `scripts/mali/mali_kroot.c`, 5/5 fresh boots |
 
 Recommendation: keep using the runtime-root exploit. Bootloader unlock via the

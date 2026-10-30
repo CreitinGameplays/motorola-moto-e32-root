@@ -1,0 +1,200 @@
+2026-10-30  Can `fastboot boot` run a custom kernel from RAM on this device?
+Device: motorola hawaii (XT2227-1), RORS31.335-58-1, slot _b, unlocked
+        (ro.boot.flash.locked=0, verifiedbootstate=orange)
+Tool:   D:\AndroidSDKTools\adb\fastboot.exe 37.0.1, adb 37.0.1
+Kernel: stock 4.14.199+-ab612c2, buildid 612c2 (2024-02-20)
+
+VERDICT: NO. `fastboot boot` is accepted by the real bootloader but the payload
+is never executed. It behaves as a plain reboot. The device always comes back
+with the stock kernel. `fastboot boot` is therefore NOT a way to test a custom
+kernel without writing flash.
+
+--------------------------------------------------------------------------------
+0. Two different "fastboot" modes exist and they behave differently
+--------------------------------------------------------------------------------
+`adb reboot fastboot` lands in FASTBOOTD (userspace, part of Android recovery):
+
+  fastboot getvar is-userspace   -> is-userspace: yes
+  fastboot boot <anything>       -> FAILED (remote: 'Unrecognized command boot')
+
+`fastboot reboot bootloader` lands in the REAL U-Boot bootloader:
+
+  fastboot getvar is-userspace   -> is-userspace: no
+  fastboot getvar version-bootloader -> hawaii-0bc803f-...
+
+fastbootd has no RAM-boot command at all, therefore every `boot` attempt made
+while in fastbootd is meaningless. Earlier "boot is refused" observations were
+all made in fastbootd. The interesting case is the real bootloader.
+
+--------------------------------------------------------------------------------
+1. Behaviour in the real bootloader (`is-userspace: no`)
+--------------------------------------------------------------------------------
+  $ fastboot boot boot_vtest_full.img            # 64 MiB stock boot_b, one byte
+                                                 # of the version banner patched
+                                                 # ab612c2 -> ab612cX
+  Sending 'boot.img' (65536 KB)          OKAY [  1.567s]
+  Booting                                OKAY [  0.012s]
+  Finished. Total time: 1.623s
+
+Timeline afterwards (polled every 3 s):
+  t+2 s   fastboot present, serial shows as ????????????
+  t+5 s   fastboot present
+  t+8 s   no fastboot, no adb      (device is resetting)
+  t+14 s  adb up
+
+  $ adb shell cat /proc/version
+  Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020) ... #1 SMP PREEMPT ...
+                                 ^^^^^^^ stock banner, not our patched "ab612cX"
+
+So the bootloader acknowledged the command, reset ~6-8 s later, and the phone
+booted the flashed stock kernel. The patched image in RAM never ran.
+
+Controls, all identical in behaviour:
+  boot_vtest.img        34,721,792 B  repacked stock image, banner patched
+  boot_vtest_full.img   67,108,864 B  full stock boot_b, 1 banner byte patched
+  boot_addrfix.img      67,108,864 B  stock boot_b + load addresses fixed
+  boot_b.img            67,108,864 B  PRISTINE stock image (sha256 CCD0FAFF...)
+
+`boot_addrfix.img` sets the header load addresses to real DRAM
+  kernel_addr  0x0C = 0x80080000
+  ramdisk_addr 0x14 = 0x82000000
+  tags_addr    0x20 = 0x80000100
+  plus the AOSP v2 copies at 0x22C / 0x230 / 0x23C
+instead of the vendor values 0x8000 / 0x5400000 / 0x100 (0x8000 is not even
+DRAM on this SoC - DRAM starts at 0x80000000). Still `Booting OKAY`, still a
+reset, still stock `ab612c2` afterwards. Address handling is not the reason.
+
+--------------------------------------------------------------------------------
+2. `boot` is ACKed unconditionally - the image is never read
+--------------------------------------------------------------------------------
+In the real bootloader even a 4 KiB random file (no ANDROID! magic; the client
+wraps it into a 6,144 B boot image) is accepted:
+
+  $ fastboot boot garbage.bin            # 4 KiB random bytes
+  creating boot image - 6144 bytes
+  Sending 'boot.img' (6 KB)              OKAY [  0.021s]
+  Booting                               OKAY [  0.012s]
+
+...and the device then resets within ~6 s and boots Android normally. If the
+bootloader inspected the payload at all it would have rejected this file (as
+fastbootd does, see section 0). It does not: `boot` is a stub that acknowledges
+and reboots. Payload validity, size and load addresses are all irrelevant.
+
+Fastboot idle control: with the device sitting in the real bootloader and NO
+command sent, it stayed in fastboot for >119 s (29 consecutive probes, 4 s
+apart, no reset). There is no idle timeout in fastboot, so the ~6-8 s reset
+that follows `Booting OKAY` is produced by the `boot` command itself.
+
+--------------------------------------------------------------------------------
+3. Bootloader-side evidence, and its limits
+--------------------------------------------------------------------------------
+The bootloader keeps a log ring of 16 x 0x40000 areas in the `uboot_log`
+partition (readable with root). Each boot session records the cause of the
+previous reset:
+
+  (sprd_dump): (show_check_enable_status_result): reset_mode : (c)-(kernel_crash)
+
+Values observed over the whole ring (14 records):
+
+  (c)-(kernel_crash)   1 record, in the oldest area only
+  (2)-(normal)         9 records
+  (3)-(recovery)       2 records
+  (0)-(undefind mode)  1 record
+  (4)-(fastboot)       2 records   ("reset initiated from fastboot")
+
+A payload that had been jumped to and had crashed would be recorded as
+(c)-(kernel_crash), and the two (4)-(fastboot) records show that the
+bootloader does distinguish fastboot-initiated resets.
+
+Honest limitation: the ring was NOT rewritten by today's attempts - two dumps
+taken before and after them contain the same 14 reset_mode records and the same
+maximum `bootup init log success on 2734 times`, and the block being written
+right now (0x3c0000) is still mid-session. So the ring cannot tell us what
+today's `fastboot boot` runs did; it only shows that (c) is rare and that
+fastboot resets are labelled differently. The decisive evidence is the payload
+control (section 2) plus the kernel-side check below.
+
+Corroboration from the kernel side: /sys/fs/pstore/console-ramoops-0 after the
+attempts is 2,662 bytes and contains no "Linux version" line and no "ab612cX"
+marker - a kernel that had started would have printed its banner there. Note
+that pstore is written by the kernel itself, so it is absent both if the
+payload never ran and if it crashed before console init; combined with the
+random-bytes control it points to "never ran".
+
+Conclusion: the real bootloader's `boot` command does not load-and-jump on this
+product. It acknowledges and reboots. The vendor U-Boot has no working
+"boot from RAM" path.
+
+--------------------------------------------------------------------------------
+4. `fastboot oem` - fastbootd ACKs everything, the real bootloader is strict
+--------------------------------------------------------------------------------
+This difference matters, because it shows how easy it is to misread a reply:
+
+  in FASTBOOTD: every `oem <anything>` returns OKAY in ~0.001 s with no data
+                (help, ?, boot, list, test, reboot, cmd, exec, shell, run,
+                 fastboot, device-info, get_identifier_token) - a blind stub
+  in the REAL BOOTLOADER:
+                oem help                    -> FAILED (remote: 'unknown cmd.')
+                oem zzz                     -> FAILED (remote: 'unknown cmd.')
+                oem get_identifier_token    -> (bootloader) Identifier token:
+                                               (bootloader) 5a4635323358394e5857
+                                               OKAY
+                other commands are equally real:
+                getvar:zzz   -> FAILED (remote: 'Unknown variable')
+                erase:zzz    -> FAILED (remote: 'Partition doesn't exist')
+                flash:zzz    -> Sending OKAY, then FAILED (remote: 'No such
+                                file or directory')
+
+So the real bootloader's oem dispatcher is functional and knows exactly the
+subcommands whose strings are in the image:
+  unlock_critical, get_unlock_ability, get_unlock_bootloader_nonce,
+  unlock_bootloader, get_identifier_token, getlcs, setrma, getsocid,
+  setdump, getdump, frp-state
+None of them load or execute code. `fastboot oem` is not an exec path, in
+either mode - but only the fastbootd results were ever "OKAY for everything".
+
+--------------------------------------------------------------------------------
+5. Other RAM-execution doors checked, all closed
+--------------------------------------------------------------------------------
+a) kexec / /dev/mem in the stock kernel - not available:
+     # CONFIG_KEXEC is not set
+     # CONFIG_CRASH_DUMP is not set
+     # CONFIG_DEVMEM is not set
+     # CONFIG_PROC_KCORE is not set
+   (same in the extracted shipping config and in the live /proc/config.gz;
+    /proc/kallsyms is permission-denied even for uid 0 in the app context,
+    /dev/mem and /dev/kmem do not exist). Root cannot load a second kernel.
+
+b) SPRD download mode - no execute command. Full command set recovered from
+   the U-Boot image:
+     dl_cmd_auth_request      dl_cmd_check_partition
+     dl_cmd_get_timestamp     dl_cmd_per_raw_packet_start
+     dl_cmd_read_ref_info     dl_cmd_read_vcur
+     dl_cmd_repartition       dl_cmd_set_debuginfo
+     dl_cmd_write_flush_raw_data  dl_cmd_write_vcur
+   All of them read or write partitions; writes go through ufs_bwrite after
+   dl_secure_process_flow signature checks. There is no boot/jump/exec.
+
+c) U-Boot console - unreachable. The image contains a full command shell
+   (bootm, booti, go, fatload, setenv, run, bootd) and the "Hit any key to stop
+   autoboot" prompt, but zero USB-keyboard support (no "usbkbd", no
+   "USB keyboard", no "keyboard" strings) and there is no USB console. The
+   console is UART on ttyS1 only, which needs physical pads.
+
+d) Writing boot_b instead - that is flashing, not RAM boot. It is the only
+   remaining way to run the built kernel on this phone.
+
+--------------------------------------------------------------------------------
+6. Reproduce
+--------------------------------------------------------------------------------
+  adb reboot fastboot          # -> fastbootd, has no boot command
+  adb fastboot reboot bootloader
+  fastboot getvar is-userspace # must print "no" for a meaningful test
+  fastboot boot artifacts/kernel-build/boot_vtest_full.img
+  adb wait-for-device; adb shell cat /proc/version   # -> stock ab612c2
+
+  # bootloader log (needs root, same shell invocation):
+  adb shell '/data/local/tmp/mali_kroot >/dev/null 2>&1; \
+    dd if=/dev/block/by-name/uboot_log of=/data/local/tmp/ul.bin bs=4096'
+  adb pull /data/local/tmp/ul.bin
+  # then look for "reset_mode" and "bootup init log success on N times"
