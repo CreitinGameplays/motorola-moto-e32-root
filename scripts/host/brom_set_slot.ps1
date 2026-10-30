@@ -72,14 +72,19 @@ if (-not $ConfirmWrite) {
 }
 
 # Keep a copy of the current block so it can be restored byte for byte.
+# The hash is the verified live dump (18:25): a=0x008e, b=0x000f, suffix _b.
 $prevMisc = "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\readback\misc.bin"
+$knownLive = "DFC266B5DD8975DEB176247B3A35189C2AA16209BBFE57386D2EF88941250E01"
 $backup = Join-Path $ReadDir "misc_before_setslot.bin"
-if (Test-Path -LiteralPath $prevMisc) {
-    Copy-Item -LiteralPath $prevMisc -Destination $backup -Force
-    Write-Log "Saved pre-write misc image to $backup"
-} else {
-    Write-Log "WARNING: no prior misc dump found at $prevMisc"
+if (-not (Test-Path -LiteralPath $prevMisc)) {
+    throw "No verified pre-write misc dump at $prevMisc - refusing to write without a rollback copy."
 }
+$h = (Get-FileHash -LiteralPath $prevMisc -Algorithm SHA256).Hash
+if ($h -ne $knownLive) {
+    throw "Pre-write misc dump hash $h does not match the verified live image $knownLive - re-read misc first."
+}
+Copy-Item -LiteralPath $prevMisc -Destination $backup -Force
+Write-Log "Saved verified pre-write misc image to $backup (SHA-256 $h)"
 
 $sequence = @(
     "exec_addr 0x65015f08",
@@ -156,7 +161,7 @@ while ($true) {
 
 if ($result -and (Test-Path -LiteralPath $result.MiscFile)) {
     Write-Log "Read back the misc block after the write: $($result.MiscFile)"
-    $py = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) "scripts\host\misc_ab.py"
+    $py = Join-Path $PSScriptRoot "misc_ab.py"
     $decode = python $py $result.MiscFile 2>&1 | Out-String
     foreach ($line in ($decode -split "`r?`n")) { if ($line) { Write-Log $line } }
 } else {

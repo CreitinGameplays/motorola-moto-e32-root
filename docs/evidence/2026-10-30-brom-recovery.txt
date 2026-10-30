@@ -422,3 +422,105 @@ Caveat: set_active is a read-modify-write of the whole 1 MB misc partition
 (dump -> patch 0x800 -> write back), not a 32-byte poke.
 Rollback: readback_write\misc_before_setslot.bin is a byte-exact copy, and
 `wof misc 0x800 <file>` can restore.
+
+------------------------------------------------------------------------
+17. uboot_log RE-READ 18:32: NO NEW U-BOOT SESSION
+------------------------------------------------------------------------
+readback\uboot_log.bin   sha256 330A63A1A983AC9C2D8283E625D74949CBFAB16838D9A947D913D73EA4EAABB1
+readback2\uboot_log.bin  sha256 330A63A1A983AC9C2D8283E625D74949CBFAB16838D9A947D913D73EA4EAABB1
+=> byte-identical, 0 differing bytes over all 4 MB.
+
+So between 18:27 and 18:32 the phone logged nothing. Combined with the
+BROM re-enumerations still happening, the phone is NOT reaching U-Boot
+now. The two hang boots at 0x300000/0x340000 remain the newest Feb-2024
+U-Boot sessions.
+
+------------------------------------------------------------------------
+18. misc: EXACT DIFF vs THE PRE-FAILURE BACKUP (whole 1 MB)
+------------------------------------------------------------------------
+Differing bytes: 6. Differing runs: 3.
+
+  0x0080c  live 8e   backup 9e     slot a tries 1 -> 0
+  0x0080e  live 0f   backup 9f     slot b tries 1 -> 0, succ 1 -> 0
+  0x0081c  live dd be 17 46   backup cd 53 f1 45   crc32_le
+
+Nothing else differs. In particular misc[0..0x1f] is identical in both:
+
+  62 6f 6f 74 6f 6e 63 65 2d 62 6f 6f 74 6c 6f 61 64 65 72  = "bootonce-bootloader"
+
+so the BCB text is pre-existing, not a change, and not evidence of a
+pending bootloader request written during this incident.
+
+------------------------------------------------------------------------
+19. WHO PICKS THE SLOT: THE SPL, NOT U-BOOT
+------------------------------------------------------------------------
+Searching the stock SPL payload (u-boot-spl-16k-ufs-sign.bin, 65480 B, the
+same bytes present in flash) for printable strings finds the A/B boot set
+and the misc partition name:
+
+  0x0e1e0 sml_a        0x0e1f0 sml_b
+  0x0e200 teecfg_a     0x0e210 teecfg_b
+  0x0e220 trustos_a    0x0e230 trustos_b
+  0x0e240 uboot_a      0x0e250 uboot_b
+  0x0e2d6 misc
+
+No "BCAB"/"slot_suffix"/"tries_remaining" ASCII strings exist (the struct
+field names are compiler-only), but the partition set proves the SPL is
+the component that resolves the A/B slot and loads uboot_X / sml_X /
+trustos_X / teecfg_X before jumping to U-Boot.
+
+Consequence: a slot-resolution failure occurs BEFORE U-Boot starts, so it
+explains a boot that dies with no uboot_log entry, no logo and no
+backlight. The earlier idea that U-Boot itself refuses slot b is
+superseded but has the same fix.
+
+Coherent timeline:
+  * b bootable (prio15 tries1 succ1) -> SPL loads uboot_b -> U-Boot runs
+    -> custom kernel hangs after backlight on (two logged sessions).
+  * failed attempt burns b's retry and clears successful_boot
+    -> b is prio15 but not bootable, suffix is still "_b"
+    -> SPL has no usable U-Boot -> falls to download/BROM loop.
+  * result: BROM cycles, no U-Boot, no logo, all flash images intact.
+
+------------------------------------------------------------------------
+20. HOST USB TOPOLOGY (why some REMOVE/ADD are not the phone)
+------------------------------------------------------------------------
+Phone : USB\VID_1782&PID_4D00  Port_#0001.Hub_#0001  parent ROOT_HUB30
+Webcam: USB\VID_064E&PID_930B  Port_#0005.Hub_#0001  same ROOT_HUB30
+
+Both sit on the same Intel xHCI root hub (no external hub). At 17:43 the
+webcam itself dropped and returned, so at least some REMOVE/ADD events are
+root-hub/host side, not the phone resetting. The BROM ADD/REMOVE cycle is
+still real (a fresh window answers CHECK_BAUD and a stale one times out),
+but "the phone resets every few minutes" should not be concluded from the
+USB log alone.
+
+Timing note: after a successful FDL session the node stayed ~4 minutes;
+after failed ones it vanished ~60 s after the ADD (BROM idle timeout).
+
+------------------------------------------------------------------------
+21. WRITE MECHANICS OF set_active (verified in source before writing)
+------------------------------------------------------------------------
+common.c:2537 set_active() builds a 32-byte block in RAM:
+    slot_suffix "_{arg}", magic BCAB, version 1, nb_slot 2,
+    chosen slot prio 15 tries 6 succ 0,
+    other  slot prio 14 tries 1 succ 0,
+    crc32 over the first 0x1C bytes.
+then common.c:2451 w_mem_to_part_offset(io,"misc",0x800,mem,32,0x1000):
+    - offset != 0, so it first dump_partition()s the WHOLE 1 MB misc into
+      <path>/misc (a full read that must succeed byte-exactly),
+    - fseek to 0x800, fwrite the 32 bytes,
+    - load_partition_unify() -> load_partition("misc", file, step),
+      which sends BSL_CMD_START_DATA with the whole 1 MB length and writes
+      sequentially from offset 0 upward in dwFlushSize<<10 chunks.
+
+Risk argument: the 4 KB sector containing 0x800 is written first; every
+byte after it is identical to what is already in flash, so an interrupted
+transfer cannot change those bytes. Nothing is erased before the write.
+load_partition_unify's "misc_bak" dual-write branch is not taken
+(no misc_bak partition; selected_ab is still 0 during the call because
+spd_dump assigns it only after set_active returns).
+
+Rollback: readback_write\misc_before_setslot.bin is a byte-exact copy of
+the live image (sha256 DFC266B5DD8975DEB176247B3A35189C2AA16209BBFE57386D2EF88941250E01).
+Restore with a full-partition write of that file.
