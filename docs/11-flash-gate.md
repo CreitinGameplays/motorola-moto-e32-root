@@ -211,9 +211,45 @@ footer**. TrustOS therefore finds no metadata to verify and returns 6.
 
 The 176 KB trailer is byte-identical in stock `boot_a`, stock `boot_b` and our
 build, even though stock a and b differ in kernel content, so it is a static
-template rather than a per-image signature - keeping it is harmless.
+template rather than a per-image signature - keeping it is harmless. (It was
+later identified as the **DTB** itself: FDT magic at `0x20f2040`, size
+`0x2ad2a`. See [evidence/2026-10-30-custom-kernel-hang.txt](evidence/2026-10-30-custom-kernel-hang.txt).)
 
 The obvious next experiment is to add a *self-signed* AVB footer
 (`scripts/host/build_avb_boot.py`, `SHA256_RSA4096`, rollback index 2): the
 vbmeta then validates, the public-key check fails, and the secure world should
-return the tolerated `5` instead of `6`. Not yet tested on the device.
+return the tolerated `5` instead of `6`. **This worked - see below.**
+
+### Result: self-signed AVB defeats the check - no more bootloop
+
+`boot_custom_avb.img` (64 MiB: same payload, vbmeta at `0x211d000`, AVB footer
+at the partition end, signed with a throwaway RSA-4096 key, rollback index 2,
+stock salt) was written to `boot_a` and verified byte-identical, then booted
+with `set_active a`.
+
+The boot loop is **gone**. The secure world now accepts the image and control
+reaches our kernel:
+
+```
+boot_a: Public key used to sign data does not match key in chain partition descriptor
+allow_verification_error is 1
+avb slot verify OK!
+set_root_of_trust succeeded
+merge_dtbo : offset = 0x20 size=0xc9d9
+enter mode normal
+uboot postload
+```
+
+Note there is no `uboot_vboot_verify_img() return error` line at all: the SIP
+wrapper only prints/reboots on a failure, and here it returned a tolerated
+value. Exactly the predicted `5` (PUBLIC_KEY_REJECTED) path.
+
+**So the flash gate is fully defeated.** The remaining wall is kernel-side: the
+device hangs at the Motorola logo (no adb, no fastboot, no reboot loop, and no
+`sysdump` entry - so it dies before the native hang monitor arms at ~2 min).
+
+Last confirmed state: repo commit `1e1d68a` documented the `a0=6` failure; this
+follow-up (`boot_custom_avb.img`) is documented in
+[evidence/2026-10-30-custom-kernel-hang.txt](evidence/2026-10-30-custom-kernel-hang.txt)
+(and the rejection analysis in
+[evidence/2026-10-30-custom-kernel-a0-6.txt](evidence/2026-10-30-custom-kernel-a0-6.txt)).
