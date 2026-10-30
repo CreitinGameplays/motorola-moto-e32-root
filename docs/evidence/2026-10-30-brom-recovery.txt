@@ -193,3 +193,50 @@ them:
       -> 0x0D / 0x2D succeed. Needs an FDL-based reflash of uboot/sml.
 
 Nothing in either case is fixable by touching boot_a/boot_b or misc.
+
+------------------------------------------------------------------------
+9. DEAD-SESSION PROBE, 18:16 (read-only, nothing sent to storage)
+------------------------------------------------------------------------
+The node present since 18:08:26 was probed directly with the full RAM-only
+sequence (no unplug first). Result:
+
+  branch:stable, sha1:2a202404a7512026d146b62624f089aceb408520
+  hotplug unsupported on this platform
+  Waiting for dl_diag connection (30s)
+  libusb_control_transfer ok
+  usb_recv failed : LIBUSB_ERROR_TIMEOUT      x10
+  wrong command or wrong mode detected
+  spd_dump exit code: 1
+
+Interpretation: the node enumerates but its BootROM handler is idle. The
+payload was never transmitted (failure occurred during CHECK_BAUD, before
+any SEND). This is the stale-session signature, not a wrong chip.
+
+------------------------------------------------------------------------
+10. THE PHONE RE-ENUMERATES BY ITSELF
+------------------------------------------------------------------------
+While the 18:16 probe ran, watch_usb.ps1 logged:
+
+  18:16:35 REMOVE USB\VID_1782&PID_4D00\5&E7DA5E8&0&1
+  18:16:45 ADD    USB\VID_1782&PID_4D00\5&E7DA5E8&0&1
+  18:17:04 REMOVE USB\VID_1782&PID_4D00\5&E7DA5E8&0&1
+
+So no unplug is required to obtain a new BootROM window; the device cycles
+the USB node roughly every 1-5 min (also seen at 17:54, 18:01, 18:06,
+18:08). Strategy change: fire on the absent->present transition instead of
+waiting for a manual unplug. brom_read_spl.ps1 now does this via
+-MaxAttempts; a dead window costs ~10 timeouts and changes nothing.
+
+The 18:16:45 window lasted 19 s and was not probed, so it is still unproven
+whether any given ADD is a *responsive* BootROM or only an enumeration echo.
+That is exactly what the retry loop measures.
+
+------------------------------------------------------------------------
+11. RUNNER SAFETY PROPERTIES (scripts/host/brom_read_spl.ps1)
+------------------------------------------------------------------------
+- Verifies 4 SHA-256 hashes before any USB access.
+- Sequence is fixed and read-only: exec_addr (CVE payload) -> fdl1 -> fdl2
+  -> exec -> path -> p -> r splloader -> poweroff.
+- Contains no w/wov/wof/erase_part/erase_all/repartition/cboot/env.
+- fdl2-cboot.bin is deliberately excluded (persistent-unlock payload).
+- Every attempt is logged to readback\brom_read_spl.log (UTF-8).

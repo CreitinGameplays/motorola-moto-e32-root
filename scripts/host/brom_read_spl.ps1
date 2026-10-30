@@ -1,5 +1,10 @@
 param(
     [int]$WaitMinutes = 20,
+    # Attempt against the node that is already present instead of insisting on a
+    # physical unplug first. A stale BootROM simply times out, so this is safe.
+    [switch]$AllowPresent,
+    # Number of fresh-BROM windows to try. 0 = a single attempt.
+    [int]$MaxAttempts = 0,
     [string]$FirmwareDir = "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\withcboot",
     [string]$Fdl2Path = "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\candidate_fdl2_readonly.bin",
     [string]$ReadDir = "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\readback"
@@ -26,10 +31,21 @@ foreach ($path in $expected.Keys) {
 if (-not (Test-Path -LiteralPath $exe)) { throw "spd_dump missing: $exe" }
 New-Item -ItemType Directory -Force -Path $ReadDir | Out-Null
 
-function PhoneNodePresent {
-    $d = Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue |
-        Where-Object { $_.InstanceId -like "*VID_1782&PID_4D00*" -or $_.InstanceId -like "*VID_0000&PID_0002*" }
-    return [bool]$d
+$log = Join-Path $ReadDir "brom_read_spl.log"
+
+function Write-Log {
+    param([string]$Text)
+    $Text | Out-File -Append -Encoding utf8 $log
+    Write-Host $Text
+}
+
+function Get-PhoneNodes {
+    return @(Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue |
+        Where-Object { $_.InstanceId -like "*VID_1782&PID_4D00*" -or $_.InstanceId -like "*VID_0000&PID_0002*" })
+}
+
+function NodePresent {
+    return [bool](Get-PhoneNodes)
 }
 
 function RealBromPresent {
@@ -38,43 +54,115 @@ function RealBromPresent {
     return [bool]$d
 }
 
-$log = Join-Path $ReadDir "brom_read_spl.log"
-"=== start $(Get-Date -Format o) ===" | Out-File -Encoding utf8 $log
-"All inputs passed SHA-256 verification." | Out-File -Append -Encoding utf8 $log
+Write-Log "=== start $(Get-Date -Format o) ==="
+Write-Log "All inputs passed SHA-256 verification."
 
-if (PhoneNodePresent) {
-    "Waiting for current USB node to disappear; unplug the cable now." | Out-File -Append -Encoding utf8 $log
+# Wait until the current node disappears and a new one is enumerated. A BootROM
+# session only answers for ~2 minutes, so a window that never vanished is dead.
+function Wait-ForFreshNode {
+    param([string]$Why)
+    Write-Log "Waiting for the current node to disappear ($Why)."
     $until = (Get-Date).AddMinutes($WaitMinutes)
-    while ((PhoneNodePresent) -and ((Get-Date) -lt $until)) { Start-Sleep -Milliseconds 250 }
-    if (PhoneNodePresent) { throw "Current node did not disappear within $WaitMinutes minutes." }
+    while ((NodePresent) -and ((Get-Date) -lt $until)) { Start-Sleep -Milliseconds 200 }
+    if (NodePresent) { Write-Log "Node never disappeared within $WaitMinutes min."; return $false }
+
+    Write-Log "Node gone. Waiting for a fresh 1782:4D00 BootROM (Power + Vol Down, then plug in)."
+    $until = (Get-Date).AddMinutes($WaitMinutes)
+    while ((-not (RealBromPresent)) -and ((Get-Date) -lt $until)) { Start-Sleep -Milliseconds 100 }
+    if (-not (RealBromPresent)) { Write-Log "No fresh BootROM within $WaitMinutes min."; return $false }
+    Write-Log "Fresh BootROM enumerated at $(Get-Date -Format o)."
+    return $true
 }
-
-"Waiting for a fresh 1782:4D00 BootROM. Enter it with Power + Vol Down, then plug in." | Out-File -Append -Encoding utf8 $log
-$until = (Get-Date).AddMinutes($WaitMinutes)
-while ((-not (RealBromPresent)) -and ((Get-Date) -lt $until)) { Start-Sleep -Milliseconds 150 }
-if (-not (RealBromPresent)) { throw "No real BootROM enumerated within $WaitMinutes minutes." }
-
-"Fresh BootROM at $(Get-Date -Format o). Starting RAM-only FDL sequence." | Out-File -Append -Encoding utf8 $log
 
 # Safe by construction: execute CVE payload + FDL1/FDL2 in RAM, then list GPT
 # and read splloader only. No partition write/erase, cboot, or reset command.
-$commands = @(
+$sequence = @(
     "exec_addr 0x65015f08",
-    "fdl `"$fdl1`" 0x65000800",
-    "fdl `"$Fdl2Path`" 0x9efffe00",
+    "fdl $fdl1 0x65000800",
+    "fdl $Fdl2Path 0x9efffe00",
     "exec",
-    "path `"$ReadDir`"",
+    "path $ReadDir",
     "p",
-    "r splloader"
+    "r splloader",
+    "poweroff"
 ) -join " "
-$argv = @("--wait", "30") + @($commands -split '\s+')
+$argv = @("--wait", "30") + @($sequence -split '\s+')
 
-Push-Location $FirmwareDir
-try {
-    $output = & $exe @argv 2>&1 | Out-String
-    $output | Tee-Object -FilePath $log -Append
-} finally {
-    Pop-Location
+function Invoke-Attempt {
+    param([int]$Number)
+    $before = @(Get-ChildItem -LiteralPath $ReadDir -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne "brom_read_spl.log" } | ForEach-Object { $_.Name })
+
+    Write-Log ("--- attempt {0} at {1} ---" -f $Number, (Get-Date -Format o))
+    # Windows PowerShell 5.1 turns native stderr into ErrorRecords. Do not let
+    # the executable's normal version banner terminate the capture pipeline.
+    $oldPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $output = & $exe @argv 2>&1 | ForEach-Object { "$_" }
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $oldPreference
+    }
+    foreach ($line in $output) { Write-Log $line }
+    Write-Log "spd_dump exit code: $exitCode"
+
+    $text = ($output -join "`n")
+    $staleMode = $text -match 'wrong command or wrong mode'
+    $anyConnect = $text -match 'CMD_CONNECT'
+    $fdl2Reached = $text -match 'FDL2'
+
+    $after = @(Get-ChildItem -LiteralPath $ReadDir -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne "brom_read_spl.log" } | ForEach-Object { $_.Name })
+    $newFiles = @($after | Where-Object { $before -notcontains $_ })
+    if ($newFiles.Count -gt 0) { Write-Log ("New readback files: " + ($newFiles -join ", ")) }
+
+    return [pscustomobject]@{
+        StaleMode   = $staleMode
+        Connected   = $anyConnect
+        Fdl2Reached = $fdl2Reached
+        NewFiles    = $newFiles
+        ExitCode    = $exitCode
+    }
 }
 
-"=== end $(Get-Date -Format o) ===" | Out-File -Append -Encoding utf8 $log
+$attempt = 0
+$result = $null
+while ($true) {
+    $attempt++
+
+    if ($attempt -eq 1 -and $AllowPresent) {
+        Write-Log "AllowPresent: attempting the node that is already enumerated."
+        $until = (Get-Date).AddMinutes($WaitMinutes)
+        while ((-not (RealBromPresent)) -and ((Get-Date) -lt $until)) { Start-Sleep -Milliseconds 150 }
+        if (-not (RealBromPresent)) { throw "No 1782:4D00 node present within $WaitMinutes minutes." }
+    } elseif ($attempt -eq 1 -and -not (NodePresent)) {
+        $until = (Get-Date).AddMinutes($WaitMinutes)
+        while ((-not (RealBromPresent)) -and ((Get-Date) -lt $until)) { Start-Sleep -Milliseconds 100 }
+        if (-not (RealBromPresent)) { throw "No BootROM enumerated within $WaitMinutes minutes." }
+        Write-Log "BootROM was already absent; using the new enumeration."
+    } else {
+        if (-not (Wait-ForFreshNode -Why "attempt $attempt needs a live BROM window")) {
+            Write-Log "Out of fresh windows; stopping."
+            break
+        }
+    }
+
+    Write-Log "Starting RAM-only FDL sequence at $(Get-Date -Format o)."
+    $result = Invoke-Attempt -Number $attempt
+
+    if (-not $result.StaleMode) { break }
+    Write-Log "Node was a dead BootROM session (timeouts, no reply). Will retry on the next fresh window."
+    if (($MaxAttempts -gt 0) -and ($attempt -ge $MaxAttempts)) {
+        Write-Log "Reached MaxAttempts=$MaxAttempts; stopping."
+        break
+    }
+}
+
+if ($result) {
+    Write-Log ("Summary: connected={0} fdl2={1} stale={2} newFiles={3}" -f
+        $result.Connected, $result.Fdl2Reached, $result.StaleMode, ($result.NewFiles -join ","))
+} else {
+    Write-Log "Summary: no attempt was executed."
+}
+Write-Log "=== end $(Get-Date -Format o) ==="
