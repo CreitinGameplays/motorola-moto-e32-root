@@ -356,3 +356,69 @@ The fault is therefore either
   (i)  outside flash and outside the images: power/PMIC/battery, or a
        display path failure, or
   (ii) something the SPL halts on that is not stored in these partitions.
+
+------------------------------------------------------------------------
+15. CORRECTION: U-BOOT DOES RUN (uboot_log, read 18:27)
+------------------------------------------------------------------------
+uboot_log (4MB) is a 16-slot boot history, one session per 0x40000.
+
+Session banners found (offset, banner):
+  0x000000, 0x040000, 0x080000, 0x0c0000, 0x100000, 0x140000,
+  0x180000, 0x1c0000, 0x200000, 0x240000, 0x280000, 0x2c0000
+        U-Boot 2015.07-g0bc803f (Feb 20 2024 - 11:29:28 +0800)QOGIRL6
+  0x300000, 0x340000
+        same Feb 2024 build
+  0x380000, 0x3c0000
+        U-Boot 2015.07 (Nov 11 2022 - 17:32:06 +0800)QOGIRL6  = FDL agent
+
+Four sessions reach the end of boot setup:
+  0x002055d1 [00006707] enter mode normal, consume time: 5476ms, boot_reason: Reboot into normal
+  0x002453d3 [00006886] enter mode normal, consume time: 5654ms, boot_reason: Reboot into normal
+  0x0028539a [00007076] enter mode normal, consume time: 5786ms, boot_reason: Reboot into normal
+  0x002c5300 [00006718] enter mode normal, consume time: 5490ms, boot_reason: Reboot into normal
+
+Two sessions stop right after turning the panel on:
+  0x003023d5 [00003695] uboot consume time:2400ms, lcd init consume:1934ms, backlight on time:3695ms
+  0x003421d5 [00003695] uboot consume time:2400ms, lcd init consume:1934ms, backlight on time:3695ms
+  (no "enter mode normal" line in either)
+
+Earlier per-boot lines proving the display path works:
+  [sprdfb][of_parse_panel] panel: lcd_nt36525b_dj_mipi_hd
+  lcd_name is lcd_nt36525c_boe_mipi_fhd
+  LCD Read Id Success!!!
+  [sprdfb][logo_mem_init] splashimage addr is 0x9d000000, fb size is 0xab0000
+  logo memory init success.
+  [sprdfb][set_backlight] lcd_nt36525c_boe_mipi_fhd brightness:25
+
+INTERPRETATION
+The two sessions at 0x300000 / 0x340000 initialise the panel and enable the
+backlight, then die before "enter mode normal". Those are the two custom
+kernel attempts. Therefore:
+
+  * U-Boot DOES execute on the failing boots.
+  * The "no logo => U-Boot never runs" inference used earlier is WRONG and
+    is withdrawn. Backlight/panel init happen, so a dark screen afterwards
+    is U-Boot failing later, not the SoC failing earlier.
+
+Two different U-Boot banners exist because the FDL2 download agent is itself
+a U-Boot 2015.07 (Nov 11 2022) build that logs into the same partition.
+
+------------------------------------------------------------------------
+16. WHY SLOT SUFFIX IS THE PRIME SUSPECT
+------------------------------------------------------------------------
+misc is the ONLY partition that differs from the pre-failure backups.
+Live block: slot_suffix "_b", a=0x008e (bootable), b=0x000f (unbootable).
+If this U-Boot resolves the target slot from slot_suffix instead of the
+BCAB priority/tries logic, it keeps booting slot b - the slot holding the
+hung custom kernel - and never falls back to slot a. That matches
+"backlight on, then failure" with no recovery.
+
+Planned action: force slot_suffix "_a" using spd_dump set_active, whose
+implementation (common.c:2537) writes, at misc+0x800:
+    slot_suffix "_{slot}", magic BCAB, version 1, nb_slot 2,
+    chosen slot prio 15 tries 6 succ 0, other slot prio 14 tries 1 succ 0,
+    crc32_le over the first 28 bytes
+Caveat: set_active is a read-modify-write of the whole 1 MB misc partition
+(dump -> patch 0x800 -> write back), not a 32-byte poke.
+Rollback: readback_write\misc_before_setslot.bin is a byte-exact copy, and
+`wof misc 0x800 <file>` can restore.
