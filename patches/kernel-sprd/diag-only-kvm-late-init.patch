@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: OpenCode <opencode@localhost>
+Date: Fri, 30 Oct 2026 19:20:00 -0300
+Subject: [PATCH] DIAG ONLY: run KVM init late, so the watchdog is armed first
+
+Diagnostic scaffold, compiled in only with KCFLAGS=-DDIAG_KVM_LATE_INIT.
+
+Measured on 2026-10-30 (docs/evidence/2026-10-30-custom-kernel-hang.txt):
+
+  * drivers/watchdog/sprd_wdt_fiq.c registers its driver with
+    late_initcall(sprd_wdt_fiq_init_ops), NOT module_platform_driver(), so
+    sprd_wdt_fiq_probe() - where diag-only-arm-aon-watchdog.patch arms the
+    AON watchdog for 30 s - is a late_initcall.
+  * KVM is built in: virt/kvm/arm/arm.c has module_init(arm_init), i.e. a
+    device_initcall, and every device_initcall runs before every
+    late_initcall.  Link order ($(drivers-y) before $(virt-y)) only breaks
+    ties inside one level and cannot reorder across levels.
+  * Consequence, observed: boot_diagwdt_avb.img on boot_a hangs on the logo
+    and the 30 s arm never fires.  The bootloader log shows exactly one
+    slot_a boot attempt and no reset afterwards, i.e. the SoC never reset.
+
+So the arm sits behind KVM init, not in front of it, and a stall in KVM init
+is invisible forever.
+
+This hunk moves KVM's initcall to late_initcall.  Both are then late_initcalls
+and the same link order puts the watchdog probe first: the timer is armed,
+then arm_init()/kvm_init() runs.  A hang inside KVM is now followed by a
+genuine AON watchdog reset ~30 s later, which is the first thing this platform
+offers that can make the stall observable (console=null, no VT, no pstore
+without a reset).
+
+Nothing else changes; KVM is not used by anything at boot.
+
+diff --git a/virt/kvm/arm/arm.c b/virt/kvm/arm/arm.c
+--- a/virt/kvm/arm/arm.c
++++ b/virt/kvm/arm/arm.c
+@@ -1521,4 +1521,13 @@ static int arm_init(void)
+ 	return rc;
+ }
+ 
++#ifdef DIAG_KVM_LATE_INIT
++/*
++ * DIAG build only (KCFLAGS=-DDIAG_KVM_LATE_INIT).
++ *
++ * device_initcall -> late_initcall: the AON watchdog probe is itself a
++ * late_initcall (see drivers/watchdog/sprd_wdt_fiq.c), and $(drivers-y)
++ * links before $(virt-y), so within this level the watchdog is armed
++ * before KVM initialises. A stall in kvm_init() then resets the board
++ * instead of stopping it forever.
++ */
++late_initcall(arm_init);
++#else
+ module_init(arm_init);
++#endif
+-- 
+2.39.5
