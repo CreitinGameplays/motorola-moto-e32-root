@@ -1,0 +1,15 @@
+﻿
+========================================================================
+boot_b test, 2026-10-30 19:13:08
+image : artifacts\kernel-build\boot_p0a0s1.img
+        67108864 bytes, sha256 4F3C1573183FEE04458EB27C5915674134D59062DE4C491606F8B4FA8899908E
+========================================================================
+--- pre-flight ---
+slot            : _b
+running kernel  : Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020) (Android (6443078 based on r383902) clang version 11.0.1 (https://android.googlesource.com/toolchain/llvm-project b397f81060ce6d701042b782172ed13bee898b79), LLD 11.0.1 (/buildbot/tmp/tmp6_m7QH b397f81060ce6d701042b782172ed13bee898b79)) #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024
+--- push ---
+pushed sha256   : 4f3c1573183fee04458eb27c5915674134d59062de4c491606f8b4fa8899908e
+--- flash boot_b (root) ---
+2000
+dd: /dev/block/by-name/boot_b: Permission denied
+ABORT: boot_b read-back does not match the image (read back: )
