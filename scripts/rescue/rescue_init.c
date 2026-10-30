@@ -300,22 +300,17 @@ void _start(void) {
     sc(SYS_fsync, fd, 0, 0, 0, 0, 0);
     sc(SYS_close, fd, 0, 0, 0, 0, 0);
 
-    /* verify: payload prefix and footer as read back from the device */
-    u8 a[2048], b[64];
-    if (read_into("/dev/boot_b", 0, a, 2048) == 0) {
-        for (int i = 0; i < 2048; i++) rbhash = fnv_byte(rbhash, a[i]);
-    } else {
-        rbhash = 0;
-    }
-    u8 exp[2048];
-    read_into("/blob/boot_b", 0, exp, 2048);
-    u8 rbftr[64];
-    if (read_into("/dev/boot_b", FOOTER_OFF, rbftr, 64) < 0) rbftr[0] = 0x55;
-    if (read_into("/blob/footer", 0, b, 64) < 0) b[0] = 0xaa;
+    /* verify the WHOLE partition read back: expected FNV-1a is
+     * blob + (FOOTER_OFF - blob) zero bytes + footer. This is the only way
+     * back from a broken boot_b, so a prefix check is not good enough. */
+    u64 exp_h = h2;
+    for (u64 i = 0; i < FOOTER_OFF - bsize; i++) exp_h = fnv_byte(exp_h, 0);
+    for (int i = 0; i < 64; i++) exp_h = fnv_byte(exp_h, ftr[i]);
 
-    u32 ok = 1;
-    if (!memeq(a, exp, 2048)) ok = 0;
-    if (!memeq(rbftr, b, 64)) ok = 0;
+    u64 rbsize = 0;
+    i64 vr = stream("/dev/boot_b", &rbsize, &rbhash, -1);
+    u32 ok = (vr == 0 && rbsize == PART_SIZE && rbhash == exp_h) ? 1u : 0u;
+    if (!ok) rbhash = rbhash ^ exp_h;   /* marker.extra shows the disagreement */
 
     i64 r = set_slot_b(ab_old, ab_new);
     if (r < 0) ok = 0;
