@@ -232,25 +232,55 @@ void machine_restart(char *cmd)
 }
 ```
 
-There is **no `psci` node** in the DTB, and the only arm64-relevant restart
-handler source in this tree is `drivers/spi/spi-sprd-adi.c`
-(`sprd_adi_restart_handler`, registered at line 609). Its driver is
-`module_platform_driver(...)` - a **device_initcall** - so a working reset only
-exists if that SPI/ADI probe succeeded, which is late and conditional
-(`CONFIG_SPI_SPRD_ADI=y`, node `spi@64200000`).
+**Correction (measured on the live stock device, this session): PSCI is present.**
+The `psci` node is not in the kernel's own DTB section - the bootloader merges it
+from the DTBO (`merge_dtbo : offset = 0x20 size=0xc9d9`), which is why parsing
+`boot_dtb.dtb` missed it. Stock `dmesg` says:
 
-So both of these produce exactly "logo, no reboot, nothing anywhere":
+```
+psci: probing for conduit method from DT.
+psci: PSCIv1.0 detected in firmware.
+psci: Using standard PSCI v0.2 function IDs
+CPU: All CPU(s) started at EL2
+```
 
-1. the kernel stops early with IRQs masked (before `lockup_detector_init()`),
-2. the kernel *does* panic, prints to the invisible UART, calls
-   `machine_restart()`, finds no handler and parks in
-   `Reboot failed -- System halted` + `while(1)`.
+and a deliberately triggered panic (`echo c > /proc/sysrq-trigger`) **rebooted
+the phone in 19 s**. So `machine_restart()` -> PSCI works, on stock and on any
+kernel that gets that far. The earlier "no reset handler" theory is dead.
 
-A third candidate was also eliminated: `el2_setup` in
-`arch/arm64/kernel/head.S` installs the hyp stub **unconditionally**
-(`adr_l x0, __hyp_stub_vectors; msr vbar_el2, x0`), with no
-`CONFIG_KVM`/`CONFIG_VIRTUALIZATION` conditional in that path, so `CONFIG_KVM=y`
-does not by itself alter early boot at this level.
+That leaves the real explanation, and it is the one this vendor platform
+produces (see `mu300-linux` §31m for the same behaviour on a T760):
+
+> the whole SoC stops, the way it does on a bus access that never completes -
+> no soft or hard lockup report, no hung-task report, no panic.
+
+A stopped SoC cannot panic, so no reset and no dump: exactly what was observed.
+`el2_setup` installing the hyp stub unconditionally (no `CONFIG_KVM`
+conditional) stays true and is not the cause.
+
+### Why nothing resets it: the watchdog is disabled
+
+`androidboot.wdten=0` is in the stock cmdline, and
+`drivers/watchdog/sprd_pmic_wdt.c` only arms the PM-co-processor watchdog when
+that argument spells the magic `e551`
+(`sprd_pimc_wdt_en()` -> `strstr(bootargs, "androidboot.wdten=")` -> compare
+with `"e551"`). With `0` it sends `watchdog rstoff` instead, i.e. *disarms* it.
+
+The AON watchdog cannot cover for that either: `sprd_wdt_fiq_probe()` enables
+the block (both clocks, `NEW_VER_EN`) and stores a global pointer, but **never
+calls `watchdog_register_device()`**. Evidence on stock:
+
+```
+/sys/class/watchdog/            (empty)
+644e0000.watchdog -> bound to sprd-wdt-fiq   (probe ran, 0.44 ms)
+watchdogd: Failed to open /dev/watchdog: No such file or directory
+```
+
+So on this firmware **no watchdog is armed at any point**, and a hard SoC stop
+hangs for ever by design.
+
+Also note the device name claimed by the bootloader: `androidboot.hardware=ums9230_4h10`,
+`androidboot.auto.chipid=UMS9230-AB`, i.e. the T606 reports as UMS9230.
 
 ### The reset hardware that does not need a handler
 
@@ -268,25 +298,64 @@ From the stock DTB (811 nodes parsed from `boot_dtb.dtb`):
 Programming LOAD/CTRL directly from early C yields a **self-reset that survives
 a hard lockup**, which is exactly what is missing from the diagnostic build.
 
+### The panic channel is proven, end to end
+
+The deliberate `sysrq-c` panic on stock also shows the channel we would use is
+fully working:
+
+| evidence | content |
+|---|---|
+| `/sys/fs/pstore/dmesg-ramoops-0` | 54,565 B, begins `Panic#1 Part1`, contains the whole ring buffer |
+| `/sys/fs/pstore/console-ramoops-0` | 3,290 B: `Kernel panic - not syncing: sysrq triggered crash` -> `sprd-sysdump: (sysdump_panic_event)` -> `Sysdump enter, preparing debug info to dump ...` -> `reason: sysrq triggered crash` |
+| reset | PSCI, device back on adb after 19 s |
+
+Copies: `artifacts/pstore-proof/`. So **a panic is fully observable** on this
+device: ramoops text plus a `sysdumpdb` write. What was missing was a panic, not
+a channel.
+
+The pstore record also gives the timings that matter: `run init` at 2.048 s, the
+minidump section table (`section_info_log_buf ... len: 0x100000`) at 1.893 s - so
+a panic anywhere after ~1.9 s captures the 1 MiB kernel ring buffer.
+
+### DIAG build v3: arm the watchdog
+
+Since the only way a hard stop can be observed is a watchdog reset, and this
+firmware arms none, the diagnostic kernel arms the AON watchdog itself. The
+patch is `patches/kernel-sprd/diag-only-arm-aon-watchdog.patch`
+(`KCFLAGS=-DDIAG_WDT_ARM`), applied in `sprd_wdt_fiq_probe()` right after
+`sprd_wdt_fiq_enable()`, i.e. where both clocks and the new-version bit are
+already configured:
+
+```c
+wdt->wdd.timeout = 30;
+sprd_wdt_fiq_set_timeout(&wdt->wdd, 30);
+sprd_wdt_fiq_start(&wdt->wdd);     /* CNT_EN | INT_EN | RST_EN */
+```
+
+Thirty seconds is chosen so a stall resets quickly while a healthy boot still
+reaches the end-of-init panic first. Outcomes:
+
+| observation | meaning |
+|---|---|
+| pstore record with `DIAG: kernel init complete` | all initcalls finished; the hang is display/USB, not the kernel |
+| reset, then bootloader dump with our log | the stall is after the watchdog arm point; the log ends where it stopped |
+| no reset at all | the stall precedes the wdt-fiq probe, or the watchdog block is not clocked |
+
 ### Next tests, cheapest first
 
-1. **Stock control (`scripts/device/panic_test.sh`).** On unmodified Android as
-   root, `echo c > /proc/sysrq-trigger` is a real `panic()`. If the phone
-   reboots within seconds, a restart handler *does* work on stock and a panic is
-   observable -> our kernel never reached `panic()`. If it just sits there,
-   hypothesis 2 above is confirmed for the whole platform. Either way a
-   `sysdumpdb` dump should appear, which validates
-   `dump_sysdump_full.sh` + `sysdump_extract.py` end to end.
-2. **`boot_stock_signed.img`** (stock kernel, sha256 `55ddec27...db77`) in our
+1. ~~Stock control (`scripts/device/panic_test.sh`)~~ - **done, rebooted in 19 s
+   with a full pstore record** (see above). A panic is observable; the custom
+   kernel never panicked.
+2. **DIAG build v3** (KVM + detectors + end-of-init panic + AON watchdog at
+   30 s): a stall now resets the SoC, and its console record should survive in
+   ramoops if the reset is warm. This is the next write.
+3. **`boot_stock_signed.img`** (stock kernel, sha256 `55ddec27...db77`) in our
    signed container: if Android boots, the container/vbmeta/`dd` path is proven
    and only the kernel binary remains as a variable.
-3. **`boot_diagstock_avb.img`** (`Image.diagstock`, sha256 `ecc9989a...324c`;
+4. **`boot_diagstock_avb.img`** (`Image.diagstock`, sha256 `ecc9989a...324c`;
    our tree with **KVM off** + the same diagnostics, image
    `dcbfb17d...f40b`; only 2,048 B larger than the stock kernel vs 550 KB for
    the KVM build): separates "KVM delta" from "our tree/build".
-4. If everything stays silent, a DIAG build that arms
-   `/soc/aon/watchdog@644e0000` early (LOAD/CTRL as above, ~30 s) so a stall
-   self-resets and a panic can land in `sysdumpdb`.
 
 ## 5. Other facts confirmed this session
 

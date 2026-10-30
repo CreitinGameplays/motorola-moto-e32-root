@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: OpenCode <opencode@localhost>
+Date: Fri, 30 Oct 2026 17:00:00 -0300
+Subject: [PATCH] DIAG ONLY: arm the AON watchdog so a hard SoC stop resets
+
+Diagnostic scaffold, compiled in only with KCFLAGS=-DDIAG_WDT_ARM.
+
+Measured on stock (2026-10-30):
+
+  * PSCI is present (the DTBO supplies the node, not the kernel DTB) and a
+    deliberate sysrq-c panic reboots the phone in 19 s with a full pstore
+    record, so a panic IS observable.  The custom kernel produces neither,
+    i.e. it never panics: the SoC simply stops, the way it does on a bus
+    access that never completes (same signature as mu300-linux FINDINGS 31m
+    on a T760).
+  * Nothing arms a watchdog on this firmware.  androidboot.wdten=0 makes
+    sprd_pmic_wdt send "watchdog rstoff" (disarm) instead of "watchdog on",
+    and sprd_wdt_fiq_probe() enables the AON block but never calls
+    watchdog_register_device(), so /sys/class/watchdog is empty and Android's
+    watchdogd cannot even open /dev/watchdog.
+
+Consequently a stall is permanent by design.  Arming the AON watchdog here -
+after sprd_wdt_fiq_enable() has set up both clocks and NEW_VER_EN - makes the
+board reset after 30 s, which is the only way a stopped SoC becomes observable
+(the bootloader writes a dump after a watchdog reset).
+
+diff --git a/drivers/watchdog/sprd_wdt_fiq.c b/drivers/watchdog/sprd_wdt_fiq.c
+--- a/drivers/watchdog/sprd_wdt_fiq.c
++++ b/drivers/watchdog/sprd_wdt_fiq.c
+@@ -364,6 +364,27 @@ static int sprd_wdt_fiq_probe(struct platform_device *pdev)
+ 	wdt_fiq = wdt;
+ 	platform_set_drvdata(pdev, wdt);
+ 
++#ifdef DIAG_WDT_ARM
++	/*
++	 * DIAG build only (KCFLAGS=-DDIAG_WDT_ARM).
++	 *
++	 * This driver never calls watchdog_register_device(), and stock Android
++	 * passes androidboot.wdten=0, so nothing ever arms a watchdog: a hard
++	 * stop of the SoC (a bus access that never completes) therefore hangs
++	 * for ever with no panic, no reboot and no dump.  Arm the AON watchdog
++	 * here, where its clocks and the new-version bit are already set up by
++	 * sprd_wdt_fiq_enable(), so a stall resets the board after
++	 * DIAG_WDT_TIMEOUT seconds and the bootloader can capture the crash.
++	 */
++	wdt->wdd.timeout = 30;
++	if (sprd_wdt_fiq_set_timeout(&wdt->wdd, 30))
++		pr_err("DIAG: could not set watchdog timeout\n");
++	if (sprd_wdt_fiq_start(&wdt->wdd))
++		pr_err("DIAG: could not start watchdog\n");
++	else
++		pr_info("DIAG: AON watchdog armed, 30 s\n");
++#endif
++
+ 	return 0;
+ }
+ 
+-- 
+2.39.5
