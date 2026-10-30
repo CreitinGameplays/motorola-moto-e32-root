@@ -527,6 +527,76 @@ boots. This is also why `boot_b` cannot be restored through fastboot: the only
 way in is `dd` from a live Android, which is circular. `boot_b` stays
 hands-off.
 
+### KVM is not the cause: the KVM-off image hangs identically (measured 2026-10-30)
+
+The obvious control was already built and signed, so it was run next:
+`boot_diagstock_avb.img` = **our tree with KVM off**, same diagnostics
+(`Image.diagstock`, 25,360,400 B, only 2,048 B larger than the stock kernel;
+image sha256 `dcbfb17d...f40b`). Written to `boot_a` with readback verification,
+`set_active a`, reboot.
+
+Result: **identical hang.** Stuck on the Motorola logo, no reset within 120 s,
+no adb, no fastboot. The user had to force a power cycle.
+
+That kills the KVM hypothesis, and it kills a lot of the earlier reasoning with
+it:
+
+- `Image.diag` (KVM + end-of-init panic) hung.
+- `Image.diagwdt` (KVM + 30 s arm + end-of-init panic) hung, and the bootloader
+  log proves **no reset**: exactly one `ANDROID: Booting slot_a` segment after
+  the flash, then straight to fastboot when the user intervened. A watchdog
+  reset would have produced another slot_a attempt.
+- `Image.diagstock` (KVM off + end-of-init panic) hung.
+
+So a kernel built from this tree does not even reach the end of
+`kernel_init()` - the `DIAG_PANIC_AFTER_INIT` panic is never executed - with KVM
+on *or* off. Meanwhile the **stock kernel inside our container boots** (it gets
+as far as `init` and then panics on the missing `system_a`).
+
+Conclusion: the stall is in our tree/build, not in KVM, and it happens before
+the last initcall. It is a *hard* hang in the sense of
+`mu300-linux/docs/FINDINGS.md` §31m: the whole SoC stops, which is why neither
+`panic()`, nor `panic_timeout=5` + PSCI, nor the lockup detectors fire, even
+though `CONFIG_BOOTPARAM_SOFTLOCKUP_PANIC=y` and `CONFIG_PANIC_TIMEOUT=5`
+(verified in `.config.diagstock`) would otherwise turn a stuck CPU into a
+reboot. A bus access that never completes is the usual cause.
+
+The config is not an obvious suspect: `PANIC_TIMEOUT`, the lockup detectors and
+`CONFIG_SPRD_HANG_DEBUG` are the same in stock's `phone.config` and in ours.
+
+### Instrument: staged early panics, one link per step
+
+Since nothing in the kernel runs long enough to report anything, the only
+signal left is **does the board reset?**. A deliberate `panic()` on this board
+reboots through PSCI in ~5 s (`panic_timeout=5`), the bootloader retries the
+slot a few times, then falls back to fastboot - an unambiguous, observable
+event.
+
+`scripts/host/prepare_stage_panics.py` (idempotent; applied on the VPS) adds
+`include/linux/diag_stage.h` with a `DIAG_PANIC_STAGE` knob and eight markers
+in `init/main.c`:
+
+| stage | point in boot | question it answers if it resets |
+|---|---|---|
+| 1 | first statement of `start_kernel()` | the bootloader really jumps into our Image |
+| 2 | after `setup_arch()` | DTB, memory map, PSCI, arch init are fine |
+| 3 | after `build_all_zonelists()`/`page_alloc_init()` | early memory management is fine |
+| 4 | after `check_bugs()` | late `start_kernel` is fine |
+| 5 | just before `rest_init()` | `start_kernel()` completes |
+| 6 | first statement of `kernel_init()` | SMP bring-up and the idle thread are fine |
+| 7 | after `do_pre_smp_initcalls()` | early/timer/console initcalls are fine |
+| 8 | after `do_basic_setup()` | every initcall ran (this is the old end-of-init panic) |
+
+Changing the stage edits one header, so only `init/main.c` recompiles and the
+build is a link, not the 15-20 minute full build. Bisection is therefore
+a sequence of ~2 minute steps: test 4, then 2 or 6, then 1/3/5/7 and so on -
+~8 minutes of builds to localise the stall to one boot phase, versus 8 full
+builds.
+
+Stage 1 is the one with a caveat: if the panic there fires before PSCI is
+initialised, the reset may not happen even though the kernel did execute, so a
+stage-1 hang is only meaningful together with a stage-2 reset.
+
 ### Next tests, cheapest first
 
 1. ~~Stock control (`scripts/device/panic_test.sh`)~~ - **done, rebooted in 19 s
@@ -553,14 +623,16 @@ hands-off.
    Either way the phone ends in fastboot (resets) or sits hung (no reset ->
    manual power cycle); recovery is `set_active b`, and pstore/sysdump is read
    on the next boot.
-6. **`boot_diagstock_avb.img`** (`Image.diagstock`; our tree with **KVM off** +
-   the same diagnostics, image `dcbfb17d...f40b`): separates "KVM delta" from
-   "our tree/build", and with KVM off the vendor feeder's own 40 s AON
-   watchdog is already enough to make a stall visible.
-7. Only if KVM init is confirmed: build v4 with `kvm_init()` moved from
-   `module_init` to `late_initcall` in `virt/kvm/kvm_main.c`, so the vendor
-   feeder arms 40 s first and any KVM hang becomes a plain watchdog reset whose
-   ramoops record ends in the KVM code.
+6. ~~`boot_diagstock_avb.img`~~ - **done, hangs identically**, so KVM is not the
+   cause and the stall is before the last initcall (section above).
+7. **Bisect with staged early panics** - the new main line, ~2 minutes per step.
+   `scripts/host/stage_build.sh <n>` rebuilds one stage (link only), then
+   `pack_and_sign_boot.py`, `dd` into `boot_a`, `set_active a`, and watch for a
+   reset within ~20 s. A reset means that stage was reached; a hang means it was
+   not. Start at stage 4, then 2 or 6, then narrow to one phase.
+8. v4 (`late_initcall(arm_init)`, `Image.v4late`) stays parked: it is only
+   useful again if the bisection shows the stall is after the watchdog probe,
+   i.e. if KVM comes back on the table.
 
 ## 5. Other facts confirmed this session
 
