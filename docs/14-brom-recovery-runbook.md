@@ -43,6 +43,25 @@ Two facts make most "fixes" unnecessary:
 
 So the failure is almost always "no bootable slot", which is a 32-byte fix.
 
+## 1b. If the phone is stuck on the logo (hung kernel, not a dead bootloader)
+
+This is the common case for kernel tests, and it does **not** need BootROM.
+Every `boot_b` test is flashed with slot b at *one* boot attempt
+(`/data/local/tmp/set_slot_b_tries1.sh`). The bootloader burns that attempt
+before it starts the kernel, so:
+
+1. Hold Power ~15 s and release (one power cycle, no key combination).
+2. The SPL finds slot b unusable and takes slot a on its own.
+3. The `boot_a` rescue rewrites stock `boot_b` and reboots.
+4. Android is back on `_b`, stock kernel. Measured: adb at 172 s, boot
+   completed at uptime 22 s.
+
+No host tooling, no cable re-plug, no BootROM window. Confirm with
+`getprop ro.boot.slot_suffix` (`_b`) and `cat /proc/uptime` (fresh).
+
+Only fall through to section 2 if the phone shows no logo, no backlight and
+enumerates as `1782:4D00` — that means the SPL, not the kernel, failed.
+
 ## 2. Fix: force slot `a`
 
 ```powershell
