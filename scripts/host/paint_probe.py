@@ -6,7 +6,7 @@ destructive on purpose - it overwrites 36 bytes and then spins forever - so it
 only answers one question: "was this address reached?"  If the band appears on
 the panel, yes; if not, no.
 
-Bands are the same 256000-byte strips as DIAG_PAINT (scripts/host/
+Bands are the same 131072-byte strips as DIAG_PAINT (scripts/host/
 prepare_stage_panics.py) and the entry stub (scripts/host/entry_paint.py):
 physical base 0x9e000000 + band * 256000, well inside the bootloader's
 1600x720 framebuffer and below the next reserved region at 0x9f000000.
@@ -22,7 +22,7 @@ import struct
 import sys
 
 PAINT_BASE = 0x9E000000
-PAINT_BAND = 0x3E800  # 256000
+PAINT_BAND = 0x20000  # 131072 = 128 KB, matches DIAG_PAINT_BAND
 
 
 def words(band):
@@ -33,7 +33,7 @@ def words(band):
         0xD2A00009 | (hi << 5),          # movz x9, #hi, lsl #16
         0xF2800009 | (lo << 5),          # movk x9, #lo
         0x9280000B,                      # movn x11, #0        (white)
-        0xD287D00A,                      # movz x10, #16000    (256000 bytes)
+        0xD284000A,                      # movz x10, #8192     (131072 bytes)
         0xA8812D2B,                      # stp  x11, x11, [x9], #16
         0xF100054A,                      # subs x10, x10, #1
         0x54FFFFC1,                      # b.ne -2

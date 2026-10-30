@@ -31,7 +31,7 @@ WORDS = [
     0xAA0303F6,  # mov x22, x3
     0xD2B3C009,  # movz x9, #0x9e00, lsl #16   ; x9 = 0x9e000000 (lcd_base)
     0x9280000B,  # movn x11, #0                 ; white
-    0xD287D00A,  # movz x10, #16000             ; 16000*16 = 256000 bytes
+    0xD284000A,  # movz x10, #8192              ; 8192*16 = 131072 bytes (128 KB)
     0xA8812D2B,  # stp x11, x11, [x9], #16
     0xF100054A,  # subs x10, x10, #1
     0x54FFFFC1,  # b.ne -2
@@ -42,7 +42,7 @@ WORDS = [
     0xD503201F,  # nop
 ]
 STUB_SIZE = 64
-PAINT_BYTES = 256000
+PAINT_BYTES = 131072  # 128 KB, the band stride DIAG_PAINT_BAND
 
 
 def build_stub(image_first_word):

@@ -47,6 +47,7 @@ HEADER = """#ifndef _LINUX_DIAG_STAGE_H
 #include <linux/arm-smccc.h>
 #include <linux/mm.h>
 #include <asm/barrier.h>
+#include <asm/early_ioremap.h>
 
 #define DIAG_PANIC_STAGE %PANIC%
 #define DIAG_ARM_STAGE %ARM%
@@ -78,30 +79,35 @@ static inline void diag_psci_reset(void)
 #define DIAG_PAINT %PAINT%
 
 /*
- * Visual stage trace: paint a white band at the bootloader's framebuffer.
+ * Visual stage trace: paint white bands at the bootloader's framebuffer.
  *
  * The bootloader leaves the panel scanning out of lcd_base=0x9e000000, and
  * that picture stays up while a half-booted kernel hangs (the operator sees
- * the Motorola logo).  Filling a horizontal band therefore gives a progress
- * bar that needs no reset, no ramoops and no console:
+ * the Motorola logo).  Filling horizontal bands there therefore gives a
+ * progress bar that needs no reset, no ramoops and no console.
  *
- *   band 0   painted by the entry stub in scripts/host/entry_paint.py, which
- *            runs with the MMU off before head.S, so it proves the bootloader
- *            entered the Image at all;
- *   band n   stage n reached, painted through the linear mapping installed by
- *            setup_arch(), so only stages 2..8 can use this path.
+ * Layout: band n occupies bytes [n*DIAG_PAINT_BAND, (n+1)*DIAG_PAINT_BAND) of
+ * physical 0x9e000000, so the bands stack downwards and their number is the
+ * answer.  10 bands are 1.28 MB, comfortably inside the 1600x720x32 panel
+ * buffer and below the next reserved region at 0x9f000000.
  *
- * Bands are 256000 bytes each (1600x720x32 is about 40 rows), laid out
- * contiguously from the base, so the number of white bands is the answer.
- * The region is a reserved-memory node without `no-map`, so it stays mapped.
+ * band 0 is painted by the entry stub (scripts/host/entry_paint.py, MMU off,
+ * before head.S).  DIAG_PAINT=1 paints start_kernel()'s stages 2..8 into
+ * bands 1..7; DIAG_PAINT=2 paints the setup_arch() milestones below into
+ * bands 1..9.  Two paint paths, because the linear mapping is only complete
+ * after paging_init():
+ *   diag_paint_early()  early_ioremap(), usable from early_ioremap_init()
+ *                       until early_ioremap_reset() inside setup_arch();
+ *   diag_paint()        phys_to_virt(), valid once paging_init() has mapped
+ *                       the reserved-memory node (it has no `no-map`).
  */
 #define DIAG_PAINT_BASE 0x9e000000UL
-#define DIAG_PAINT_BAND 0x3e800UL\t/* 256000 bytes */
+#define DIAG_PAINT_BAND 0x20000UL\t/* 131072 bytes = 128 KB */
 
-static inline void diag_paint(unsigned int stage)
+static inline void diag_paint(unsigned int band)
 {
 \tvolatile u64 *p = (volatile u64 *)phys_to_virt(DIAG_PAINT_BASE +
-\t\t\t\t\t      (stage - 1) * DIAG_PAINT_BAND);
+\t\t\t\t\t      band * DIAG_PAINT_BAND);
 \tunsigned int i;
 
 \tfor (i = 0; i < DIAG_PAINT_BAND / sizeof(u64); i++)
@@ -109,8 +115,26 @@ static inline void diag_paint(unsigned int stage)
 \tdsb(sy);
 }
 
+static inline void diag_paint_early(unsigned int band)
+{
+\tvoid __iomem *p = early_ioremap(DIAG_PAINT_BASE + band * DIAG_PAINT_BAND,
+\t\t\t\t\tDIAG_PAINT_BAND);
+
+\tif (!p)
+\t\treturn;
+\tmemset_io(p, 0xff, DIAG_PAINT_BAND);
+\tearly_iounmap(p, DIAG_PAINT_BAND);
+\tdsb(sy);
+}
+
+/* start_kernel() stages (mode 1) */
 #define DIAG_PAINT_HOOK(n) \\
-\tdo { if (DIAG_PAINT) diag_paint(n); } while (0)
+\tdo { if (DIAG_PAINT == 1) diag_paint((n) - 1); } while (0)
+
+/* setup_arch() milestones (mode 2); e = 1 for the early_ioremap path */
+#define DIAG_TRACE_HOOK(n, e) \\
+\tdo { if (DIAG_PAINT == 2) \\
+\t\tif (e) diag_paint_early(n); else diag_paint(n); } while (0)
 
 /*
  * Arm the SoC's AON watchdog directly.  This is deliberately independent of
@@ -184,6 +208,20 @@ EDITS = [
      "\tDIAG_STAGE_8;\n\tDIAG_ARM_HOOK(8);\n", "DIAG_ARM_HOOK(8);"),
 ]
 
+# setup_arch() milestones for paint mode 2, in execution order.  Bands 1..4
+# use early_ioremap() (before paging_init()), bands 5..9 phys_to_virt().
+SETUP_TRACE = [
+    ("\tearly_ioremap_init();\n", "\tDIAG_TRACE_HOOK(1, 1);\n"),
+    ("\tsetup_machine_fdt(__fdt_pointer);\n", "\tDIAG_TRACE_HOOK(2, 1);\n"),
+    ("\tparse_early_param();\n", "\tDIAG_TRACE_HOOK(3, 1);\n"),
+    ("\tarm64_memblock_init();\n", "\tDIAG_TRACE_HOOK(4, 1);\n"),
+    ("\tpaging_init();\n", "\tDIAG_TRACE_HOOK(5, 0);\n"),
+    ("\t\tunflatten_device_tree();\n", "\t\tDIAG_TRACE_HOOK(6, 0);\n"),
+    ("\trequest_standard_resources();\n", "\tDIAG_TRACE_HOOK(7, 0);\n"),
+    ("\tsmp_init_cpus();\n", "\tDIAG_TRACE_HOOK(8, 0);\n"),
+    ("\tsmp_build_mpidr_hash();\n", "\tDIAG_TRACE_HOOK(9, 0);\n"),
+]
+
 
 def main():
     panic_stage = sys.argv[1] if len(sys.argv) > 1 else "0"
@@ -248,6 +286,30 @@ def main():
         anchor = "\t" + smc + "\n"
         s = s.replace(anchor, anchor + "\t" + marker + "\n", 1)
         print("inserted %s" % marker)
+
+    # setup_arch() trace (paint mode 2): milestones inside
+    # arch/arm64/kernel/setup.c, bands 1..9.  The first ones must use
+    # early_ioremap() because the linear mapping of 0x9e000000 only appears
+    # with paging_init(); the later ones use phys_to_virt().
+    setup = ROOT / "arch" / "arm64" / "kernel" / "setup.c"
+    t = setup.read_text()
+    if "diag_stage.h" not in t:
+        inc = "#include <linux/init.h>\n"
+        if t.count(inc) == 1:
+            t = t.replace(inc, inc + "#include <linux/diag_stage.h>\n", 1)
+            print("added #include <linux/diag_stage.h> to setup.c")
+        else:
+            print("WARN: include anchor missing in setup.c")
+    for anchor, hook in SETUP_TRACE:
+        if hook.strip() in t:
+            continue
+        if t.count(anchor) != 1:
+            print("WARN: anchor occurs %d times in setup.c: %r"
+                  % (t.count(anchor), anchor))
+            continue
+        t = t.replace(anchor, anchor + hook, 1)
+        print("inserted %s in setup.c" % hook.strip())
+    setup.write_text(t)
 
     # the end-of-init panic must not mask any instrument
     old = "#if defined(DIAG_PANIC_AFTER_INIT) && DIAG_PANIC_STAGE == 0"
