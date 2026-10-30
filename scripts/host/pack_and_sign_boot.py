@@ -41,7 +41,7 @@ def sha256(b):
     return hashlib.sha256(b).hexdigest()
 
 
-def build(base, kernel):
+def build(base, kernel, cmdline_extra=None):
     buf = base.read_bytes()
     h = bootimg.parse(buf)
     ps = h["page_size"]
@@ -70,6 +70,13 @@ def build(base, kernel):
 
     hdr = bytearray(buf[:ps])
     struct.pack_into("<I", hdr, 0x08, len(kernel))
+    if cmdline_extra:
+        cur = hdr[0x40:0x40 + 512].split(b"\0", 1)[0]
+        new = (cur + b" " + cmdline_extra.encode()).ljust(512, b"\0")
+        if len(cur) + 1 + len(cmdline_extra) > 512:
+            sys.exit("cmdline would exceed the 512-byte header field")
+        hdr[0x40:0x40 + 512] = new
+        h["cmdline"] = new.split(b"\0", 1)[0].decode()
     digest = hashlib.sha1()
     for part in hashed:
         digest.update(part)
@@ -85,6 +92,8 @@ def main():
     ap.add_argument("--base", default=str(DEFAULT_BASE))
     ap.add_argument("--key", default=str(DEFAULT_KEY))
     ap.add_argument("--no-sign", action="store_true")
+    ap.add_argument("--cmdline-extra", default=None,
+                    help="append this token to the boot image cmdline")
     args = ap.parse_args()
 
     kernel = pathlib.Path(args.kernel).read_bytes()
@@ -94,7 +103,7 @@ def main():
     if kernel[0x38:0x3c] != b"ARMd":
         sys.exit("%s is not an arm64 Image" % args.kernel)
 
-    img, h = build(base, kernel)
+    img, h = build(base, kernel, args.cmdline_extra)
     out.write_bytes(img)
     print("\nbase %s (%d bytes)" % (base.name, base.stat().st_size))
     print("wrote %s: %d bytes  sha256 %s" % (out.name, len(img), sha256(img)))
