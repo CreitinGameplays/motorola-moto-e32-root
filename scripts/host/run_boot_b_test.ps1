@@ -99,7 +99,24 @@ if (-not $rb -or $rb.ToLower() -ne $imgHash.ToLower()) {
 Log "read-back match : YES"
 
 Log "--- one-attempt slot b ---"
-Log (Sh 'sh /data/local/tmp/set_slot_b_tries1.sh')
+# This step MUST succeed: it is what makes the SPL fall back to slot a when the
+# kernel hangs, i.e. what makes a hang recoverable without BROM.  mali_kroot is
+# probabilistic, so retry until the block really shows b.tries = 1.
+$slotOk = $false
+for ($i = 1; $i -le 5; $i++) {
+    $s = Sh ("/data/local/tmp/mali_kroot >/dev/null 2>&1; " +
+             "if [ `$(id -u) = 0 ]; then sh /data/local/tmp/set_slot_b_tries1.sh; " +
+             "else echo NOROOT; fi")
+    Log "attempt $i : $($s -replace "`r?`n", ' | ')"
+    if ($s -match '1f 00' ) { $slotOk = $true; break }
+    Start-Sleep -Seconds 2
+}
+if (-not $slotOk) {
+    Log "ABORT: could not set slot b to one attempt (root failed); a hang would"
+    Log "        not fall back to slot a. Nothing was rebooted."
+    $lines | Out-File -Append -Encoding utf8 $Out
+    throw "slot b one-attempt not set"
+}
 
 Log "--- reboot ---"
 $t0 = Get-Date

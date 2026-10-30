@@ -20,7 +20,7 @@
 #                stub that runs with the MMU off.
 # Reuses the object tree (same KCFLAGS as the v4 build), so only init/main.c
 # recompiles: seconds, not a full build.
-set -e
+set -eo pipefail
 panic_stage="${1:-0}"
 arm_stage="${2:-0}"
 smc_stage="${3:-0}"
