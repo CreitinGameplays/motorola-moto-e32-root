@@ -291,15 +291,51 @@ partition, which is why two older-banner sessions appear at the end.
 
 ## What that means for the fix
 
-`misc` is the only partition that differs from the pre-failure backups, and
-it still carries `slot_suffix = "_b"`. Slot `b` is the slot holding the hung
-custom kernel and is now marked unbootable (`prio15 tries0 succ0`), while
-`a` is bootable (`prio14 tries0 succ1`) and holds the proven rescue.
+`misc` differs from the pre-failure backup by exactly **6 bytes** — verified by
+a full 1 MB comparison, not just the block:
 
-If this U-Boot resolves the boot slot from `slot_suffix` rather than from
-the BCAB priority/tries logic, it keeps targeting `b` no matter how the
-counters are set — which is exactly the observed behaviour: backlight on,
-then failure while validating the `b` images, with no fallback to `a`.
+```
+0x80c  8e  (was 9e)   slot a: tries 1 -> 0
+0x80e  0f  (was 9f)   slot b: tries 1 -> 0, successful_boot 1 -> 0
+0x81c  dd be 17 46 (was cd 53 f1 45)   crc
+```
+
+Everything else in `misc`, including the BCB text `bootonce-bootloader` at
+offset 0, is identical to the backup — so that text is not a change.
+
+The live block still carries `slot_suffix = "_b"`. Slot `b` is the slot holding
+the hung custom kernel and is now unbootable (`prio15 tries0 succ0`), while `a`
+is bootable (`prio14 tries0 succ1`) and holds the proven rescue.
+
+### The slot decision happens in the SPL, not in U-Boot
+
+This is the part that took longest to see. The stock SPL binary
+(`u-boot-spl-16k-ufs-sign.bin`, the same bytes in flash) contains the A/B
+partition table and the `misc` partition name:
+
+```
+0x0e1e0  sml_a      0x0e1f0  sml_b
+0x0e200  teecfg_a   0x0e210  teecfg_b
+0x0e220  trustos_a  0x0e230  trustos_b
+0x0e240  uboot_a    0x0e250  uboot_b
+0x0e2d6  misc
+```
+
+So the SPL is what resolves slot suffix -> `uboot_X` / `sml_X` / `trustos_X` /
+`teecfg_X` and jumps to U-Boot. A failure there happens **before** U-Boot
+starts, which is exactly why `uboot_log` shows no new session even though the
+phone keeps cycling (`uboot_log` re-read at 18:32 was byte-identical to the
+18:27 copy).
+
+That gives a coherent explanation of the whole timeline:
+
+* While `b` was still bootable (`prio15 tries1 succ1`), the SPL loaded
+  `uboot_b`, U-Boot ran, and the hung custom kernel produced the two log
+  sessions that stop after `backlight on`.
+* The first failed attempt consumed `b`'s retry and cleared its success flag.
+  Now `b` is highest priority but *not* bootable, and because the suffix still
+  says `_b`, the SPL has no usable U-Boot to load and falls back toward
+  download mode. No U-Boot, no logo, no backlight.
 
 `scripts/host/brom_set_slot.ps1 -Slot a -ConfirmWrite` forces
 `slot_suffix = "_a"` with a fresh, CRC-valid block via the tool's own
@@ -313,6 +349,12 @@ read-modify-write of the **whole 1 MB `misc` partition** (dump to
 `path`, patch 32 bytes at `+0x800`, write the partition back). `misc` is
 scratch metadata, and the exact pre-write image is saved to
 `readback_write\misc_before_setslot.bin`.
+
+The write is low-risk in a specific, checkable way: `w_mem_to_part_offset`
+writes sequentially from offset 0, so the 4 KB sector holding byte 0x800 is
+written first; every later byte is identical to what is already in flash. The
+runner also refuses to start unless the rollback dump matches the verified
+live SHA-256 `DFC266B5…50E01`.
 
 ## Recovery ladder
 
