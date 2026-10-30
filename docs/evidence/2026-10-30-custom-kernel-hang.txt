@@ -417,41 +417,43 @@ sprd_wdt_fiq_set_timeout(&wdt->wdd, 30);
 sprd_wdt_fiq_start(&wdt->wdd);     /* CNT_EN | INT_EN | RST_EN */
 ```
 
-**Correction, measured 2026-10-30: this arm can never fire before KVM init.**
-The earlier reasoning ("the probe is a `device_initcall`, link order puts
-`drivers/` before `virt/`, so the arm lands ahead of `kvm_init()`") is wrong
-about the level. In `drivers/watchdog/sprd_wdt_fiq.c` the driver is *not*
-registered by `module_platform_driver()`; it is registered explicitly:
+**Correction to an earlier correction (both happened on 2026-10-30).** A first
+version of this section claimed the arm lands *ahead* of `kvm_init()` because
+`drivers/` links before `virt/`. A second version "corrected" that by pointing
+at `474: late_initcall(sprd_wdt_fiq_init_ops);` and concluded the probe was a
+`late_initcall` running after `kvm_init()`. The second version is **wrong**:
+line 474 registers only the `syscore_ops` suspend/resume hooks. The driver
+itself is registered the ordinary way, at line 503:
 
 ```
-474: late_initcall(sprd_wdt_fiq_init_ops);
+503: module_platform_driver(sprd_watchdog_fiq_driver);
 ```
 
-So `sprd_wdt_fiq_probe()` is a **`late_initcall`**, and it runs *after* every
-`device_initcall` - including `kvm_init()`, which is `module_init()` in
-`virt/kvm/kvm_main.c`. Link order only breaks ties *within* one level; it
-cannot reorder across levels. A stall inside `kvm_init()` therefore happens
-before the probe, the 30 s arm never executes, and the SoC never resets.
+which for a built-in driver is `module_init()` -> **`device_initcall`**. So
+`sprd_wdt_fiq_probe()` is a `device_initcall`, `virt/kvm`'s `arm_init()` is
+also a `device_initcall`, and link order (`$(drivers-y)` before `$(virt-y)`)
+does put the arm ahead of `kvm_init()`. The original reasoning was right; the
+"correction" came from grepping for `initcall` and reading the first hit.
 
-Measured, and it matches exactly: `boot_diagwdt_avb.img` written to `boot_a`
-(`ca3caec0...9d61`), `set_active a`, reboot ->
-**stuck on the Motorola logo for several minutes, no reset, no adb, no fastboot.**
-That is the "no reset" row of the table below, and it is the row that means
-*the stall precedes the wdt probe* - not that KVM is innocent, but that the arm
-is behind KVM rather than ahead of it.
+That still does not rescue the arm, but for a different reason, and this one is
+measured: `boot_diagwdt_avb.img` written to `boot_a` (`ca3caec0...9d61`),
+`set_active a`, reboot -> **stuck on the Motorola logo for several minutes, no
+reset, no adb, no fastboot**, and the bootloader log shows exactly one
+`ANDROID: Booting slot_a` segment with no further attempt. Had the kernel
+reached the watchdog probe, the 30 s timer would have reset it. The stall is
+therefore **before the `device_initcall` phase entirely** - before every driver
+probe, including `kvm_init()` *and* the watchdog.
 
-Consequence for the design: the arm has to be *earlier than* `kvm_init`, or
-`kvm_init` has to be *later than* the arm. The cheap, hardware-free option is
-the second: move `kvm_init()` from `module_init` to `late_initcall` in
-`virt/kvm/kvm_main.c`, so both are `late_initcall`s and the normal link order
-(`$(drivers-y)` before `$(virt-y)`) puts the wdt probe first. Then a KVM hang
-is reset by our own 30 s arm.
+The decisive control for that is the KVM-off image, which hangs identically
+(see below), so this is not about KVM at all. It also means the v4 idea
+(`late_initcall(arm_init)`) cannot help: it only reorders two things that both
+never run.
 
 Outcome table for this image, against the feeder's own 40 s:
 
 | observation | meaning |
 |---|---|
-| **no reset for minutes** (measured) | stall is **before** the `late_initcall` probe that arms the timer - the arm is simply too late |
+| **no reset for minutes** (measured) | stall is **before** the `device_initcall` probe that arms the timer - i.e. before every driver probe |
 | reset + dump, log ends in `kvm_init` | v4 ordering works and KVM init is confirmed |
 | no reset, while `boot_diagstock_avb.img` (same tree, KVM off) resets or boots | the stall is in our tree/build, not KVM |
 
@@ -597,6 +599,27 @@ Stage 1 is the one with a caveat: if the panic there fires before PSCI is
 initialised, the reset may not happen even though the kernel did execute, so a
 stage-1 hang is only meaningful together with a stage-2 reset.
 
+**Measured caveat that makes most of this table useless for now:** on arm64 the
+PSCI restart handler is installed by an `arch_initcall` (`drivers/firmware/
+psci.c`), and `arch_initcall`s run inside `do_initcalls()`. A `panic()` before
+that has no way to reboot - it spins in `machine_restart()` and looks exactly
+like the hang we are chasing. Stage 2 was built and run on 2026-10-30 and
+produced no reset in 100 s, which on its own says nothing about whether
+`setup_arch()` returned.
+
+So the working instrument is the second knob added at the same time,
+`DIAG_ARM_STAGE`: instead of panicking, it arms the **AON watchdog directly**
+from `include/linux/diag_stage.h` (`ioremap(0x644e0000)`, the register sequence
+copied from `sprd_wdt_fiq_{unlock,load_value,enable,start}()`, `CNT_EN|RST_EN`,
+10 s, no `INT_EN` so no FIQ is needed) and then keeps booting. That reset source
+is pure hardware and does not care that PSCI, the clock framework or any driver
+is not up yet. `DIAG_ARM_STAGE=9` arms at every stage from 2 to 8, so a single
+boot answers "did the kernel reach at least the end of `setup_arch()`?"; then
+bisect by arming at one stage only.
+
+Kernel built for that first attempt: `Image.p0a9`, sha256
+`05aa5a88...4f11` (panic off, arm everywhere).
+
 ### Next tests, cheapest first
 
 1. ~~Stock control (`scripts/device/panic_test.sh`)~~ - **done, rebooted in 19 s
@@ -625,14 +648,18 @@ stage-1 hang is only meaningful together with a stage-2 reset.
    on the next boot.
 6. ~~`boot_diagstock_avb.img`~~ - **done, hangs identically**, so KVM is not the
    cause and the stall is before the last initcall (section above).
-7. **Bisect with staged early panics** - the new main line, ~2 minutes per step.
-   `scripts/host/stage_build.sh <n>` rebuilds one stage (link only), then
-   `pack_and_sign_boot.py`, `dd` into `boot_a`, `set_active a`, and watch for a
-   reset within ~20 s. A reset means that stage was reached; a hang means it was
-   not. Start at stage 4, then 2 or 6, then narrow to one phase.
-8. v4 (`late_initcall(arm_init)`, `Image.v4late`) stays parked: it is only
-   useful again if the bisection shows the stall is after the watchdog probe,
-   i.e. if KVM comes back on the table.
+7. **Bisect with the early AON arm** - the new main line, ~2 minutes per step.
+   `scripts/host/stage_build.sh <panic> <arm>` rebuilds one configuration (link
+   only), then `pack_and_sign_boot.py`, `dd` into `boot_a`, `set_active a`, and
+   watch for a reset within ~30 s. **A reset means the kernel reached the arm
+   point; a hang of several minutes means it did not.** (Do not use the panic
+   knob for this: before `arch_initcall` a panic cannot reset.)
+   - first: `stage_build.sh 0 9` (arm at every stage, 10 s). A reset proves the
+     kernel at least finishes `setup_arch()` and the arm sequence itself works.
+   - then arm only at stage 2, then 3..8, one at a time, to find the first stage
+     whose arm still resets: the stall is in the next phase.
+8. v4 (`late_initcall(arm_init)`, `Image.v4late`) stays parked: it only reorders
+   two things that, on the current evidence, both never run.
 
 ## 5. Other facts confirmed this session
 
@@ -697,3 +724,23 @@ Sept-Oct 2026) - same vendor family, modern kernels:
 - **31o**: the firmware starts every CPU at EL2 on their boards too
   (`CPU: All CPU(s) started at EL2`), and KVM works there (5.4 nVHE, 6.18 VHE),
   so "KVM at EL2" is not by itself a problem on this platform.
+
+## 7. Session state at hand-off (2026-10-30, end of session)
+
+- Device is **healthy on slot `_b`**: `ro.boot.slot_suffix=_b`,
+  `sys.boot_completed=1`, `ro.boot.verifiedbootstate=orange`, uptime ~112 s at
+  the check, root via `/data/local/tmp/mali_kroot`. `boot_b` is untouched
+  (`ccd0faff...7b18`).
+- `boot_a` currently contains `boot_stage2.img` (`a883c8a7...5a2c`), not stock.
+  This is harmless - slot `a` has no userspace at all (Virtual A/B), so it can
+  never boot to Android anyway, and `set_active b` always recovers.
+- `set_active` reboots the phone on its own, so a following `fastboot reboot`
+  blocks on `< waiting for any device >`; kill stale `fastboot` processes.
+- Built and waiting on the VPS, not yet downloaded or packed: `Image.p0a9`
+  (`05aa5a88...4f11`, panic off, AON arm at every stage 2-8, 10 s).
+- Not yet tried anywhere: `Image.v4late` (`b8811a9a...7761`), parked.
+- Open question the next experiment answers: **does the kernel reach the end of
+  `setup_arch()`?** `Image.p0a9` resetting ~10 s in says yes and gives a
+  starting point for the stage-by-stage bisection; a hang says no, and the
+  comparison target becomes a stock-config rebuild rather than a driver-level
+  bug hunt.
