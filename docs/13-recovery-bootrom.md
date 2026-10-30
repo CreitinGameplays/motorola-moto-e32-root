@@ -1,6 +1,9 @@
 # 13 - Recovering the phone: state of the boot chain
 
-Status: **in progress. The phone does not boot; the fault is below U-Boot.**
+Status: **in progress. The read path is fully working. The flash contents are
+proven intact, and `uboot_log` shows U-Boot DOES run (LCD init + backlight),
+so the earlier "fault is below U-Boot" conclusion is superseded — see
+[U-Boot does run](#correction-uboot-does-run-proven-from-uboot_log).**
 Evidence: [evidence/2026-10-30-brom-recovery.txt](evidence/2026-10-30-brom-recovery.txt).
 
 Context: root/unlock is already solved and documented (docs 06, 07, 09).
@@ -242,6 +245,74 @@ The probe set separates them:
 
 * `0x0D` (flash info) / `0x2D` (partition table) **succeed** -> (b).
 * they **fail or return errors** -> (a).
+
+## CORRECTION: U-Boot does run, proven from `uboot_log`
+
+The `uboot_log` partition (4 MB) is a boot history, one session per 256 KB
+slot. Read back at 18:27, it contains 16 sessions:
+
+```
+0x000000  U-Boot 2015.07-g0bc803f (Feb 20 2024)
+0x040000  same
+0x080000  same
+...       same, through 0x2c0000
+0x300000  uboot consume 2400ms, lcd init 1934ms, backlight on 3695ms   <- stops here
+0x340000  uboot consume 2400ms, lcd init 1934ms, backlight on 3695ms   <- stops here
+0x380000  U-Boot 2015.07 (Nov 11 2022)  = FDL download agent, dl_cmd_reboot()
+0x3c0000  U-Boot 2015.07 (Nov 11 2022)  = FDL download agent, dl_cmd_reboot()
+```
+
+The four sessions at `0x200000`-`0x2c0000` go all the way through and print
+
+```
+enter mode normal, consume time: 5476ms, boot_reason: Reboot into normal
+```
+
+The two sessions at `0x300000` and `0x340000` stop immediately after
+
+```
+[sprdfb][set_backlight] ... brightness:25
+uboot consume time:2400ms, lcd init consume:1934ms, backlight on time:3695ms
+```
+
+They never print `enter mode normal`. Those are the two custom-kernel
+attempts: U-Boot started, parsed the panel devicetree, initialised the LCD,
+turned the backlight on, and then stopped.
+
+That kills the "zero logo means U-Boot never runs" inference. U-Boot runs,
+reaches display init, and dies after it. The correct reading of the
+symptom is: **the panel and backlight are initialised by U-Boot, so a dark
+screen after that point is U-Boot failing later, not the SoC failing
+before it.**
+
+Note the two distinct U-Boot builds: `Feb 20 2024` is the device's real
+U-Boot, `Nov 11 2022` is the download agent (FDL2) that logs into the same
+partition, which is why two older-banner sessions appear at the end.
+
+## What that means for the fix
+
+`misc` is the only partition that differs from the pre-failure backups, and
+it still carries `slot_suffix = "_b"`. Slot `b` is the slot holding the hung
+custom kernel and is now marked unbootable (`prio15 tries0 succ0`), while
+`a` is bootable (`prio14 tries0 succ1`) and holds the proven rescue.
+
+If this U-Boot resolves the boot slot from `slot_suffix` rather than from
+the BCAB priority/tries logic, it keeps targeting `b` no matter how the
+counters are set — which is exactly the observed behaviour: backlight on,
+then failure while validating the `b` images, with no fallback to `a`.
+
+`scripts/host/brom_set_slot.ps1 -Slot a -ConfirmWrite` forces
+`slot_suffix = "_a"` with a fresh, CRC-valid block via the tool's own
+`set_active` implementation:
+
+* chosen slot: priority 15, tries 6, successful 0
+* other slot : priority 14, tries 1, successful 0
+
+Be aware what that command really does: `set_active` is implemented as a
+read-modify-write of the **whole 1 MB `misc` partition** (dump to
+`path`, patch 32 bytes at `+0x800`, write the partition back). `misc` is
+scratch metadata, and the exact pre-write image is saved to
+`readback_write\misc_before_setslot.bin`.
 
 ## Recovery ladder
 
