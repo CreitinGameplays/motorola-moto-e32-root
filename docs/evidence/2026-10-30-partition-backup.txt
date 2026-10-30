@@ -1,0 +1,48 @@
+﻿2026-10-30  Full boot-critical partition backup before the boot_b experiment
+Device: motorola hawaii (XT2227-1), serial ZF523X9NXW, slot _b
+        RORS31.335-58-1 / 612c2, flash.locked=0, verifiedbootstate=orange
+Dumped with root (mali_kroot) by scripts/device/backup_partitions.sh, no
+fastboot readback involved.
+
+Local copy : D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\
+On device  : /data/local/tmp/backup/
+25 partitions, 413,138,944 bytes total, all 25 hashes re-verified after the
+adb pull (0 mismatches).
+
+IMPORTANT: boot_a is NOT an equivalent fallback. Its kernel is an OLDER build:
+  boot_a: Linux version 4.14.199+-abc1989 (xscm@ontimbjlx014)
+          #1 SMP PREEMPT Tue Jan 23 12:30:36 CST 2024
+  boot_b: Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020)
+          #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024
+The per-slot vbmeta_system/vendor/product hashes differ too, so set_active a
+would boot an older, mismatched slot. The real restore path is
+  fastboot flash boot_b <stock boot_b.img>
+with the phone in the bootloader (hold Power + Volume-Down if Android is dead).
+
+format: sha256   bytes   partition   (file: <partition>.img)
+
+331afe63444f35a27a56bdbc79091a554e240fd9c578dd93dcc76af05dc478bc    67108864  boot_a
+ccd0faff51ab24d921b2671c562f0fe08e7a1ba2b7f19bb93a5f2650eb4f7b18    67108864  boot_b
+8b988a5386fd153ffc54304bb9001180b5d935c88867d47573dd67fc04492a9c     8388608  dtbo_a
+1e456e47110f454030c0418648cd5d1fb8243667282ad546a5e7460367b994ea     8388608  dtbo_b
+20492a4d0d84f8beb1767f6616229f85d44c2827b64bdbfb260ee12fa1109e0e   104857600  vendor_boot_a
+20492a4d0d84f8beb1767f6616229f85d44c2827b64bdbfb260ee12fa1109e0e   104857600  vendor_boot_b
+801648773ec649d32057155eebdf721338774afd6e5c5c22938eec163ed9123e     1048576  vbmeta_a
+801648773ec649d32057155eebdf721338774afd6e5c5c22938eec163ed9123e     1048576  vbmeta_b
+4f194ac11b2e8b0e8647a0600f87912d87065b76c07cf52d3283928d3e01b963     1048576  vbmeta_system_a
+2a35b759017c64e9af4d6557a7b768ba88de891110e39048953dfaaab28accd1     1048576  vbmeta_system_b
+8a4c26236ca9f4ba022ad3868a25b312dfff676604dcd964c529367b9b5b0cc1     1048576  vbmeta_vendor_a
+b2bdf0088a87d698e18368de807fcc93d2de467a7a1a7653590486b2c2531736     1048576  vbmeta_vendor_b
+5efccc3795247251306300a1a275b37ba76c807ba5ea9bd157f1ab7e2986865e     1048576  vbmeta_product_a
+96fb05e4723cb9e039fbf4c8b6cf84a166b5ad5d721181356135f6842656603b     1048576  vbmeta_product_b
+0dead5ec34d2808518d2833ac3d1f68d5524bf38f33321cfa6b33caa17aa30d8     1048576  misc
+a8aab192fd8d5d6bd925a5979b04425bf9e542ca2bd9e3af3150602896cf939f     1048576  miscdata
+9218339ef2b051a28c31be002a0dc87e030b53480353084f85b9a18982492b4f     3145728  uboot_a
+9218339ef2b051a28c31be002a0dc87e030b53480353084f85b9a18982492b4f     3145728  uboot_b
+a353453838e86f8fcd742fb214e301a99ba9681617d05efb8617ebff584f313b     1048576  sml_a
+24f0ef27deee28ec8d9963f96a98a328b6557166910389eb9ee30bf36630199f     1048576  sml_b
+7467775ed4699d7530556aa2c457a20ea6922ad7300a182e1136193a49575801     6291456  trustos_a
+6a6080c82a895ad95e669ea268eed7e569ea78c338dc762ad7ca91f990fb805b     6291456  trustos_b
+e9d33312063e776df9efe60b3a40586b85379e0bd696fcf0e441ff66201ea094    10485760  prodnv
+fe3cf5299196ccc02a0b5632bb594ebc384563cd2d21a3a2f7ceb19d30741029     8388608  logo
+88a1a30f9d3de41726eb9687a179f86a79cddbaee6719aca4e64fbd1c21b851c     2097152  persist
