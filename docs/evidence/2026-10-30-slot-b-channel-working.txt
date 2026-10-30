@@ -1,0 +1,79 @@
+# slot_b channel: dd-written boot_b boots to userspace (2026-10-30)
+
+Device: ZF523X9NXW. `boot_a` = restore rescue (`fc3ca0ef...44c0`),
+`boot_b` = image written by `dd` from the runtime-root shell.
+
+## Part 1 - control: stock content, self-signed
+
+`artifacts/kernel-build/boot_stock_signed.img`
+  sha256 `55ddec277b4ce01d2514a46b19ebf0b271fc30572ad4373ef197a0d73246db77`
+
+Offline verification before writing:
+
+* payload (`0 .. 0x211d000`) is byte-identical to stock `boot_b.img` except
+  20 bytes at `0x240` - the boot header's `id[]` (SHA-1 of the payload),
+  which is recomputed when the image is repacked. Kernel, ramdisk, DTB and
+  cmdline are unchanged.
+* footer `AVBf` at `0x3ffffc0`, `original_image_size = 0x211d000`,
+  `vbmeta_size = 2112` (our key instead of the OEM's 2304-byte blob),
+  everything between the vbmeta and the footer is zero.
+
+Written with `scripts/device/write_boot_b.sh` (which first copies the previous
+`boot_b` to `/data/local/tmp/boot_b.prev.img`):
+
+```
+prev   ccd0faff...7b18   (stock)
+new    55ddec27...db77   readback == source
+boot_a fc3ca0ef...44c0   (restore rescue, untouched)
+```
+
+`adb reboot` (slot already `_b`) ->
+
+```
+sys.boot_completed = 1 after ~25 s
+ro.boot.slot_suffix = _b, verifiedbootstate = orange
+uname -a: Linux localhost 4.14.199+-ab612c2 #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024 aarch64
+mali_kroot -> uid=0
+boot_b sha256 still 55ddec27...db77
+```
+
+So an image repacked with a non-OEM AVB key **does** boot from `boot_b` with
+full Android userspace, vendor modules included. The earlier "hangs at the
+logo" results were therefore **not** about the container, the `dd` write, the
+self-signed vbmeta or the slot machinery: they were the kernel itself.
+
+## Part 2 - the safety net, proven end to end
+
+`boot_a` holds the restore rescue, which was tested immediately before this:
+
+* rewrote all 64 MiB of `boot_b` from its embedded stock blob
+* full-partition FNV-1a readback matched (`0xe00219676ca740d7`)
+* marker `mode 1 / status 2`
+* `boot_b` came back as `ccd0faff...7b18` (byte-identical stock), Android on `_b`
+
+Recovery path for any future bad `boot_b`:
+
+```
+hang -> force off (hold Power ~10 s) -> hold Vol Down + Power -> fastboot
+fastboot set_active a        # boots the rescue
+# rescue rewrites boot_b from its embedded copy, flips to _b, reboots
+```
+
+No fastboot flash, no BootROM, no `/data`, no filesystem.
+
+## What this unblocks
+
+Kernel tests now run in `boot_b`, i.e. with `androidboot.slot_suffix=_b` and
+the real `_b` vendor ramdisk / system / vendor / product partitions, which is
+exactly what every previous `boot_a` experiment could never reach. The next
+question is no longer "can we boot a modified image?" but "why does our own
+kernel tree stop early?"
+
+Order of the next three runs (each one a single reboot, recovery as above):
+
+1. `boot_diagstock_avb.img` - our tree, KVM **off**
+2. `boot_diagwdt_avb.img` - our tree, KVM + detectors + AON wdt armed at 30 s
+3. the plain KVM image
+
+Number 1 separates "our tree/config is broken" from "KVM is the trigger" and
+is the cheapest discriminator.

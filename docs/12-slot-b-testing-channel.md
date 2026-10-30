@@ -172,6 +172,20 @@ So the full round trip is proven: `boot_b` can be rewritten by a `boot_a`
 rescue without fastboot, `/cache`, `/data` or the filesystem, and the device
 returns to Android on `_b`.
 
+## Aftermath: the channel is now live
+
+Both rescue modes verified on the device, and the first `boot_b` test already
+answered the open question from earlier experiments:
+
+* `boot_b` = `boot_stock_signed.img` (`55ddec27...db77`, stock payload +
+  our vbmeta, only the boot `id[]` recomputed) written by `dd`, reboot ->
+  **Android userspace on `_b` in 25 s**, `4.14.199+-ab612c2`, root regained.
+* So the container, the `dd` write, the non-OEM AVB key and the slot
+  machinery are all fine - the old "hangs at the logo" results were the
+  **kernel itself**.
+
+Evidence: [evidence/2026-10-30-slot-b-channel-working.txt](evidence/2026-10-30-slot-b-channel-working.txt).
+
 ## Risks
 
 * The initramfs is large (34.8 MB uncompressed); if the bootloader or kernel
