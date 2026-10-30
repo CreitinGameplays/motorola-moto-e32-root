@@ -132,13 +132,24 @@ embedded 34.79 MB blob and footer hash-match the host-side stock bytes; the
 two `slot_info` records. The block the fixed init writes is byte-identical to
 what `set_active b` leaves behind, re-read from the device after recovery.
 
-## Dry run #2 (pending approval)
+## Dry run #2: passed (2026-10-30)
 
-`artifacts/rescue/boot_rescue_dry2.img` (`f46ded7b...672c`) to `boot_a`, then
-`set_active a`. Expected: rescue runs (~1 marker), writes the full A/B block,
-reboots, bootloader picks slot `b`, Android comes up on `_b` with the marker
-still reading status 11 and `misc+0x800` = `_b / a=0x008e / b=0x00ef`.
-Recovery if it loops again: key combo -> `set_active b` (used twice, works).
+`boot_rescue_dry2.img` (`f46ded7b...672c`) was `dd`-ed to `boot_a` (readback
+identical, `boot_b` still `ccd0faff...7b18`), then `set_active a`. Result:
+
+```
+t+34 s  sys.boot_completed = 1, ro.boot.slot_suffix = _b
+marker  DRESCUE1 status 11 (dry), blob/footer hashes exact
+misc before: "_a"  a=0x00ef (prio 15)  b=0x008e (prio 14)
+misc after:  "_b"  a=0x008e (prio 14)  b=0x00ef (prio 15)  crc 0x49b9de16
+```
+
+The rescue runs on slot `a`, rewrites the whole A/B block, reboots, and the
+bootloader picks slot `b` - Android userspace, on the stock `boot_b`. This is
+the handoff the whole channel depends on, and it is now proven.
+
+Recovery from here is unchanged and did not need the key combo: the loop never
+happened, because the handoff works.
 
 ## Risks
 
