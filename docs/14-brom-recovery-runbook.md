@@ -92,6 +92,14 @@ _b
 orange
 ```
 
+Confirm the A/B block is the healthy steady state (root via
+`/data/local/tmp/mali_kroot`, then `dd from /dev/block/by-name/misc`):
+
+```
+slot_suffix '_b'  slot a 0x008e (prio14 tries0 succ1)  slot b 0x00ef (prio15 tries6 succ1)
+crc 0x49b9de16 -> VALID
+```
+
 ## 4. After recovery: root still works, resume
 
 The rescue writes a **stock** `boot_b`, so the Magisk patch and any custom

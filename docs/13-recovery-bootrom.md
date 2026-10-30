@@ -413,6 +413,19 @@ ro.build.fingerprint       motorola/hawaii/hawaii:11/RORS31.335-58-1/612c2:user/
 uptime                     0 min
 ```
 
+The `misc` block the rescue left behind (read at 18:42 as root) is the
+known-good steady state, not a degraded one:
+
+```
+slot_suffix '_b'   magic BCAB   version 1   nb_slot 2
+slot a 0x008e prio=14 tries=0 succ=1
+slot b 0x00ef prio=15 tries=6 succ=1
+crc 0x49b9de16 = computed -> VALID   boot order: b, a
+```
+
+That is the same block the rescue's earlier restore test produced, so a
+normal reboot boots slot `b` again without burning a retry.
+
 **Side effect to remember:** `boot_b` is now the stock image again, so the
 Magisk root and the custom kernel are gone from it. Runtime root is *not*
 lost, though: `/data/local/tmp/mali_kroot` still elevates to `uid=0` on the
