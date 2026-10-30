@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: OpenCode <opencode@localhost>
+Date: Fri, 30 Oct 2026 15:50:00 -0300
+Subject: [PATCH] DIAG ONLY: panic at the end of kernel init to prove liveness
+
+Diagnostic scaffold, not part of the KVM feature work and not to be left
+enabled in a "real" build.
+
+The custom kernel boots past the secure world and then appears to hang at the
+Motorola logo: no adb, no fastboot, no reboot loop, no sysdump.  A second
+hypothesis fits the same symptom exactly - the kernel boots normally but the
+display and USB gadget never come up (vendor modules built against the shipping
+tree have mismatched __crc_ values, 125/282 for mali_kbase.ko), so the phone
+looks dead while Android runs.
+
+This hunk distinguishes the two: with -DDIAG_PANIC_AFTER_INIT the kernel panics
+right after the last initcall, so
+
+  * if a dump appears, the kernel finished initialising (the boot log in the
+    dump then shows which driver probes failed -> display/USB), and
+  * if no dump appears, the kernel really does die earlier, and the softlockup
+    panic path gives the backtrace of the stuck CPU instead.
+
+Only compiled in when KCFLAGS=-DDIAG_PANIC_AFTER_INIT is passed, so an ordinary
+build of this tree is unaffected.
+
+diff --git a/init/main.c b/init/main.c
+--- a/init/main.c
++++ b/init/main.c
+@@ -1052,6 +1052,16 @@ static int __ref kernel_init(void *unused)
+ 	numa_default_policy();
+ 
+ 	rcu_end_inkernel_boot();
+ 
++#ifdef DIAG_PANIC_AFTER_INIT
++	/* DIAG build only (KCFLAGS=-DDIAG_PANIC_AFTER_INIT): prove that the
++	 * kernel finished every initcall and hand the full boot log to SPRD
++	 * sysdump before userspace starts.  Used to tell a kernel that hangs
++	 * apart from a kernel that boots with dead display/USB.
++	 */
++	panic("DIAG: kernel init complete, about to exec init");
++#endif
+ 	pr_emerg("run init\n");
+ 	if (ramdisk_execute_command) {
+ 		ret = run_init_process(ramdisk_execute_command);
+-- 
+2.39.5
