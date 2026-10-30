@@ -61,6 +61,38 @@ fastboot set_active a        # boots the rescue
 
 No fastboot flash, no BootROM, no `/data`, no filesystem.
 
+## Part 3 - first custom kernel in slot b: same early hang, so not KVM
+
+`boot_diagstock_avb.img` (`dcbfb17d...f40b`: our tree, **KVM off**, same
+diagnostics) was written to `boot_b` (readback identical, `boot_a` still the
+restore rescue) and the A/B block was set to give slot b one attempt:
+
+```
+slot a = prio 14, tries 0, successful 1   (0x008e)
+slot b = prio 15, tries 1, successful 0   (0x001f)   crc 0x20a582b1
+```
+
+Result: **identical hang to the old slot-`a` tests.** Motorola logo, no adb,
+no reset for 244 s, eyes only.
+
+That is the decisive control, and it lands where the earlier `boot_a`
+experiments already pointed: **the hang is in our kernel build, not in KVM,
+not in the container, not in the slot machinery**. A kernel built from this
+tree dies before the vendor AON watchdog feeder arms at `late_initcall`
+(~1.6 s), i.e. before any driver probe - which is also why nothing ever
+panics and why the board never resets by itself.
+
+Since `boot_b` now has userspace, this also rules out the "kernel actually
+boots, only display/USB are dead" reading: there was no adb at all.
+
+Next instrument: `Image.p0a9` (`05aa5a88...4f11`, panic knob off, AON watchdog
+armed at every stage >= 2 for 10 s), packed as `boot_p0a9_avb.img`
+(`59280a51...df48`). If the kernel reaches the end of `setup_arch()`, the
+board resets by itself within ~10 s; the bootloader then sees slot b with
+`tries_remaining = 0`, falls back to slot `a`, the rescue restores stock
+`boot_b`, and Android returns on `_b` - no manual intervention, and a dump in
+`sysdumpdb` to read. A hang instead of a reset puts the death before stage 2.
+
 ## What this unblocks
 
 Kernel tests now run in `boot_b`, i.e. with `androidboot.slot_suffix=_b` and
@@ -69,11 +101,7 @@ exactly what every previous `boot_a` experiment could never reach. The next
 question is no longer "can we boot a modified image?" but "why does our own
 kernel tree stop early?"
 
-Order of the next three runs (each one a single reboot, recovery as above):
-
-1. `boot_diagstock_avb.img` - our tree, KVM **off**
-2. `boot_diagwdt_avb.img` - our tree, KVM + detectors + AON wdt armed at 30 s
-3. the plain KVM image
-
-Number 1 separates "our tree/config is broken" from "KVM is the trigger" and
-is the cheapest discriminator.
+The three-run discriminator planned here has since been answered by run 1:
+`boot_diagstock_avb.img` (KVM off) hangs identically, so the stall is in the
+kernel build, not in KVM. The live question is now *where* in the first ~1.6 s
+it dies, which is what the early AON-watchdog arm measures.
