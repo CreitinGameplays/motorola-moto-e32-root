@@ -1,7 +1,8 @@
 # 12 - Making slot_b usable: the boot_a rescue image
 
-Status: **step 3 failed (dry run #1 boot-looped), root cause found and fixed;
-device recovery + dry run #2 pending.** See
+Status: **done - the boot_a rescue works in both modes (dry handoff and full
+restore), verified on the device.** It is now the safety net for kernel tests
+in `boot_b`. Evidence:
 [evidence/2026-10-30-rescue-dry1-bootloop.txt](evidence/2026-10-30-rescue-dry1-bootloop.txt).
 Evidence: [evidence/2026-10-30-channel-research.txt](evidence/2026-10-30-channel-research.txt).
 
@@ -150,6 +151,26 @@ the handoff the whole channel depends on, and it is now proven.
 
 Recovery from here is unchanged and did not need the key combo: the loop never
 happened, because the handoff works.
+
+## Restore test: passed (2026-10-30)
+
+`boot_rescue_restore.img` (`fc3ca0ef...44c0`) was `dd`-ed to `boot_a` and
+booted with `set_active a`. The init rewrote the whole 64 MiB `boot_b` from
+its embedded copy, padded with zeros, wrote the footer, verified the **entire
+partition** by FNV-1a readback, wrote the A/B block, and rebooted:
+
+```
+marker  DRESCUE1 mode 1 (restore) status 2 (OK)
+        blob size 34724096, blob/footer hashes exact,
+        readback hash 0xe00219676ca740d7 == expected
+boot_b  sha256 ccd0faff...7b18  (unchanged, byte-identical to stock)
+boot_a  sha256 fc3ca0ef...44c0  (the restore rescue)
+slot    _b, Android up after 40 s
+```
+
+So the full round trip is proven: `boot_b` can be rewritten by a `boot_a`
+rescue without fastboot, `/cache`, `/data` or the filesystem, and the device
+returns to Android on `_b`.
 
 ## Risks
 
