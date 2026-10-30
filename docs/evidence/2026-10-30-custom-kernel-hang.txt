@@ -188,7 +188,107 @@ Limitation worth knowing: a softlockup is only detected while interrupts are
 *enabled*. If the hang is a spinlock deadlock with IRQs masked, the detector
 cannot fire; `DETECT_HUNG_TASK` then only helps for tasks stuck in D state.
 
-## 4. Other facts confirmed this session
+## 4. Result of the diagnostic boot: no panic, and now we know why that is not conclusive
+
+`boot_diag_avb.img` (kernel `Image.diag`, sha256 `b2d03818...215a`, image
+sha256 `50e8fff4...c69900`) was written to `boot_a` (readback verified, sha256
+matched), slot `a` set active, and booted. Result:
+
+| detector armed | observed |
+|---|---|
+| `SOFTLOCKUP_DETECTOR` + `BOOTPARAM_SOFTLOCKUP_PANIC` | no `BUG: soft lockup` |
+| `DETECT_HUNG_TASK` + `BOOTPARAM_HUNG_TASK_PANIC` | no hung-task report |
+| `panic()` at the end of `kernel_init()` | never reached (or reached and invisible) |
+| `PANIC_ON_OOPS` + `PANIC_TIMEOUT=5` | **no reboot at all** |
+
+The device sat on the Motorola logo until it was power cycled by hand.
+
+**The absence of a reboot proves much less than it looks.** Reading the actual
+reset path in this tree:
+
+```c
+/* kernel/panic.c, CONFIG_SPRD_EMERGENCY_RESTART=y */
+void sprd_emergency_restart(char *cmd)   /* called instead of emergency_restart() */
+{
+        if (cmd != NULL && strstr(cmd, "tospanic"))
+                machine_restart("tospanic");
+        else
+                machine_restart("panic");
+}
+```
+
+and in `arch/arm64/kernel/process.c`:
+
+```c
+void machine_restart(char *cmd)
+{
+        local_irq_disable();
+        smp_send_stop();
+        if (efi_enabled(EFI_RUNTIME_SERVICES)) efi_reboot(...);
+        if (arm_pm_restart) arm_pm_restart(reboot_mode, cmd);
+        else               do_kernel_restart(cmd);     /* restart_handler_list */
+        printk("Reboot failed -- System halted\n");
+        while (1);
+}
+```
+
+There is **no `psci` node** in the DTB, and the only arm64-relevant restart
+handler source in this tree is `drivers/spi/spi-sprd-adi.c`
+(`sprd_adi_restart_handler`, registered at line 609). Its driver is
+`module_platform_driver(...)` - a **device_initcall** - so a working reset only
+exists if that SPI/ADI probe succeeded, which is late and conditional
+(`CONFIG_SPI_SPRD_ADI=y`, node `spi@64200000`).
+
+So both of these produce exactly "logo, no reboot, nothing anywhere":
+
+1. the kernel stops early with IRQs masked (before `lockup_detector_init()`),
+2. the kernel *does* panic, prints to the invisible UART, calls
+   `machine_restart()`, finds no handler and parks in
+   `Reboot failed -- System halted` + `while(1)`.
+
+A third candidate was also eliminated: `el2_setup` in
+`arch/arm64/kernel/head.S` installs the hyp stub **unconditionally**
+(`adr_l x0, __hyp_stub_vectors; msr vbar_el2, x0`), with no
+`CONFIG_KVM`/`CONFIG_VIRTUALIZATION` conditional in that path, so `CONFIG_KVM=y`
+does not by itself alter early boot at this level.
+
+### The reset hardware that does not need a handler
+
+From the stock DTB (811 nodes parsed from `boot_dtb.dtb`):
+
+| node | compatible | meaning |
+|---|---|---|
+| `/soc/aon/watchdog@644e0000` (`size 0x10000`) | `sprd,wdt-r2p0-fiq` | AON watchdog, hardware reset, no PSCI and no driver needed |
+| `/soc/aon/spi@64200000/pmic@0/watchdog@40` | `sprd,sc2730-wdt`, `sprd,sc27xx-wdt` | SC2730 PMIC watchdog - resets PMIC/AP/modem together |
+| `/soc/aon/spi@64200000/pmic@0/hw_reset@1bc0` | `sprd,sc2730-7sreset` | PMIC-level "7 s reset" |
+
+`drivers/watchdog/sprd_wdt_fiq.c` gives the AON register map for that node:
+`LOAD_LOW 0x0`, `LOAD_HIGH 0x4`, `CTRL 0x8`, `LOCK 0x20`,
+`UNLOCK_KEY 0xe551`, `CNT_STEP 32768`, `CNT_EN = BIT(1)`, `RST_EN = BIT(3)`.
+Programming LOAD/CTRL directly from early C yields a **self-reset that survives
+a hard lockup**, which is exactly what is missing from the diagnostic build.
+
+### Next tests, cheapest first
+
+1. **Stock control (`scripts/device/panic_test.sh`).** On unmodified Android as
+   root, `echo c > /proc/sysrq-trigger` is a real `panic()`. If the phone
+   reboots within seconds, a restart handler *does* work on stock and a panic is
+   observable -> our kernel never reached `panic()`. If it just sits there,
+   hypothesis 2 above is confirmed for the whole platform. Either way a
+   `sysdumpdb` dump should appear, which validates
+   `dump_sysdump_full.sh` + `sysdump_extract.py` end to end.
+2. **`boot_stock_signed.img`** (stock kernel, sha256 `55ddec27...db77`) in our
+   signed container: if Android boots, the container/vbmeta/`dd` path is proven
+   and only the kernel binary remains as a variable.
+3. **`boot_diagstock_avb.img`** (`Image.diagstock`, sha256 `ecc9989a...324c`;
+   our tree with **KVM off** + the same diagnostics, image
+   `dcbfb17d...f40b`; only 2,048 B larger than the stock kernel vs 550 KB for
+   the KVM build): separates "KVM delta" from "our tree/build".
+4. If everything stays silent, a DIAG build that arms
+   `/soc/aon/watchdog@644e0000` early (LOAD/CTRL as above, ~30 s) so a stall
+   self-resets and a panic can land in `sysdumpdb`.
+
+## 5. Other facts confirmed this session
 
 - Boot image header is equivalent in stock and custom: page 2048, header v2,
   `os_version 0x16000182`, `kernel_addr 0x8000`, `ramdisk_addr 0x5400000`,
