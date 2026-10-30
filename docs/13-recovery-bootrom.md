@@ -90,6 +90,34 @@ So "wrong command or wrong mode" means *stale session*, not wrong chip and
 not a dead phone. Each fresh session lasts only a couple of minutes, then
 the node goes idle again.
 
+Re-confirmed 18:16 against the node that had been sitting on the bus since
+18:08: exactly ten `LIBUSB_ERROR_TIMEOUT` receives, then
+`wrong command or wrong mode detected`. Nothing was sent to the phone and
+nothing was written; the payload never left the host.
+
+### The phone re-enumerates by itself
+
+This is the useful part discovered on 18:16. The phone does not need to be
+unplugged to produce a fresh BootROM: it repeatedly drops and re-adds the
+`1782:4D00` node on its own.
+
+```
+18:16:35 REMOVE USB\VID_1782&PID_4D00\5&E7DA5E8&0&1
+18:16:45 ADD    USB\VID_1782&PID_4D00\5&E7DA5E8&0&1
+18:17:04 REMOVE USB\VID_1782&PID_4D00\5&E7DA5E8&0&1
+```
+
+Earlier cycles were seen at 17:54, 18:01, 18:06 and 18:08. Each `ADD` opens a
+new reply window, so the host should fire *immediately* on the transition
+instead of waiting for a manual unplug. `brom_read_spl.ps1` therefore has
+`-MaxAttempts N`: it fires on each new enumeration, and if that window is
+already dead (timeouts) it waits for the next one.
+
+Whether a given `ADD` is a *responsive* BootROM is still unproven — the
+18:16:45 window was only 19 s long and was never probed. The retry loop is
+what settles it, because a live window answers `CHECK_BAUD` in under a
+second.
+
 ## Tool command-line parsing and `chip_uid`
 
 The 17:06 fresh session answered CHECK_BAUD and CONNECT and then timed out
@@ -160,10 +188,12 @@ The probe set separates them:
 ## Recovery ladder
 
 1. **RAM-only FDL diagnostic.** Run `scripts/host/brom_read_spl.ps1`. It
-   refuses to proceed unless the files match expected hashes and waits for
-   the stale node to disappear. Enter a fresh BROM with Power + Vol Down,
-   then plug in. It then executes only `p` and `r splloader`; inspect the
-   saved SPL before considering any write.
+   refuses to proceed unless the files match expected hashes, and it fires
+   as soon as a fresh `1782:4D00` window appears (the phone re-enumerates on
+   its own; see above). `-MaxAttempts N` retries across windows,
+   `-AllowPresent` fires at whatever node is currently enumerated. It then
+   executes only `p` and `r splloader`; inspect the saved SPL before
+   considering any write.
 2. **Rule out power.** Charge from a wall charger for 2-3 h, undisturbed,
    then Power alone, untouched for 3 min. Cheap, and (a) is a live
    hypothesis.
