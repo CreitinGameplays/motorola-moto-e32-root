@@ -126,6 +126,52 @@ flash operation and requires a deliberate decision (the stock image is dumped
 in `artifacts/bootloader/bl3/boot_b.img`, sha256 `CCD0FAFF…`, for restore).
 Full probe log: [evidence/2026-10-30-fastboot-ram-boot-dead-end.txt](evidence/2026-10-30-fastboot-ram-boot-dead-end.txt).
 
+## The fastboot write gate (still active after the unlock)
+
+Testing the flash path with the **pristine, byte-identical stock images** (the
+same bytes the phone is already running) is rejected:
+
+```
+fastboot flash boot_b boot_b.img
+  Sending 'boot_b' (65536 KB)   OKAY [  1.569s]
+  Writing 'boot_b'              (bootloader) Please verify the signature!
+  FAILED (remote: 'Please verify the signature!')
+
+fastboot flash misc   misc.img     -> FAILED (remote: 'Please verify the signature!')
+fastboot flash dtbo_a dtbo_a.img   -> FAILED (remote: 'Please verify the signature!')
+```
+
+So the write gate is **global and content-independent**, and the
+`VerifiedBoot-UNLOCK` marker (which makes the *boot* path skip AVB) does **not**
+unlock it. The gate lives in the Unisoc secure-download code
+(`lib-ontim/ontim-config/ontim_secverify.c`, `...#signature...` strings, and the
+`dl_secure_process_flow`/`SECUREBOOT_ENABLE` path used by download mode); the
+device is `secure: true`, i.e. the signature key is anchored in secure boot.
+
+Practical consequences:
+
+* There is **no fastboot way to write `boot_b`** - and therefore **no fastboot
+  way to restore it** either.
+* Writing `boot_b` from Android with `dd` (as root) is possible in principle,
+  but it is a **one-way trip**: if the new kernel fails, Android never boots,
+  the fastboot write gate still blocks re-flashing the stock image, and
+  `adb reboot download` does not enter download mode (verified - the phone
+  stays in Android). Recovery would need a signed Motorola factory package
+  written through an authenticated download session, or a UFS programmer.
+* `fastboot set_active a` exists, but slot `_a` carries an older kernel
+  (`4.14.199+-abc1989`, built 2024-01-23) and different
+  `vbmeta_system`/`vbmeta_vendor`/`vbmeta_product` hashes, so it is not a clean
+  fallback for slot `_b`.
+
+New leads for a future session (not yet exploited): the download-mode protocol
+has a **password** authentication path (`dl_cmd_auth_request`,
+`Start password verify ...`, `Password verify successfully.`,
+`You can flash ro.carrier.`) and TrustOS exposes `FUNCTYPE_CHECK_PWD` /
+`FUNCTYPE_GET_LCS` next to the `VerifiedBoot-*` functions; `SET_RMA` /
+`getlcs`/`setrma` are also reachable through `fastboot oem`. If a download
+session can be entered and authenticated without a Motorola key, that would
+also reopen the flash path.
+
 ## What the U-Boot image contains
 
 Dumped `uboot_a` (3 MB), `sml_a` (1 MB), `trustos_a` (6 MB), `miscdata` (1 MB),
@@ -281,6 +327,8 @@ their fingerprints, and compares them against a candidate leaked key.
 | CVE-2022-38694 BootROM exploit | **no** (platform matches) | needs physical download mode + hawaii UFS FDLs; Moto UFS falls back to AutoD; brick risk |
 | secure-world `miscdata` marker (SMC `0xb4000020` op `0x31`) | **yes - works** | mechanism decoded in [06](06-secure-world-unlock-path.md), applied and verified; a GSI boots as independent proof, see [07](07-unlock-how-to.md) and [09](09-gsi-proof.md) |
 | run a custom kernel from RAM (`fastboot boot`) | **no** | real bootloader ACKs and reboots without executing the payload; fastbootd has no `boot` at all; kexec/devmem absent; no exec command in download mode; U-Boot console is UART-only (see the section above) |
+| write a custom kernel with `fastboot flash` | **no** | global signature gate: even the phone's own byte-identical stock images are refused with `Please verify the signature!` (`boot_b`, `misc`, `dtbo_a` all tested); the unlock marker opens boot, not writes ([evidence](evidence/2026-10-30-flash-gate.txt)) |
+| write `boot_b` with `dd` from rooted Android | **possible but a one-way trip** | no fastboot restore path exists and `adb reboot download` does not enter download mode, so a failed kernel cannot be rolled back over USB |
 | runtime root (this repo) | **yes** | `scripts/mali/mali_kroot.c`, 5/5 fresh boots |
 
 Recommendation: keep using the runtime-root exploit. Bootloader unlock via the

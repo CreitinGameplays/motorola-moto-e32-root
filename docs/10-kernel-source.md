@@ -398,7 +398,14 @@ byte-patched stock controls; details and controls are in
 bootloader run a kernel from RAM?") and
 [evidence/2026-10-30-fastboot-ram-boot-dead-end.txt](evidence/2026-10-30-fastboot-ram-boot-dead-end.txt).
 Running the built kernel therefore needs a write to `boot_b` (restore image:
-`artifacts/bootloader/bl3/boot_b.img`, sha256 `CCD0FAFF…`).
+`artifacts/bootloader/bl3/boot_b.img`, sha256 `CCD0FAFF…`) - and that write is
+also refused: `fastboot flash` rejects even the phone's own byte-identical stock
+images with `Please verify the signature!` (tested on `boot_b`, `misc`,
+`dtbo_a`; see [evidence/2026-10-30-flash-gate.txt](evidence/2026-10-30-flash-gate.txt)).
+A `dd` write from rooted Android works in principle but is a one-way trip,
+because nothing can be flashed back afterwards. The full boot-critical backup
+(25 partitions, hash-verified) is in
+`D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\`.
 
 Known risk if it is flashed: the vendor modules (notably `mali_kbase.ko`) are
 built against the shipping tree, and 125 of 282 `__crc_` values differ, so they

@@ -1,0 +1,118 @@
+2026-10-30  Can `boot_b` (or anything) be written with fastboot?
+Device: motorola hawaii (XT2227-1), serial ZF523X9NXW, slot _b
+        RORS31.335-58-1 / 612c2, unlocked (ro.boot.flash.locked=0,
+        verifiedbootstate=orange), real bootloader (`is-userspace: no`)
+Images: the phone's own pristine partition dumps (see
+        docs/evidence/2026-10-30-partition-backup.txt), byte-identical to what
+        was already in flash - so a successful write would be a no-op.
+
+RESULT: the bootloader rejects EVERY fastboot write with
+        FAILED (remote: 'Please verify the signature!')
+        regardless of partition or content. The unlock marker does not open it.
+
+--------------------------------------------------------------------------------
+1. Round trip with the pristine stock boot_b image
+--------------------------------------------------------------------------------
+  $ fastboot devices
+  ZF523X9NXW     fastboot
+  $ fastboot getvar is-userspace
+  is-userspace: no
+  $ fastboot getvar current-slot
+  current-slot: b
+  $ fastboot getvar partition-size:boot_b
+  partition-size:boot_b: 0x4000000
+
+  $ fastboot flash boot_b artifacts\bootloader\bl3\boot_b.img
+  Sending 'boot_b' (65536 KB)                    OKAY [  1.569s]
+  Writing 'boot_b'                               (bootloader) Please verify the signature!
+  FAILED (remote: 'Please verify the signature!')
+  fastboot: error: Command failed
+
+  image sha256 CCD0FAFF51AB24D921B2671C562F0FE08E7A1BA2B7F19BB93A5F2650EB4F7B18
+  (identical to the hash of /dev/block/by-name/boot_b read back from Android)
+
+--------------------------------------------------------------------------------
+2. Is the gate global? Same test on two unrelated partitions
+--------------------------------------------------------------------------------
+  $ fastboot flash misc   ...\backup\misc.img        # 1 MiB stock misc
+  Sending 'misc' (1024 KB)                       OKAY [  0.036s]
+  Writing 'misc'                                 (bootloader) Please verify the signature!
+  FAILED (remote: 'Please verify the signature!')
+
+  $ fastboot flash dtbo_a ...\backup\dtbo_a.img      # 8 MiB stock dtbo
+  Sending 'dtbo_a' (8192 KB)                     OKAY [  0.206s]
+  Writing 'dtbo_a'                               (bootloader) Please verify the signature!
+  FAILED (remote: 'Please verify the signature!')
+
+So it is not a partition policy and not an image-content check: with
+`secure: true` (fuse-anchored secure boot) the download path always requires a
+Motorola/ODM signature that we do not have. Note the pattern: the data transfer
+("Sending") is acknowledged, the *write* is refused.
+
+--------------------------------------------------------------------------------
+3. Nothing was written
+--------------------------------------------------------------------------------
+Read back boot_b from Android afterwards (root, same shell invocation):
+
+  # dd if=/dev/block/by-name/boot_b of=/data/local/tmp/bc.img bs=4096
+  67108864 bytes (64 M) copied, 0.763049 s, 84 M/s
+  # sha256sum /data/local/tmp/bc.img
+  ccd0faff51ab24d921b2671c562f0fe08e7a1ba2b7f19bb93a5f2650eb4f7b18
+  # cat /proc/version
+  Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020) ... #1 SMP PREEMPT ...
+  (stock, unchanged), and `fastboot reboot` brought Android back normally.
+
+--------------------------------------------------------------------------------
+4. Why this matters: there is no restore path either
+--------------------------------------------------------------------------------
+`fastboot boot` does not execute anything (docs/evidence/
+2026-10-30-fastboot-ram-boot-dead-end.txt) and `fastboot flash` is refused, so:
+
+  - writing boot_b from a rooted Android with dd would be a ONE-WAY trip:
+    if the new kernel does not boot, adb is gone, the fastboot write gate is
+    still in force and there is no way to put the stock image back;
+  - `adb reboot download` does NOT enter Unisoc download mode - the phone
+    rebooted straight back into Android (adb device present, VID_18D1);
+  - `fastboot set_active a` is not a clean fallback: slot _a carries an older
+    kernel (Linux 4.14.199+-abc1989, built 2024-01-23, xscm@ontimbjlx014) and
+    different vbmeta_system / vbmeta_vendor / vbmeta_product hashes.
+
+--------------------------------------------------------------------------------
+5. Where the gate lives (strings from uboot_b.img, VA = file offset + 0x9f000000)
+--------------------------------------------------------------------------------
+  0x9f0c3061  OKAY
+  0x9f0c3066  Please verify the signature!        <- the exact runtime message
+  0x9f0d6f60  ... verify ...\n                     \
+  0x9f0d6f6d  Signature failed\n                   |  ontim_secverify /
+  0x9f0d6f7f  Signature failed!                    |  secure-download flow
+  0x9f0d6f91  Signature verify successfully.      /
+  0x9f0d6fb0  Start password verify ...
+  0x9f0d6fca  Please use password for user version!
+  0x9f0d6ff0  Password verify fail!!!
+  0x9f0d7008  Password verify successfully.
+  0x9f0d7026  You can flash ro.carrier.
+  0x9f0d6ae6  uboot_verify_img() return error:param->a0=%d
+  0x9f0d6b14  uboot_vboot_verify_img() return error:param->a0=%d
+  path       label/SPRD/bsp/bootloader/u-boot15/lib-ontim/ontim-config/
+             ontim_secverify.c
+
+Download-mode command set (from the dfu handler strings): dl_cmd_auth_request,
+dl_cmd_check_partition, dl_cmd_get_timestamp, dl_cmd_per_raw_packet_start,
+dl_cmd_read_ref_info, dl_cmd_read_vcur, dl_cmd_repartition,
+dl_cmd_set_debuginfo, dl_cmd_write_flush_raw_data, dl_cmd_write_vcur. The only
+authentication visible is that password path, and TrustOS carries
+FUNCTYPE_CHECK_PWD / FUNCTYPE_GET_LCS next to FUNCTYPE_SET_RMA and the
+VerifiedBoot-* functions.
+
+--------------------------------------------------------------------------------
+6. Commands used (reproduce)
+--------------------------------------------------------------------------------
+  adb reboot bootloader
+  fastboot getvar is-userspace            # must say "no"
+  fastboot flash boot_b artifacts\bootloader\bl3\boot_b.img
+  fastboot flash misc   D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\misc.img
+  fastboot flash dtbo_a D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\dtbo_a.img
+  fastboot reboot
+  adb shell '/data/local/tmp/mali_kroot >/dev/null 2>&1; \
+    dd if=/dev/block/by-name/boot_b of=/data/local/tmp/bc.img bs=4096; \
+    sha256sum /data/local/tmp/bc.img'
