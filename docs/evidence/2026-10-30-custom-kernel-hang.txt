@@ -408,8 +408,7 @@ kernel dies before that, so the useful question became *where*, and the only
 way to answer it is to have a watchdog that is already running before the
 stall. The DIAG patch
 `patches/kernel-sprd/diag-only-arm-aon-watchdog.patch`
-(`KCFLAGS=-DDIAG_WDT_ARM`) arms it inside `sprd_wdt_fiq_probe()` - a
-`device_initcall`, i.e. before every `late_initcall` - right after
+(`KCFLAGS=-DDIAG_WDT_ARM`) arms it inside `sprd_wdt_fiq_probe()` right after
 `sprd_wdt_fiq_enable()` has the clocks and the new-version bit up:
 
 ```c
@@ -418,15 +417,43 @@ sprd_wdt_fiq_set_timeout(&wdt->wdd, 30);
 sprd_wdt_fiq_start(&wdt->wdd);     /* CNT_EN | INT_EN | RST_EN */
 ```
 
-Thirty seconds, so a stall resets quickly. Outcome table, now against the
-feeder's own 40 s (which covers everything after ~1.6 s):
+**Correction, measured 2026-10-30: this arm can never fire before KVM init.**
+The earlier reasoning ("the probe is a `device_initcall`, link order puts
+`drivers/` before `virt/`, so the arm lands ahead of `kvm_init()`") is wrong
+about the level. In `drivers/watchdog/sprd_wdt_fiq.c` the driver is *not*
+registered by `module_platform_driver()`; it is registered explicitly:
+
+```
+474: late_initcall(sprd_wdt_fiq_init_ops);
+```
+
+So `sprd_wdt_fiq_probe()` is a **`late_initcall`**, and it runs *after* every
+`device_initcall` - including `kvm_init()`, which is `module_init()` in
+`virt/kvm/kvm_main.c`. Link order only breaks ties *within* one level; it
+cannot reorder across levels. A stall inside `kvm_init()` therefore happens
+before the probe, the 30 s arm never executes, and the SoC never resets.
+
+Measured, and it matches exactly: `boot_diagwdt_avb.img` written to `boot_a`
+(`ca3caec0...9d61`), `set_active a`, reboot ->
+**stuck on the Motorola logo for several minutes, no reset, no adb, no fastboot.**
+That is the "no reset" row of the table below, and it is the row that means
+*the stall precedes the wdt probe* - not that KVM is innocent, but that the arm
+is behind KVM rather than ahead of it.
+
+Consequence for the design: the arm has to be *earlier than* `kvm_init`, or
+`kvm_init` has to be *later than* the arm. The cheap, hardware-free option is
+the second: move `kvm_init()` from `module_init` to `late_initcall` in
+`virt/kvm/kvm_main.c`, so both are `late_initcall`s and the normal link order
+(`$(drivers-y)` before `$(virt-y)`) puts the wdt probe first. Then a KVM hang
+is reset by our own 30 s arm.
+
+Outcome table for this image, against the feeder's own 40 s:
 
 | observation | meaning |
 |---|---|
-| reset + dump, log ends in `device_initcall` range | stall is between the wdt probe and `late_initcall` - KVM init is the prime suspect |
-| reset + dump, log ends in a `late_initcall` | feeder was disarmed/replaced by this arm; stall is late |
-| **no** reset, while `boot_diagstock_avb.img` (same tree, KVM off) resets or boots | stall happens before the wdt probe: KVM's initcall, link-order dependent, or earlier |
-| no reset for either image | stall is in our tree/build or the container, not KVM |
+| **no reset for minutes** (measured) | stall is **before** the `late_initcall` probe that arms the timer - the arm is simply too late |
+| reset + dump, log ends in `kvm_init` | v4 ordering works and KVM init is confirmed |
+| no reset, while `boot_diagstock_avb.img` (same tree, KVM off) resets or boots | the stall is in our tree/build, not KVM |
 
 Recovery after a slot-`a` failure is better than first assumed, and this was
 measured: a slot-`a` boot that **panics** does not loop forever. The bootloader
