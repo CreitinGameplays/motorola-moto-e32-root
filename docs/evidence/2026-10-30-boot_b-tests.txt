@@ -122,3 +122,30 @@ VERDICT: HANG  (adb back after 331s)
 post-reset state:
 5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 ef 00
  00 00 00 00 00 00 00 00 00 00 00 00 16 de b9 49
+
+========================================================================
+boot_b test, 2026-10-30 20:35:16
+image : artifacts/kernel-build/boot_trace2.img
+        67108864 bytes, sha256 C29C6ADA438116C41C809B618F81E40CA596A8A8B4D29C0B2270EA7678C7F6C9
+========================================================================
+--- pre-flight ---
+slot            : _b
+running kernel  : Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020) (Android (6443078 based on r383902) clang version 11.0.1 (https://android.googlesource.com/toolchain/llvm-project b397f81060ce6d701042b782172ed13bee898b79), LLD 11.0.1 (/buildbot/tmp/tmp6_m7QH b397f81060ce6d701042b782172ed13bee898b79)) #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024
+--- push ---
+pushed sha256   : c29c6ada438116c41c809b618f81e40ca596a8a8b4d29c0b2270ea7678c7f6c9
+--- flash boot_b (root) ---
+attempt 1 : 67108864 bytes (64 M) copied, 1.015474 s, 63 M/s | c29c6ada438116c41c809b618f81e40ca596a8a8b4d29c0b2270ea7678c7f6c9
+read-back match : YES
+--- one-attempt slot b ---
+attempt 1 : uid=0 | before: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 ef 00 |  00 00 00 00 00 00 00 00 00 00 00 00 16 de b9 49 | block 32 bytes | 32 bytes (32 B) copied, 0.017852 s, 1.7 K/s | after: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 1f 00 |  00 00 00 00 00 00 00 00 00 00 00 00 b1 82 a5 20
+--- reboot ---
+reboot issued at 20:35:31
+t+   4s  absent
+
+VERDICT: HANG  (adb back after 331s)
+  => no adb, no reset: the CPU is hung before that stage
+     recover with a power cycle (slot b's try is spent, the SPL takes slot a
+     and the rescue restores Android), or brom_set_slot.ps1 -Slot a -ConfirmWrite
+post-reset state:
+5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 ef 00
+ 00 00 00 00 00 00 00 00 00 00 00 00 16 de b9 49
