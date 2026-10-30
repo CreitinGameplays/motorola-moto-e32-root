@@ -240,3 +240,55 @@ That is exactly what the retry loop measures.
 - Contains no w/wov/wof/erase_part/erase_all/repartition/cboot/env.
 - fdl2-cboot.bin is deliberately excluded (persistent-unlock payload).
 - Every attempt is logged to readback\brom_read_spl.log (UTF-8).
+
+------------------------------------------------------------------------
+12. BREAKTHROUGH 18:19 - CVE-2022-38694 BYPASS CONFIRMED ON XT2227-1
+------------------------------------------------------------------------
+An ADD at 18:18:00 was still responsive at 18:19:18. Full transcript:
+
+  branch:stable, sha1:2a202404a7512026d146b62624f089aceb408520
+  hotplug unsupported on this platform
+  Waiting for dl_diag connection (30s)
+  libusb_control_transfer ok
+  CMD_CONNECT bootrom
+  current exec_addr is 0x65015f08
+  SEND ...\withcboot\fdl1-dl.bin to 0x65000800
+  SEND custom_exec_no_verify_65015f08.bin to 0x65015f08
+  EXEC FDL1
+  usb_recv failed : LIBUSB_ERROR_TIMEOUT
+  CHECK_BAUD FAIL
+  CHECK_BAUD FDL1
+  BSL_REP_VER: "Spreadtrum Boot Block version 1.1\0"
+  CMD_CONNECT FDL1
+  KEEP_CHARGE FDL1
+  usb_recv failed : LIBUSB_ERROR_PIPE
+  timeout reached
+
+Facts established:
+  * BootROM is alive and executes host-supplied code.
+  * CVE-2022-38694 payload at 0x65015f08 works on this exact XT2227-1.
+  * FDL1 (fdl1-dl.bin, 153F3A...C259C15) loads and runs; device answers
+    as FDL1 with BSL_REP_VER "Spreadtrum Boot Block version 1.1".
+  * CHECK_BAUD FAIL right after EXEC FDL1 is normal (identical in the
+    upstream reference trace).
+  * CHANGE_BAUD absent is expected: compiled out in the libusb build.
+  * Failure is inside the FDL2 bulk upload (LIBUSB_ERROR_PIPE = endpoint
+    STALL), before "SEND fdl2-dl.bin" could print.
+
+Source evidence for the last point (spreadtrum_flash main):
+  common.c:824 send_buf() -> chunk loop -> ERR_EXIT("timeout reached")
+  common.c:868 send_file() prints "SEND %s to 0x%x" AFTER send_buf
+
+Earlier host bug fixed at the same time: exec_addr resolves
+custom_exec_no_verify_<addr>.bin from the CURRENT WORKING DIRECTORY, so
+spd_dump must be launched inside the directory holding that payload.
+Without it the run logs "does not exist" / "current exec_addr is 0x0",
+sends an unsigned FDL1, and BROM rejects it. A previous 18:17:59 attempt
+hit exactly that. The runner now Push-Location's to $FirmwareDir and
+hard-aborts on that message instead of retrying.
+
+Device reaction after the stall: node REMOVEd at 18:19:23 and re-ADDed at
+18:20:14 -> the phone resets and re-enters BootROM by itself. A failed
+attempt costs nothing and leaves no state on the phone.
+
+Nothing has been written to the phone's storage at any point.

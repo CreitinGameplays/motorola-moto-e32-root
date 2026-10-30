@@ -118,6 +118,64 @@ Whether a given `ADD` is a *responsive* BootROM is still unproven — the
 what settles it, because a live window answers `CHECK_BAUD` in under a
 second.
 
+## BREAKTHROUGH 18:19: the bypass works, FDL1 runs
+
+An `ADD` at 18:18:00 was still answering at 18:19:18, and the full RAM
+sequence ran. Transcript:
+
+```
+libusb_control_transfer ok
+CMD_CONNECT bootrom
+current exec_addr is 0x65015f08
+SEND ...\fdl1-dl.bin to 0x65000800
+SEND custom_exec_no_verify_65015f08.bin to 0x65015f08
+EXEC FDL1
+usb_recv failed : LIBUSB_ERROR_TIMEOUT
+CHECK_BAUD FAIL
+CHECK_BAUD FDL1
+BSL_REP_VER: "Spreadtrum Boot Block version 1.1\0"
+CMD_CONNECT FDL1
+KEEP_CHARGE FDL1
+usb_recv failed : LIBUSB_ERROR_PIPE
+timeout reached
+```
+
+Consequences, in order of importance:
+
+1. **The BootROM answers.** The board is not dead and the USB stack works.
+2. **CVE-2022-38694 succeeds on this XT2227-1.** The payload at
+   `0x65015f08` was sent and `EXEC FDL1` ran, after which the device came
+   back as *FDL1* (`SPRD3` -> `Spreadtrum Boot Block version 1.1`). On
+   unsigned/corrupt SPL this is the only way past the signature gate, and
+   it worked.
+3. `CHECK_BAUD FAIL` immediately after `EXEC FDL1` is normal — the same line
+   appears in the upstream reference trace for a working device.
+4. No `CHANGE_BAUD` line appears because that code is behind a non-libusb
+   `#if` in `spd_dump`; the libusb build compiles it out. Not a fault.
+5. The run then died in the **FDL2 bulk upload**, before `SEND fdl2-dl.bin`
+   could be printed.
+
+### Why the failure is in the FDL2 upload
+
+From the tool source, `send_buf()` aborts with `ERR_EXIT("timeout reached")`
+inside its chunk loop, and `send_file()` only prints `SEND <file> to 0x…`
+*after* `send_buf()` returns. Since that line never appeared, the failure is
+inside the FDL2 transfer itself, and `LIBUSB_ERROR_PIPE` means the device
+stalled its IN endpoint there (a STALL, not a timeout).
+
+The attempt had started 78 s into a window that had already produced one
+`LIBUSB_ERROR_TIMEOUT`, so the most likely cause is an expired FDL1 session
+rather than a bad address or a bad loader. The decisive test is the same
+sequence fired on a *just-created* window, which is what `-MaxAttempts`
+does.
+
+### Consequence for the diagnosis
+
+This retires hypothesis (a) "BootROM cannot init the UFS / dead hardware"
+being the *only* remaining option, because the chip talks and executes
+unverified code. It does not yet prove the UFS reads: that still needs FDL2
+up and `p` / `r splloader`.
+
 ## Tool command-line parsing and `chip_uid`
 
 The 17:06 fresh session answered CHECK_BAUD and CONNECT and then timed out
