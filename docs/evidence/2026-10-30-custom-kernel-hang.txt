@@ -324,6 +324,64 @@ From the stock DTB (811 nodes parsed from `boot_dtb.dtb`):
 Programming LOAD/CTRL directly from early C yields a **self-reset that survives
 a hard lockup**, which is exactly what is missing from the diagnostic build.
 
+### The device is Virtual A/B: slot a has no userspace (measured 2026-10-30)
+
+This is the single most important platform fact found so far, and it invalidated
+part of the test plan.
+
+```
+$ getprop ro.virtual_ab.enabled
+true
+
+$ lpdump            # super metadata
+Slot 1:
+Metadata version: 10.2
+Header flags: virtual_ab_device
+  Name: system_b          Group: group_unisoc_b   Attributes: readonly,updated
+  Name: system_ext_b      ...
+  Name: vendor_b          ...
+  Name: product_b         ...
+  Name: system_b-cow      Group: cow
+```
+
+There is exactly **one** set of dynamic partitions, and they are all `_b`.
+`system_a`, `vendor_a`, `product_a` **do not exist** - `super` has no extents for
+them. Slot `a` therefore has a kernel (`boot_a` is a real 64 MiB partition) but
+**no Android userspace to boot into**.
+
+Consequence, measured end to end:
+
+1. `boot_stock_signed.img` (an unmodified **stock** kernel in our AVB-signed
+   container) was written to `boot_a`, `fastboot set_active a`, reboot ->
+   **bootloop**.
+2. That loop is `init` failing to mount `system_a`/`vendor_a`, panicking, and
+   `panic_timeout=5` + PSCI resetting into the same slot again.
+3. So the loop is *not* a container/AVB/`dd` failure. On the contrary, it proves
+   the container path works: the stock kernel started far enough to run
+   `init`.
+4. `sys.boot.reason.history` after recovery:
+   `bootloader,1793380176 / bootloader,1793379979 /
+   kernel_panic,sysrq_trigwarmd_crash,1793379216`.
+
+Practical consequences:
+
+- Booting slot `a` can never reach Android, so **no kernel can be judged by
+  "does Android come up" on slot `a`**. Only the pre-`init` window is testable
+  there - which happens to be exactly where our kernel dies, so `boot_a` tests
+  remain valid for the *watchdog/stall* question but say nothing about
+  userspace.
+- The only slot whose userspace can boot is **`b`**, and `boot_b` is off limits
+  (fallback). Do not write it.
+- `set_active a` is therefore **not** a safe recovery mechanism; it produces an
+  intentional bootloop. Recovery is `set_active b` (verified twice).
+- The remaining clean channel is `fastboot boot <image>`, which loads a kernel
+  into RAM without writing any partition. If this bootloader supports it, it is
+  both the test mechanism and a zero-risk one. It is the next thing to try.
+- Also note `system_b-cow`: a COW snapshot of `system_b` exists and the `_b`
+  partitions carry the `updated` attribute, i.e. an OTA snapshot was applied at
+  some point. Harmless for us, but it means b's userspace is a snapshot merge
+  result, and it is the userspace that must be kept.
+
 ### The panic channel is proven, end to end
 
 The deliberate `sysrq-c` panic on stock also shows the channel we would use is
@@ -380,21 +438,27 @@ loop once every ~40 s. The exit is the bootloader key combo -> fastboot ->
 1. ~~Stock control (`scripts/device/panic_test.sh`)~~ - **done, rebooted in 19 s
    with a full pstore record** (see above). A panic is observable; the custom
    kernel never panicked.
-2. **`boot_stock_signed.img`** (stock kernel, sha256 `55ddec27...db77`) in our
-   signed container: if Android boots, the container/vbmeta/`dd` path is proven
-   and only the kernel binary remains as a variable. This has never been run -
-   it is the first thing to do, because if it does not boot, every result so far
-   is about the container, not the kernel.
-3. **`boot_diagstock_avb.img`** (`Image.diagstock`, sha256 `ecc9989a...324c`;
-   our tree with **KVM off** + the same diagnostics, image
-   `dcbfb17d...f40b`; only 2,048 B larger than the stock kernel vs 550 KB for
-   the KVM build): separates "KVM delta" from "our tree/build". With KVM off the
-   feeder's own 40 s AON watchdog is already enough to make a stall visible.
-4. **`boot_diagwdt_avb.img`** (KVM + detectors + end-of-init panic + the 30 s
-   arm above): localises the stall relative to the `device_initcall` probe.
-5. If KVM is confirmed and the stall is inside `kvm_arch_init()`, build v4 with
+2. ~~`boot_stock_signed.img` in `boot_a`~~ - **done, bootloops** - but for the
+   Virtual A/B reason above, not because of the container. It does prove the
+   container, the AVB signature and the `dd` write are all accepted, since the
+   stock kernel ran as far as `init`.
+3. **`fastboot boot <image>`** - the only channel that tests a kernel without
+   writing any partition, and therefore without risking `boot_b`. Try it first
+   with `boot_stock_signed.img`: if a full Android boot comes up, we have a
+   zero-risk kernel test harness and every later experiment becomes safe.
+4. **`boot_diagwdt_avb.img`** via `fastboot boot`: KVM + detectors + end-of-init
+   panic + the 30 s arm in the wdt probe
+   (`patches/kernel-sprd/diag-only-arm-aon-watchdog.patch`,
+   sha256 `20dde8f6...ec4a` for `Image.diagwdt`). Localises the stall relative to
+   the `device_initcall` probe; if it resets, the device falls back to slot `b`
+   by itself, so there is no loop to escape.
+5. **`boot_diagstock_avb.img`** (`Image.diagstock`, sha256 `ecc9989a...324c`;
+   our tree with **KVM off** + the same diagnostics, image `dcbfb17d...f40b`):
+   separates "KVM delta" from "our tree/build". With KVM off the vendor feeder's
+   own 40 s AON watchdog is already enough to make a stall visible.
+6. If KVM is confirmed and the stall is inside `kvm_arch_init()`, build v4 with
    `kvm_init()` moved from `module_init` to `late_initcall` in
-   `virt/kvm/kvm_main.c`: then the vendor feeder arms 40 s first, and a KVM hang
+   `virt/kvm/kvm_main.c`: the vendor feeder then arms 40 s first, and a KVM hang
    becomes a plain watchdog reset whose ramoops record ends in the KVM code.
    That is the cheapest way to see the last log line, since the console is
    `null` and ramoops only survives if something resets the SoC.
