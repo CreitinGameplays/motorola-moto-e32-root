@@ -41,7 +41,7 @@ def sha256(b):
     return hashlib.sha256(b).hexdigest()
 
 
-def build(base, kernel, cmdline_extra=None):
+def build(base, kernel, cmdline_extra=None, ramdisk=None):
     buf = base.read_bytes()
     h = bootimg.parse(buf)
     ps = h["page_size"]
@@ -59,6 +59,11 @@ def build(base, kernel, cmdline_extra=None):
     hashed.append(kernel)
 
     for name in ("ramdisk", "second", "recovery_dtbo", "dtb"):
+        if name == "ramdisk" and ramdisk is not None:
+            emit(ramdisk)
+            hashed.append(ramdisk)
+            print("  %-14s %10d bytes (override)" % (name, len(ramdisk)))
+            continue
         size = h.get(f"{name}_size")
         if not size:
             continue
@@ -70,6 +75,9 @@ def build(base, kernel, cmdline_extra=None):
 
     hdr = bytearray(buf[:ps])
     struct.pack_into("<I", hdr, 0x08, len(kernel))
+    if ramdisk is not None:
+        struct.pack_into("<I", hdr, 0x10, len(ramdisk))
+        h["ramdisk_size"] = len(ramdisk)
     if cmdline_extra:
         cur = hdr[0x40:0x40 + 512].split(b"\0", 1)[0]
         new = (cur + b" " + cmdline_extra.encode()).ljust(512, b"\0")
@@ -94,16 +102,19 @@ def main():
     ap.add_argument("--no-sign", action="store_true")
     ap.add_argument("--cmdline-extra", default=None,
                     help="append this token to the boot image cmdline")
+    ap.add_argument("--ramdisk", default=None,
+                    help="replace the base ramdisk (e.g. rescue initramfs cpio)")
     args = ap.parse_args()
 
     kernel = pathlib.Path(args.kernel).read_bytes()
+    ramdisk = pathlib.Path(args.ramdisk).read_bytes() if args.ramdisk else None
     base = pathlib.Path(args.base)
     out = pathlib.Path(args.output)
 
     if kernel[0x38:0x3c] != b"ARMd":
         sys.exit("%s is not an arm64 Image" % args.kernel)
 
-    img, h = build(base, kernel, args.cmdline_extra)
+    img, h = build(base, kernel, args.cmdline_extra, ramdisk)
     out.write_bytes(img)
     print("\nbase %s (%d bytes)" % (base.name, base.stat().st_size))
     print("wrote %s: %d bytes  sha256 %s" % (out.name, len(img), sha256(img)))

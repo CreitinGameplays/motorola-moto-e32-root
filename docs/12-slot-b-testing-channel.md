@@ -1,6 +1,8 @@
 # 12 - Making slot_b usable: the boot_a rescue image
 
-Status: **proposed, nothing written to the device yet.**
+Status: **step 3 failed (dry run #1 boot-looped), root cause found and fixed;
+device recovery + dry run #2 pending.** See
+[evidence/2026-10-30-rescue-dry1-bootloop.txt](evidence/2026-10-30-rescue-dry1-bootloop.txt).
 Evidence: [evidence/2026-10-30-channel-research.txt](evidence/2026-10-30-channel-research.txt).
 
 ## Why
@@ -61,8 +63,10 @@ remaining 32.3 MB are zeros and are regenerated at restore time.
    Result is byte-identical to the stock backup at
    `D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\boot_b.img`.
 4. Zero `misc+0..32` (clears the stale `bootonce-bootloader` command) and
-   write `/blob/ab` at `misc+0x800` (suffix `_b`, magic, slot_info copied
-   from the working state, CRC32 over bytes 0..27).
+   write the known-good A/B block at `misc+0x800`: suffix `_b`, slot a
+   priority 14, **slot b priority 15** (`0x00ef`), CRC32 over bytes 0..27.
+   The slot is chosen by *priority*; patching the suffix alone does nothing
+   (dry run #1 boot-looped exactly this way).
 5. `reboot(LINUX_REBOOT_CMD_RESTART)`.
 
 No mount, no shell, no console, no parameters. Binary is `-nostdlib
@@ -100,6 +104,27 @@ previous experiments could never reach.
 4. Enable the restore, boot it, verify `boot_b` readback == stock backup
    sha256 and that the device returns to Android on `_b`.
 5. Only then start writing test kernels to `boot_b`.
+
+## Dry run #1 (2026-10-30): bootloop
+
+`boot_rescue_dry.img` (`40cdc04e...727c`) was `dd`-ed to `boot_a`, read back
+byte-identical, and `set_active a` used to boot it. The phone then rebooted
+every few seconds forever: no adb, no fastboot, no userspace. `boot_b` was
+untouched (dry build).
+
+Cause: the init patched only the `slot_suffix` bytes of the A/B block. This
+bootloader selects the slot by **priority** in the same 32-byte block
+(`slot_info[0]` = slot a, `slot_info[1]` = slot b, u16 with
+`priority:4/tries:3/successful:1/verity:1`), and `slot_suffix` is only the
+bootloader's report of what it booted. `set_active a` had left slot a at
+priority 15, so every reboot booted the rescue again.
+[Full evidence](evidence/2026-10-30-rescue-dry1-bootloop.txt).
+
+Fix: the init now writes the whole known-good 32-byte block (slot b priority
+15, slot a 14, suffix `_b`, crc32 `0x49b9de16`), verifies the constant's CRC
+at runtime and reads the block back. It also writes marker status 99 right
+after creating the device nodes, so the next run can tell "init never ran"
+from "init ran, handoff ignored".
 
 ## Risks
 
