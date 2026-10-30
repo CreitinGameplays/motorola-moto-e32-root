@@ -104,7 +104,9 @@ def main():
     print("  dtb_size %s" % h.get("dtb_size"))
 
     # the payload prefix must be byte-identical to what we intended to write
-    print("  payload prefix matches kernel: %s" % (img[:len(kernel)] == kernel))
+    # (img = [header page][kernel][...], so compare from the first payload page)
+    ps = h["page_size"]
+    print("  payload prefix matches kernel: %s" % (img[ps:ps + len(kernel)] == kernel))
 
     if args.no_sign:
         print("\nunsigned (--no-sign); not bootable past TrustOS")
