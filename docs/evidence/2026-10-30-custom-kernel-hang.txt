@@ -1,0 +1,120 @@
+# Custom kernel: secure world defeated, kernel-side hang (2026-10-30)
+
+Companion to `2026-10-30-custom-kernel-a0-6.txt` (the rejection) and
+`../11-flash-gate.md` (the gate). This file records the **successful** boot of
+the self-signed image, and the start of the kernel-side diagnosis.
+
+## 1. The fix that ended the boot loop
+
+Symptom change is the whole point:
+
+| image | content | result |
+|---|---|---|
+| `boot_custom.img` (35,270,656 B) | payload only, no vbmeta/footer | boot **loop**, `a0=6` (ERROR_INVALID_METADATA) |
+| `boot_custom_avb.img` (67,108,864 B) | same payload + self-signed vbmeta + AVB footer | boots **past** the secure world, then **hangs at the Motorola logo** |
+
+Build/sign: `scripts/host/build_avb_boot.py`, avbtool 1.3.0
+(`D:\AndroidSDKTools\avb\avbtool.py`), throwaway RSA-4096 key
+(`artifacts/kernel-build/avb-test-key.pem`), algorithm `SHA256_RSA4096`,
+rollback index 2, stock salt
+`f83b993601311bca149a573c1e737666ff011f6cf2aa2a5ae822f91b97af0991`.
+New image sha256 `eda3433fa18a65a9ac66287494c73db81d1c3da613e96f0e8a290e3d33e58dc3`.
+
+`uboot_log` block 20 (and 22) - slot `_a`, `ab_slot_flag 0`, RPMB blk 65534:
+
+```
+avb_slot_verify.c:693: DEBUG: Loading vbmeta struct from partition 'vbmeta_a'.
+allow_verification_error is 1
+avb_vbmeta_image_verify() return 0
+...
+boot_a: Public key used to sign data does not match key in chain partition descriptor
+avb_slot_verify.c:1245: DEBUG: load_and_verify_vbmeta() process success.
+...
+avb slot verify OK!
+set_root_of_trust succeeded
+merge_dtbo : offset = 0x20 size=0xc9d9
+enter mode normal
+uboot postload
+```
+
+There is **no** `uboot_vboot_verify_img() return error:param->a0=` line: the SIP
+trampoline (`VA 0x9f08cedc`, `FUNCTYPE 0x20`) only prints and reboots on
+failure, so the returned `a0` was a tolerated value - the predicted `5`
+(`ERROR_PUBLIC_KEY_REJECTED`). **The flash gate is fully defeated.**
+
+Full log: `artifacts/slot-probe/uboot_log_after_avb.img`
+(sha256 `15a795db4952b261c749f4fa8c27c1b81909757a49ff3f071b026af1d95fae4c`),
+summarise with `scripts/host/ulog_summary.py`.
+
+## 2. Why the kernel hangs is still unknown
+
+No adb, no fastboot, no reboot loop. `sysdumpdb` (`/dev/block/sda58`) holds only
+an **older** dump - `2026-10-29 17:24:36`, `Native hang monitor trigger` ->
+`panic` -> `sysdump_panic_event` - and nothing from this attempt. The hang
+monitor needs `hang_detect_timeout` (2 min, `WAIT_BOOT_COMPLETE`) and only
+starts at `module_init`, so a very early death produces no dump and no reboot.
+
+The kernel console goes to a UART we cannot read, and `# CONFIG_VT is not set`
+so there is no framebuffer console.
+
+### Correction: we do not need to add a ramoops region
+
+An earlier hypothesis was "ramoops must be patched into the DTB". That is
+**wrong** - it is already there, in the stock DTB that both stock and our image
+carry.
+
+DTB extracted from the boot image (`artifacts/kernel-build/boot_dtb.dtb`,
+175,402 B, FDT at file offset `0x20f2040`, tot size `0x2ad2a`; the "176 KB
+trailer" *is* the DTB, not an opaque AVB template):
+
+```
+reserved-memory {
+    ramoops@fff80000 {
+        compatible = "ramoops";
+        reg = <0x00 0xfff80000 0x00 0x40000>;
+        record-size  = <0x8000>;
+        console-size = <0x8000>;
+        pmsg-size    = <0x8000>;
+    };
+};
+memory@80000000 { reg = <0x00 0x80000000 0x02 0x00>; };   /* 8 GiB window */
+```
+
+And on the running stock device the driver really does bind
+(`scripts/device/probe_ramoops.sh`):
+
+```
+/sys/bus/platform/devices/fff80000.ramoops          <- ramoops probed OK
+/proc/device-tree/reserved-memory/ramoops@fff80000  <- node present, no no-map
+ylog:: pstore /sys/fs/pstore pstore rw,... (mounted)
+```
+
+yet `/sys/fs/pstore` is empty. So pstore is configured, bound and mounted - the
+missing piece is **DRAM persistence**, not DT plumbing.
+
+Consequences for the next attempt:
+
+- A **cold** power cycle (holding Volume Down / power from an off state) wipes
+  DRAM, so nothing survives. Every recovery so far was cold, which explains the
+  empty pstore.
+- To capture the hang we need a **warm reset** while the log buffer is still in
+  DRAM - i.e. the device must reset itself (watchdog/panic), or we must be able
+  to trigger one. A hard hang gives neither.
+- The region also lacks `no-map`; adding `no-map` (and optionally
+  `no-dump-oops`/ECC tweaks) to the existing node is a cheap, low-risk DTB edit
+  worth testing, but it is not what makes records appear.
+
+## 3. Other facts confirmed this session
+
+- Boot image header is equivalent in stock and custom: page 2048, header v2,
+  `os_version 0x16000182`, `kernel_addr 0x8000`, `ramdisk_addr 0x5400000`,
+  kernel = valid ARM64 `Image` (magic `ARMd`, `text_offset 0x80000`,
+  `flags 0xa`, `image_size 0x1b29000`).
+- Build config vs stock `/proc/config.gz`: exactly 2 value deltas
+  (`CONFIG_VIRTUALIZATION`, `CONFIG_VSOCKETS`) plus 24 derived KVM/VHOST
+  symbols. No config drift, so the hang is not a config problem.
+- Remaining known mismatch: vendor `mali_kbase.ko` has 125/282 `__crc_`
+  mismatches against the built kernel, so even a successful boot would not load
+  the GPU module.
+- `CONFIG_SPRD_SYSDUMP=y`, `CONFIG_SPRD_NATIVE_HANG_MONITOR=y`,
+  `CONFIG_SPRD_HANG_DEBUG=y`; `# CONFIG_SPRD_DEBUG is not set`.
