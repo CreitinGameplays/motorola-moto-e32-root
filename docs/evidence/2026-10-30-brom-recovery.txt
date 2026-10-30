@@ -623,3 +623,30 @@ Useful state still on the device (/data/local/tmp, survived the rescue):
   ab_tries1.bin            32  2026-10-30 16:23
   bc.img             67108864  2026-10-30 11:09
   mali_kroot + mali_kroot.log
+
+------------------------------------------------------------------------
+24. POST-RECOVERY misc STATE = KNOWN-GOOD STEADY STATE
+------------------------------------------------------------------------
+Read from Android as root (mali_kroot, then dd from
+/dev/block/by-name/misc) at 18:42, pulled to
+readback_write\misc_after_recovery.bin (sha256 D17B8F09...E6A1F6).
+
+  raw: 5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 ef 00 ... 16 de b9 49
+  slot_suffix '_b', magic BCAB OK, version 1, nb_slot 2
+  slot a 0x008e prio=14 tries=0 succ=1
+  slot b 0x00ef prio=15 tries=6 succ=1
+  crc stored 0x49b9de16 = computed 0x49b9de16 -> VALID
+  boot order: b, a
+
+This is byte-for-byte the same block the rescue channel produced in its
+earlier restore test (docs 12 / todo.md: a=0x008e, b=0x00ef, crc
+0x49b9de16). So the recovery did not leave a degraded state: slot b is
+priority 15, has 6 tries, is marked successful, and the suffix reports _b.
+A normal reboot will boot slot b again with no retry burn.
+
+Chain of events, final version:
+  1. set_active a -> suffix _a, a prio15/tries6/succ0
+  2. SPL loads uboot_a + boot_a (the rescue)
+  3. rescue rewrites boot_b from its embedded stock blob, sets the A/B
+     block to the steady state above, reboots
+  4. SPL/bootloader picks slot b, Android 11 boots, adb up at 18:39:23
