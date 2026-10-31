@@ -1259,3 +1259,214 @@ So from setup_arch() onwards - including panic() output and call traces - the
 kernel's own log is readable on the phone, with no console, no fbcon and no
 driver.  If the kernel dies before paging_init() the screen stays blank, which
 is itself consistent with the current pre-start_kernel death.
+
+------------------------------------------------------------------------
+42. THE INSTRUMENT ITSELF IS FIXED AND VALIDATED BEFORE THE NEXT RESULT
+------------------------------------------------------------------------
+Every probe result in 32..41 rested on one ~41-row white strip painted by the
+entry stub at 0x9e000000.  That instrument had two defects, one of them real:
+
+(a) `--entry-paint` replaced the first 64 bytes of the loaded copy, i.e. the
+    *arm64 Image header*.  text_offset, image_size, flags and the `ARMd` magic
+    were all overwritten with code, so every image flashed so far was not a
+    valid arm64 Image.  This bootloader appears not to validate it (the U-Boot
+    binary contains no "Bad Linux ARM64 Image magic" and no "text_offset"
+    string, and it is an Android-boot-image loader, not `booti`), so this is a
+    confound removed rather than a proven root cause - but it had to go.
+
+(b) The signal was a thin strip, in principle confusable with bootloader
+    chrome, and only meaningful while the panel kept it.
+
+Replacement (scripts/host/entry_paint.py): the stub is **appended after the
+Image** and only code0 - the single `b stext` word at offset 0 - is retargeted
+to it.  The packer recomputes kernel_size and the SHA-1 and re-signs, so the
+loaded copy still has:
+
+    text_offset 0x80000   image_size 0x1bb1000   flags 0xa   magic "ARMd"
+
+Subtlety found while implementing it: `b` is PC-relative, so the stub cannot
+reuse code0's word verbatim (executed 25 MB later it would jump 25 MB past
+stext).  attach() decodes code0's target and re-encodes a branch from the
+stub's own slot.  scripts/host/verify_entry_stub.py walks the whole chain:
+
+    boot_trace3b.img   code0 0x1462d604 -> stub at +0x18b5810
+                       stub tail 0x17eca9f5 -> +0x13e0000 = stext
+    boot_calib2.img    code0 0x1460bc04 -> stub at +0x182f010
+                       stub tail = `b .`              (halt control)
+
+New signal: the stub fills the **whole panel** - 1600x720x32 = 4,608,000 bytes
+(288,000 x 16-byte `stp` at 0x9e000000) - with one solid colour.  A full-screen
+colour change cannot be confused with a logo, a charge indicator or a progress
+bar, so "did our code run, and does the panel keep it?" is answerable by
+glancing at the phone at any time, with no timing pressure.
+
+Two images were built and verified:
+
+  boot_trace3b.img (sha256 b9924c06...5816)
+      Image.trace3 (bands 1..19, stext probes 22/23/24, screen console)
+      + stub filling the panel **red**, then continuing to stext.
+      Reading: solid red at the Motorola logo = the stub ran and the kernel
+      died before the first probe; red + white bars = the kernel got as far as
+      those probes; Android booting = the old header damage was the cause.
+
+  boot_calib2.img (sha256 14aae98d...269b)
+      the *vendor* Image + stub filling the panel **white**, then `b .`.
+      Control: if this does not produce a white screen, the channel is dead
+      regardless of our kernel (and the earlier "one bar" was not ours).
+
+Both use the appended stub, so neither can be affected by header damage.
+
+------------------------------------------------------------------------
+43. boot_trace3b RESULT: THE KERNEL NOW RUNS DEEP INTO setup_arch()
+------------------------------------------------------------------------
+Image: boot_trace3b.img (sha256 b9924c06...5816) = Image.trace3 + the appended
+entry stub filling the panel red, then continuing to stext.  Flashed to boot_b,
+read back identical, one-attempt slot, reboot 22:07:51.  Runner verdict: HANG
+(no adb after 331 s).
+
+Operator observation, made while the board sat hung:
+
+    "white and red painted on my screen, and there is a text on the top but i
+     cannot read, its very tiny and cut-off"
+
+This is a decisive change:
+
+ * the panel is FULL of red => the appended stub ran, and the panel keeps our
+   image for minutes (the channel works);
+ * there are WHITE regions over the red => the kernel's own paints ran;
+ * there is TEXT => kernel/printk is mirroring into the framebuffer, and that
+   hook only becomes active in diag_screen_init(), i.e. immediately after
+   paging_init() inside setup_arch().
+
+So the kernel is NOT dying in head.S / el2_setup / start_kernel's first
+statement - it gets through start_kernel() up to setup_arch()'s paging_init()
+and beyond, then hangs somewhere later.  Every "one bar only" conclusion in
+sections 32..41 was therefore an artefact of the instrument, not a property of
+the kernel.
+
+What is known about the difference: the ONLY change that can affect execution
+(rather than reporting) is that the stub no longer overwrites the arm64 Image
+header.  All earlier probe images replaced text_offset/image_size/flags/ARMd
+with code; this one leaves the header byte-identical and only retargets code0.
+Two consequences to keep straight:
+ - the header fix is a *necessary* difference, but whether U-Boot actually
+   consumed those fields is not yet proven (section 42 says it probably does
+   not validate them, so the mechanism may instead be the load address or the
+   relocation it derives from them);
+ - the added head.S probes and the screen console only *report*; they cannot
+   make the kernel run further.
+
+Independent check done at the same time: the early-boot functions are the
+vendor's, not ours in disguise.  Normalising PC-relative encodings and
+comparing 0x100 bytes at each symbol:
+
+    el2_setup            IDENTICAL to the vendor Image
+    preserve_boot_args   1 differing word (struct offset in the next symbol)
+    set_cpu_boot_mode    1 differing word (same)
+    __create_page_tables 1 differing word of 64
+    __cpu_setup          1 differing word of 64
+
+so head.S is not where our build diverges; the vendor binary and ours agree on
+the entire entry path.
+
+Readability fixes for the next boot (same kernel, rebuilt):
+ - DIAG_SCALE=2, i.e. 16x32 glyphs, ~100 columns instead of 200 (the 8x16
+   font was legible only from ~20 cm on a 1600 px panel);
+ - DIAG_TOP=64 so the first line is not clipped by the panel edge/bezel;
+ - the console SCROLLS: when the screen is full the framebuffer is moved up one
+   text line and the newest line is always the bottom one, so a hang leaves the
+   last printed line at the bottom edge instead of a wrap-around mix.
+
+------------------------------------------------------------------------
+44. THE PANEL IS 24 bpp, NOT 32 (measured, not assumed)
+------------------------------------------------------------------------
+The renderer in 43 drew nothing legible: the operator saw "several straight
+white lines inside the black rectangle".  The font data was checked first
+(lib/fonts/font_8x16.c parse -> 'A', 'e', '8' all render correctly, 4096 bytes,
+most common byte 0x00), so the glyphs were fine and the *geometry* was wrong.
+
+Measured on the live device (slot _b, adb root):
+
+  /proc/cmdline:
+      lcd_id=ID36525
+      lcd_name=lcd_nt36525c_boe_mipi_fhd
+      lcd_base=9e000000
+      lcd_size=1600x720
+      logo_bpix=24                  <-- 3 bytes/pixel, not 4
+
+  /proc/device-tree/reserved-memory/logobuffer@9e000000/reg:
+      00 00 00 00 9e 00 00 00  00 00 00 00 00 ab 00 00
+      base 0x9e000000, size 0xab0000 = 11,206,656 bytes
+
+So the bootloader's logo buffer is packed 24-bit: stride 1600*3 = 4800 bytes,
+frame 3,456,000 bytes.  The old code wrote 32-bit pixels with stride 0x1900
+(6400) - an assumption, never measured.  Against a 4800-byte stride every
+source row advances 4/3 of a display row, which smears each glyph across
+neighbouring rows: exactly the "straight white lines".
+
+The 11.2 MB reserved region also explains why the 4,608,000-byte entry fill
+never hurt: it is well inside logobuffer, so it cannot touch another region.
+
+Renderer now (scripts/host/prepare_stage_panics.py):
+ - DIAG_FB_STRIDE 4800, DIAG_BPP 3, packed RGB888 writes (byte order only
+   matters for colour; text is white-on-black so either RGB/BGR works);
+ - 3x scaling: 24x48 glyphs, 66 columns, 14 rows below a 48 px top margin;
+ - long log lines wrap instead of being truncated;
+ - __flush_dcache_area() after each update, because the linear mapping of the
+   logo buffer is cacheable while the DPU scans DRAM (without it the panel can
+   show stale/partial glyphs);
+ - the text area is cleared once per screenful rather than scrolled with a bulk
+   memcpy over the mapped buffer.
+
+------------------------------------------------------------------------
+45. 24 bpp CONFIRMED ON SCREEN; THE HANG IS IMMEDIATELY AFTER paging_init()
+------------------------------------------------------------------------
+Image: boot_trace5.img (sha256 03a2d909...0e4e) = Image.p0a0s0q2i, i.e. the
+24-bpp renderer of 44.  Result: HANG again (no adb in 332 s), and this time the
+operator could read the screen:
+
+    "Now all I can see is a 'KERNEL DIAGNOSTIC CONSOLE' text behind the black
+     background, the other solid colors (white and red) and nothing else."
+
+That is two independent results in one:
+
+ 1. The renderer is correct. 24x48 glyphs on a black background, legible; the
+    "straight white lines" of the 32-bpp build are gone.  The measured
+    logo_bpix=24 / stride 4800 geometry is therefore right, and the panel does
+    keep the kernel's drawing for minutes.
+
+ 2. There is EXACTLY ONE line of text - our own banner, drawn directly by
+    diag_screen_init().  Not a single kernel printk line followed.  The
+    printk->screen hook was verified present in kernel/printk/printk.c
+    (vprintk_store, right before log_output()), so this is not a dead hook:
+    the kernel really prints nothing between paging_init() and the hang.
+
+Stock boot order after paging_init() inside setup_arch():
+
+    unflatten_device_tree()          <- no printk on success
+    request_standard_resources()     <- no printk on success
+    early_ioremap_reset()
+    psci_dt_init()                   <- prints "psci: probing ..." BEFORE its
+                                        first SMC, so if we saw that line the
+                                        SMC had been reached; we do not
+    cpu_read_bootcpu_ops()
+    smp_init_cpus()
+    smp_build_mpidr_hash()
+
+and after setup_arch() returns: mm_init, sched_init, trap_init, init_IRQ,
+time_init, console_init ... none of which printk early either.
+
+So the silent window is wide (paging_init .. first console/printk of a driver),
+and printk alone cannot bisect it.  Hence the next instrument: a permanent
+milestone line.
+
+Instrument v4 (built immediately after 45): row 0 of the text area accumulates
+the number of every visual probe that fires, deduplicated, e.g.
+
+    15 16 17 19
+
+while the kernel log (if any) fills the rows below.  The band numbers are the
+same as the paint bands of 34/40, so the mapping is already known, and the
+numbers survive even when nothing prints.  DIAG_TAG() is called from
+diag_paint()/diag_paint_early(), so every existing probe site reports itself
+with no extra hooks.

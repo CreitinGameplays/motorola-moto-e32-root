@@ -46,9 +46,170 @@ HEADER = """#ifndef _LINUX_DIAG_STAGE_H
 #include <linux/bitops.h>
 #include <linux/arm-smccc.h>
 #include <linux/mm.h>
+#include <asm/cacheflush.h>
 #include <asm/barrier.h>
 #include <asm/early_ioremap.h>
 #include <asm/fixmap.h>
+#define DIAG_SCREEN %SCREEN%
+
+/*
+ * Framebuffer text console.
+ *
+ * The bootloader leaves the panel scanning out lcd_base=0x9e000000, and that
+ * picture survives while a half-booted kernel hangs.  Geometry is measured,
+ * not assumed: the command line says lcd_size=1600x720 and logo_bpix=24, and
+ * /proc/device-tree/reserved-memory/logobuffer@9e000000 is 11.2 MB, so the
+ * buffer is packed RGB888 with a 4800-byte stride.  Writing 32-bit pixels
+ * there shears every glyph row by 4/3 (the "straight white lines" artefact).
+ *
+ * Row 0 is a permanent milestone line: each visual probe appends its band
+ * number, so one boot still says how far the kernel got even when it hangs
+ * before printing anything.  Rows below hold the printk mirror.
+ */
+#if DIAG_SCREEN
+#include <linux/diag_font.h>
+
+#define DIAG_FB_PHYS\t0x9e000000UL
+#define DIAG_FB_STRIDE\t4800UL\t/* 1600 * 3 bytes (logo_bpix=24) */
+#define DIAG_FB_ROWS\t720U
+#define DIAG_GLYPH_W\t8U
+#define DIAG_GLYPH_H\t16U
+#define DIAG_SCALE\t3U\t/* 24x48 glyphs */
+#define DIAG_CW\t(DIAG_GLYPH_W * DIAG_SCALE)
+#define DIAG_CH\t(DIAG_GLYPH_H * DIAG_SCALE)
+#define DIAG_TOP\t48U
+#define DIAG_COLS\t(DIAG_FB_STRIDE / 3UL / DIAG_CW)
+#define DIAG_ROWS\t((DIAG_FB_ROWS - DIAG_TOP) / DIAG_CH)
+#define DIAG_BG\t0x000000U
+
+static bool diag_scr_ready;
+static unsigned int diag_scr_row = 1;\t/* row 0 is the milestone line */
+static char diag_trace[DIAG_COLS + 1];
+static unsigned int diag_trace_len;
+
+static inline u8 *diag_screen_row(unsigned int row)
+{
+	return (u8 *)phys_to_virt(DIAG_FB_PHYS +
+			(unsigned long)(DIAG_TOP + row * DIAG_CH) *
+			DIAG_FB_STRIDE);
+}
+
+static inline void diag_scr_pixel(u8 *p, u32 rgb)
+{
+	p[0] = (rgb >> 16) & 0xff;
+	p[1] = (rgb >> 8) & 0xff;
+	p[2] = rgb & 0xff;
+}
+
+static inline void diag_scr_glyph(u8 *base, unsigned char ch)
+{
+	const unsigned char *g = &diag_font_data[(unsigned int)ch * DIAG_GLYPH_H];
+	unsigned int y, x, i, j;
+
+	for (y = 0; y < DIAG_GLYPH_H; y++) {
+		u8 *line = base + (unsigned long)y * DIAG_SCALE * DIAG_FB_STRIDE;
+
+		for (x = 0; x < DIAG_GLYPH_W; x++) {
+			u32 rgb = (g[y] & (0x80U >> x)) ? 0xffffffU : DIAG_BG;
+
+			for (i = 0; i < DIAG_SCALE; i++)
+				for (j = 0; j < DIAG_SCALE; j++)
+					diag_scr_pixel(line +
+						(x * DIAG_SCALE + j) * 3U, rgb);
+		}
+	}
+}
+
+/* Draw one text row; the cursor does not move. */
+static inline void diag_screen_draw(unsigned int row, const char *text,
+				    unsigned int len)
+{
+	u8 *r = diag_screen_row(row);
+	unsigned int i;
+
+	for (i = 0; i < DIAG_COLS; i++) {
+		char c = (i < len && text[i] >= 0x20 && text[i] <= 0x7e) ?
+			 text[i] : ' ';
+
+		diag_scr_glyph(r + (unsigned long)i * DIAG_CW * 3U, c);
+	}
+	__flush_dcache_area(r, DIAG_CH * DIAG_FB_STRIDE);
+}
+
+static inline void diag_screen_clear(void)
+{
+	u8 *fb = diag_screen_row(0);
+	unsigned long y;
+
+	for (y = 0; y < (unsigned long)(DIAG_FB_ROWS - DIAG_TOP); y++)
+		memset(fb + y * DIAG_FB_STRIDE, 0, DIAG_FB_STRIDE);
+	__flush_dcache_area(fb, (unsigned long)(DIAG_FB_ROWS - DIAG_TOP) *
+			    DIAG_FB_STRIDE);
+	diag_scr_row = 1;
+	if (diag_trace_len)
+		diag_screen_draw(0, diag_trace, diag_trace_len);
+}
+
+static inline void diag_screen_puts(const char *text, size_t len)
+{
+	size_t i = 0;
+
+	if (!diag_scr_ready || !text)
+		return;
+	while (i < len) {
+		unsigned int n = len - i;
+
+		if (n > DIAG_COLS)
+			n = DIAG_COLS;
+		if (diag_scr_row >= DIAG_ROWS)
+			diag_screen_clear();
+		diag_screen_draw(diag_scr_row, text + i, n);
+		diag_scr_row++;
+		i += n;
+	}
+}
+
+/* Append a band number to the permanent milestone line. */
+static inline void diag_screen_tag(unsigned int n)
+{
+	if (!diag_scr_ready)
+		return;
+	if (diag_trace_len >= 3 &&
+	    diag_trace[diag_trace_len - 3] == '0' + (n / 10) % 10 &&
+	    diag_trace[diag_trace_len - 2] == '0' + n % 10)
+		return;\t/* no consecutive duplicates */
+	if (diag_trace_len + 4 > DIAG_COLS)
+		return;
+	diag_trace[diag_trace_len++] = '0' + (n / 10) % 10;
+	diag_trace[diag_trace_len++] = '0' + n % 10;
+	diag_trace[diag_trace_len++] = ' ';
+	diag_trace[diag_trace_len] = '\\0';
+	diag_screen_draw(0, diag_trace, diag_trace_len);
+}
+
+#define DIAG_TAG(n) diag_screen_tag(n)
+
+/*
+ * Post-setup_arch stages report on the milestone line only: the paint
+ * bands stop at 19, and a tag cannot collide with a band number.
+ */
+#define DIAG_STAGE_TAG(n) \\
+\tdo { if (DIAG_PAINT) DIAG_TAG(n); } while (0)
+
+static inline void diag_screen_init(void)
+{
+	diag_scr_ready = true;
+	diag_screen_clear();
+	diag_screen_puts("DIAG: milestones on line 1, log below", 39);
+	diag_screen_tag(15);\t/* paging_init() just returned */
+}
+#else
+static inline void diag_screen_init(void) { }
+#define DIAG_TAG(n) do { } while (0)
+#endif
+
+#define DIAG_SCREEN_INIT diag_screen_init()
+
 
 #define DIAG_PANIC_STAGE %PANIC%
 #define DIAG_ARM_STAGE %ARM%
@@ -114,6 +275,7 @@ static inline void diag_paint(unsigned int band)
 \tfor (i = 0; i < DIAG_PAINT_BAND / sizeof(u64); i++)
 \t\tp[i] = ~0ULL;
 \tdsb(sy);
+\tDIAG_TAG(band);
 }
 
 static inline void diag_paint_early(unsigned int band)
@@ -126,6 +288,7 @@ static inline void diag_paint_early(unsigned int band)
 \tmemset_io(p, 0xff, DIAG_PAINT_BAND);
 \tearly_iounmap(p, DIAG_PAINT_BAND);
 \tdsb(sy);
+\tDIAG_TAG(band);
 }
 
 /* start_kernel() stages (mode 1) */
@@ -160,80 +323,6 @@ static inline void diag_paint_prearch(unsigned int band)
 #define DIAG_EARLY_HOOK(n) \\
 \tdo { if (DIAG_PAINT == 2) diag_paint_prearch(n); } while (0)
 
-#define DIAG_SCREEN %SCREEN%
-
-/*
- * Framebuffer text screen.
- *
- * The panel keeps scanning out the bootloader framebuffer (lcd_base), so
- * drawing characters there needs no console, no fbcon, no VT and no driver -
- * only a mapping of physical 0x9e000000, which exists once paging_init() has
- * run.  Every printk line is mirrored here, so from setup_arch() onwards the
- * kernel's own log - including panic() output and call traces - is readable
- * on the phone itself.
- *
- * Geometry is the bootloader's: 1600x720, 32 bpp, stride 1600*4.
- */
-#if DIAG_SCREEN
-#include <linux/diag_font.h>
-
-#define DIAG_FB_PHYS\t0x9e000000UL
-#define DIAG_FB_STRIDE\t0x1900UL\t/* 1600 * 4 bytes */
-#define DIAG_FB_ROWS\t720U
-#define DIAG_GLYPH_W\t8U
-#define DIAG_GLYPH_H\t16U
-#define DIAG_COLS\t(DIAG_FB_STRIDE / 4UL / DIAG_GLYPH_W)
-
-static unsigned int diag_scr_row;
-static bool diag_scr_ready;
-
-static inline void diag_scr_glyph(u32 *row0, unsigned int col,
-\t\t\t\t  unsigned char ch, u32 fg)
-{
-\tconst unsigned char *g = &diag_font_data[(unsigned int)ch * DIAG_GLYPH_H];
-\tu32 *p = row0 + col * DIAG_GLYPH_W;
-\tunsigned int y, x;
-
-\tfor (y = 0; y < DIAG_GLYPH_H; y++, p += DIAG_FB_STRIDE / 4UL)
-\t\tfor (x = 0; x < DIAG_GLYPH_W; x++)
-\t\t\tp[x] = (g[y] & (0x80U >> x)) ? fg : 0x00101010U;
-}
-
-static inline void diag_screen_puts(const char *text, size_t len)
-{
-\tu32 *row;
-\tunsigned int i;
-
-\tif (!diag_scr_ready || !text)
-\t\treturn;
-\tif (diag_scr_row >= DIAG_FB_ROWS / DIAG_GLYPH_H)
-\t\tdiag_scr_row = 0;\t/* wrap */
-\trow = (u32 *)phys_to_virt(DIAG_FB_PHYS + (unsigned long)diag_scr_row *
-\t\t\t\t  DIAG_GLYPH_H * DIAG_FB_STRIDE);
-\tfor (i = 0; i < len && i < DIAG_COLS; i++) {
-\t\tunsigned char c = text[i];
-
-\t\tif (c < 0x20 || c > 0x7e)
-\t\t\tc = ' ';
-\t\tdiag_scr_glyph(row, i, c, 0x00ffffffU);
-\t}
-\tfor (; i < DIAG_COLS; i++)
-\t\tdiag_scr_glyph(row, i, ' ', 0x00ffffffU);
-\tdiag_scr_row++;
-}
-
-/* Called once the linear mapping of lcd_base exists (after paging_init()) */
-static inline void diag_screen_init(void)
-{
-\tdiag_scr_row = 0;
-\tdiag_scr_ready = true;
-\tdiag_screen_puts("DIAG: screen console ready", 26);
-}
-#else
-static inline void diag_screen_init(void) { }
-#endif
-
-#define DIAG_SCREEN_INIT diag_screen_init()
 
 /*
  * Arm the SoC's AON watchdog directly.  This is deliberately independent of
@@ -435,6 +524,21 @@ def main():
         anchor = "\t" + smc + "\n"
         s = s.replace(anchor, anchor + "\t" + marker + "\n", 1)
         print("inserted %s" % marker)
+
+    # Report-only tags for the same stages, so the milestone line covers
+    # everything after setup_arch() too (paint bands stop at 19).
+    for n in range(2, 9):
+        tag = "DIAG_STAGE_TAG(%d);" % (20 + n)
+        if tag in s:
+            continue
+        for cand in ("\tDIAG_PAINT_HOOK(%d);\n" % n,
+                     "\tDIAG_SMC_HOOK(%d);\n" % n):
+            if cand in s:
+                s = s.replace(cand, cand + "\t" + tag + "\n", 1)
+                print("inserted %s" % tag)
+                break
+        else:
+            print("WARN: no anchor for %s" % tag)
 
     # start_kernel()'s statements before setup_arch() (paint mode 2, bands 1..9)
     for anchor, band in EARLY_TRACE:
