@@ -105,14 +105,16 @@ def main():
     ap.add_argument("--ramdisk", default=None,
                     help="replace the base ramdisk (e.g. rescue initramfs cpio)")
     ap.add_argument("--entry-paint", action="store_true",
-                    help="replace the Image header in the loaded copy with the "
-                         "framebuffer-paint stub (scripts/host/entry_paint.py); "
-                         "paints a white band before head.S so a hang proves "
-                         "the bootloader entered the Image")
+                    help="append the framebuffer-fill stub after the Image and "
+                         "retarget the entry branch to it, leaving the arm64 "
+                         "header intact; fills the whole panel before head.S")
     ap.add_argument("--entry-hang", action="store_true",
                     help="like --entry-paint, but the stub ends with `b .` "
-                         "instead of `b stext`: paints one band and stops dead, "
-                         "to calibrate how long the panel keeps that image")
+                         "instead of stext: fills the panel and stops dead, "
+                         "to calibrate whether the panel keeps our image")
+    ap.add_argument("--entry-colour", default="0xffffffff",
+                    help="fill colour for --entry-paint/--entry-hang "
+                         "(0xRRGGBB, default white 0xffffffff)")
     args = ap.parse_args()
 
     kernel = pathlib.Path(args.kernel).read_bytes()
@@ -123,18 +125,28 @@ def main():
     if kernel[0x38:0x3c] != b"ARMd":
         sys.exit("%s is not an arm64 Image" % args.kernel)
 
-    img, h = build(base, kernel, args.cmdline_extra, ramdisk)
-    ps = h["page_size"]
+    entry_info = None
     if args.entry_paint or args.entry_hang:
         import entry_paint  # noqa: E402  (sibling module)
-        first = 0x14000000 if args.entry_hang else kernel[:4]
-        stub = entry_paint.build_stub(first)
-        img = bytearray(img)
-        img[ps:ps + len(stub)] = stub
-        img = bytes(img)
-        print("\nentry-%s stub written at payload offset 0x%x:"
-              % ("hang" if args.entry_hang else "paint", ps))
-        print("  %s" % stub.hex())
+        # Append the stub after the Image and retarget only the `b stext` word,
+        # so text_offset/image_size/flags/ARMd stay valid in the loaded copy.
+        kernel, entry_info = entry_paint.attach(
+            kernel, halt=args.entry_hang, colour=int(args.entry_colour, 0))
+        print("\nentry-%s stub appended at payload offset 0x%x:"
+              % ("hang" if args.entry_hang else "paint", entry_info["stub_at"]))
+        print("  code0 0x%08x -> 0x%08x" % (entry_info["original_code0"],
+                                            entry_info["code0"]))
+        print("  stub at 0x%x re-branches to stext 0x%x"
+              % (entry_info["stub_at"], entry_info["stext"]))
+        print("  %s" % entry_info["stub"].hex())
+        print("  fills %d bytes (%dx%d) at 0x%08x"
+              % (entry_info["paint_bytes"], entry_paint.PANEL_W,
+                 entry_paint.PANEL_H, entry_paint.LCD_BASE))
+
+    img, h = build(base, kernel, args.cmdline_extra, ramdisk)
+    ps = h["page_size"]
+    if entry_info is not None and img[ps + 0x38:ps + 0x3c] != b"ARMd":
+        sys.exit("packed payload lost the arm64 header magic")
     out.write_bytes(img)
     print("\nbase %s (%d bytes)" % (base.name, base.stat().st_size))
     print("wrote %s: %d bytes  sha256 %s" % (out.name, len(img), sha256(img)))
@@ -146,10 +158,11 @@ def main():
     # the payload prefix must be byte-identical to what we intended to write
     # (img = [header page][kernel][...], so compare from the first payload page)
     ps = h["page_size"]
-    if args.entry_paint or args.entry_hang:
-        print("  payload prefix matches kernel: %s (first %d bytes are the stub)"
-              % (img[ps + entry_paint.STUB_SIZE:ps + len(kernel)] ==
-                 kernel[entry_paint.STUB_SIZE:], entry_paint.STUB_SIZE))
+    if entry_info is not None:
+        print("  payload prefix matches kernel: %s (stub appended at 0x%x)"
+              % (img[ps:ps + len(kernel)] == kernel, entry_info["stub_at"]))
+        print("  arm64 header intact: %s"
+              % (img[ps + 0x38:ps + 0x3c] == b"ARMd"))
     else:
         print("  payload prefix matches kernel: %s" % (img[ps:ps + len(kernel)] == kernel))
 
