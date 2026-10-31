@@ -10,7 +10,10 @@ Evidence: [evidence/2026-10-30-brom-recovery.txt](evidence/2026-10-30-brom-recov
 Consequence to remember: the rescue restores a **stock** `boot_b`, so the
 Magisk patch and any custom kernel in it are lost. Runtime root survives —
 `/data/local/tmp/mali_kroot` still gives `uid=0` on the stock kernel — so the
-kernel work can resume without re-rooting.
+kernel work can resume without re-rooting. To get the persistent Magisk root
+back afterwards, re-flash `D:\AndroidSDKTools\pi\boot_magisk_avb.img` to
+`boot_b` (the host copy is the reference; the device copy was removed in the
+2026-10-31 `/data/local/tmp` cleanup).
 
 Quick copy-paste procedure: [14-brom-recovery-runbook.md](14-brom-recovery-runbook.md).
 
