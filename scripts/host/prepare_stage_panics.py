@@ -160,6 +160,81 @@ static inline void diag_paint_prearch(unsigned int band)
 #define DIAG_EARLY_HOOK(n) \\
 \tdo { if (DIAG_PAINT == 2) diag_paint_prearch(n); } while (0)
 
+#define DIAG_SCREEN %SCREEN%
+
+/*
+ * Framebuffer text screen.
+ *
+ * The panel keeps scanning out the bootloader framebuffer (lcd_base), so
+ * drawing characters there needs no console, no fbcon, no VT and no driver -
+ * only a mapping of physical 0x9e000000, which exists once paging_init() has
+ * run.  Every printk line is mirrored here, so from setup_arch() onwards the
+ * kernel's own log - including panic() output and call traces - is readable
+ * on the phone itself.
+ *
+ * Geometry is the bootloader's: 1600x720, 32 bpp, stride 1600*4.
+ */
+#if DIAG_SCREEN
+#include <linux/diag_font.h>
+
+#define DIAG_FB_PHYS\t0x9e000000UL
+#define DIAG_FB_STRIDE\t0x1900UL\t/* 1600 * 4 bytes */
+#define DIAG_FB_ROWS\t720U
+#define DIAG_GLYPH_W\t8U
+#define DIAG_GLYPH_H\t16U
+#define DIAG_COLS\t(DIAG_FB_STRIDE / 4UL / DIAG_GLYPH_W)
+
+static unsigned int diag_scr_row;
+static bool diag_scr_ready;
+
+static inline void diag_scr_glyph(u32 *row0, unsigned int col,
+\t\t\t\t  unsigned char ch, u32 fg)
+{
+\tconst unsigned char *g = &diag_font_data[(unsigned int)ch * DIAG_GLYPH_H];
+\tu32 *p = row0 + col * DIAG_GLYPH_W;
+\tunsigned int y, x;
+
+\tfor (y = 0; y < DIAG_GLYPH_H; y++, p += DIAG_FB_STRIDE / 4UL)
+\t\tfor (x = 0; x < DIAG_GLYPH_W; x++)
+\t\t\tp[x] = (g[y] & (0x80U >> x)) ? fg : 0x00101010U;
+}
+
+static inline void diag_screen_puts(const char *text, size_t len)
+{
+\tu32 *row;
+\tunsigned int i;
+
+\tif (!diag_scr_ready || !text)
+\t\treturn;
+\tif (diag_scr_row >= DIAG_FB_ROWS / DIAG_GLYPH_H)
+\t\tdiag_scr_row = 0;\t/* wrap */
+\trow = (u32 *)phys_to_virt(DIAG_FB_PHYS + (unsigned long)diag_scr_row *
+\t\t\t\t  DIAG_GLYPH_H * DIAG_FB_STRIDE);
+\tfor (i = 0; i < len && i < DIAG_COLS; i++) {
+\t\tunsigned char c = text[i];
+
+\t\tif (c < 0x20 || c > 0x7e)
+\t\t\tc = ' ';
+\t\tdiag_scr_glyph(row, i, c, 0x00ffffffU);
+\t}
+\tfor (; i < DIAG_COLS; i++)
+\t\tdiag_scr_glyph(row, i, ' ', 0x00ffffffU);
+\tdiag_scr_row++;
+}
+
+/* Called once the linear mapping of lcd_base exists (after paging_init()) */
+static inline void diag_screen_init(void)
+{
+\tdiag_scr_row = 0;
+\tdiag_scr_ready = true;
+\tdiag_screen_puts("DIAG: screen console ready", 26);
+}
+#else
+static inline void diag_screen_init(void) { }
+#endif
+
+#define DIAG_SCREEN_INIT diag_screen_init()
+
 /*
  * Arm the SoC's AON watchdog directly.  This is deliberately independent of
  * the driver: drivers/watchdog/sprd_wdt_fiq.c registers with
@@ -263,20 +338,54 @@ EARLY_TRACE = [
 ]
 
 
+def write_font_header(root):
+    """Extract the in-tree 8x16 VGA font into a small standalone header.
+
+    CONFIG_FONT_8x16 is off in this build, but lib/fonts/font_8x16.c ships the
+    data regardless; parsing it avoids enabling the whole font framework just
+    to draw a few hundred characters.
+    """
+    import re
+    src = (root / "lib" / "fonts" / "font_8x16.c").read_bytes().decode("latin-1")
+    start = src.index("fontdata_8x16[FONTDATAMAX]")
+    body = src[src.index("{", start):]
+    # strip comments first: the per-byte comments contain text like
+    # "/* 125 0x7d '}' */" which both looks like hex data and closes the body
+    # early if we cut at the first '}'.
+    body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
+    vals = [int(v, 16) for v in re.findall(r"0x([0-9a-fA-F]{2})", body)]
+    if len(vals) < 4096:
+        raise SystemExit("font parse produced %d bytes" % len(vals))
+    vals = vals[:4096]
+    out = ['#ifndef _LINUX_DIAG_FONT_H', '#define _LINUX_DIAG_FONT_H', '',
+           '/* 8x16 VGA font, extracted from lib/fonts/font_8x16.c. */',
+           'static const unsigned char diag_font_data[4096] __maybe_unused = {']
+    for i in range(0, 4096, 16):
+        out.append('\t' + ' '.join('0x%02x,' % b for b in vals[i:i + 16]))
+    out += ['};', '', '#endif']
+    (root / "include" / "linux" / "diag_font.h").write_text('\n'.join(out) + '\n')
+    print("wrote include/linux/diag_font.h (4096 font bytes)")
+
+
 def main():
     panic_stage = sys.argv[1] if len(sys.argv) > 1 else "0"
     arm_stage = sys.argv[2] if len(sys.argv) > 2 else "0"
     smc_stage = sys.argv[3] if len(sys.argv) > 3 else "0"
     paint = sys.argv[4] if len(sys.argv) > 4 else "0"
+    screen = sys.argv[5] if len(sys.argv) > 5 else "0"
     src = ROOT / "init" / "main.c"
     hdr = ROOT / "include" / "linux" / "diag_stage.h"
+
+    if screen != "0":
+        write_font_header(ROOT)
 
     hdr.write_text(HEADER.replace("%PANIC%", panic_stage)
                          .replace("%ARM%", arm_stage)
                          .replace("%SMC%", smc_stage)
-                         .replace("%PAINT%", paint))
-    print("wrote include/linux/diag_stage.h (panic=%s arm=%s smc=%s paint=%s, %ds)"
-          % (panic_stage, arm_stage, smc_stage, paint, 10))
+                         .replace("%PAINT%", paint)
+                         .replace("%SCREEN%", screen))
+    print("wrote include/linux/diag_stage.h (panic=%s arm=%s smc=%s paint=%s screen=%s)"
+          % (panic_stage, arm_stage, smc_stage, paint, screen))
 
     s = src.read_text()
 
@@ -339,6 +448,29 @@ def main():
         s = s.replace(anchor, anchor + hook, 1)
         print("inserted %s" % hook.strip())
 
+    # setup_arch() band 15: the linear mapping now exists, so the on-screen
+    # console can start mirroring printk from here on.
+    # printk mirrors to the screen (kernel/printk/printk.c)
+    pk = ROOT / "kernel" / "printk" / "printk.c"
+    p = pk.read_text()
+    if screen != "0":
+        if "#include <linux/diag_stage.h>" not in p:
+            i = p.index("#include <linux/")
+            p = p[:i] + "#include <linux/diag_stage.h>\n" + p[i:]
+            print("added diag include to printk.c")
+        hook = ("\t#if DIAG_SCREEN\n\tdiag_screen_puts(text, text_len);\n\t#endif\n")
+        if "diag_screen_puts(text, text_len);" not in p:
+            anchor = "\treturn log_output(facility, level, lflags,\n"
+            if p.count(anchor) == 1:
+                p = p.replace(anchor, hook + anchor, 1)
+                print("inserted printk->screen hook")
+            else:
+                print("WARN: printk log_output anchor not unique")
+    else:
+        p = p.replace("#include <linux/diag_stage.h>\n", "")
+        p = re.sub(r"[ \t]*#if DIAG_SCREEN\n[ \t]*diag_screen_puts\(text, text_len\);\n[ \t]*#endif\n", "", p)
+    pk.write_text(p)
+
     # setup_arch() trace (paint mode 2): milestones inside
     # arch/arm64/kernel/setup.c, bands 1..9.  The first ones must use
     # early_ioremap() because the linear mapping of 0x9e000000 only appears
@@ -374,6 +506,12 @@ def main():
     if hook10.strip() not in t and t.count(entry) == 1:
         t = t.replace(entry, entry + hook10, 1)
         print("inserted %s in setup.c" % hook10.strip())
+    # the on-screen console can start once the linear map exists
+    screen_init = "\tDIAG_SCREEN_INIT;\n"
+    paging = "\tpaging_init();\n"
+    if screen_init.strip() not in t and t.count(paging) == 1:
+        t = t.replace(paging, paging + screen_init, 1)
+        print("inserted %s in setup.c" % screen_init.strip())
     setup.write_text(t)
 
     # the end-of-init panic must not mask any instrument

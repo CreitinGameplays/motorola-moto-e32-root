@@ -1191,3 +1191,71 @@ the only ground truth available for this device).
 Practical effect for the current bisection: it is worth matching the vendor
 config exactly, i.e. building with CONFIG_ARM64_ERRATUM_834220=n, if the
 head.S window keeps refusing to yield.
+
+------------------------------------------------------------------------
+39. KASLR AND THE BSS CLEAR ARE BOTH RULED OUT
+------------------------------------------------------------------------
+boot_nokaslr.img (sha256 d7f9400c...ca83): same 20-band trace kernel, with
+kaslr_early_init() replaced by `mov x0,#0 ; ret` (scripts/host/patch_image.py
+--kaslr-off) so that it returns 0 = "no KASLR", exactly what `nokaslr` does.
+Result: HANG, still one bar.  The kernel therefore does not die in the KASLR
+path, and it is irrelevant whether the bootloader provides a kaslr-seed.
+
+boot_bssskip.img (sha256 9f368696...2726): same kernel with the 3 MB BSS
+clear turned into memset(x, 0, 0) (--bss-skip).  Result: HANG, still one bar.
+The BSS clear is not the death either, and since it sits in
+__primary_switched() right before the KASLR call, the kernel most likely never
+reaches __primary_switched() at all.
+
+That leaves, in execution order:
+
+    preserve_boot_args -> el2_setup -> set_cpu_boot_mode_flag ->
+    __create_page_tables -> __cpu_setup -> __primary_switch (MMU on here) ->
+    __primary_switched -> start_kernel
+
+------------------------------------------------------------------------
+40. PROBES INSIDE stext (THE MMU IS OFF THERE, SO PLAIN PHYSICAL STORES WORK)
+------------------------------------------------------------------------
+All of stext up to `b __primary_switch` runs with the MMU off, so a store to
+the physical framebuffer is a valid probe there - no page tables, no mapping,
+no idmap surgery.  scripts/host/insert_head_probes.py inserts a diag_probe
+macro and three probes into arch/arm64/kernel/head.S:
+
+    22  right after `bl el2_setup`
+    23  right after `bl __create_page_tables`
+    24  right after `bl __cpu_setup`  (immediately before `b __primary_switch`)
+
+Each paints 128 KB at 0x9e000000 + band*0x20000 with 0x2000*16 stores, using
+only x9/x10/x11 (registers the boot path does not use before start_kernel()).
+Verified in the resulting binary: 0x9E2C0000, 0x9E2E0000, 0x9E300000.
+
+Image.trace3 (Image.p0a0s0q2c1, sha256 e6573ac3...34ea) = vendor config + KVM,
+DIAG_PAINT=2 (bands 1..19), the screen console, and probes 22/23/24; packed
+with --entry-paint for band 0.  One boot now says which of the six entry steps
+completed.
+
+NOTE: -DDIAG_EARLY_PAINT in KCFLAGS does NOT reach .S files (KBUILD_AFLAGS is
+derived from KBUILD_CFLAGS before KCFLAGS is appended), which is why the probes
+were initially absent from the build.  They are now unconditional.
+
+------------------------------------------------------------------------
+41. LOGS ON THE PANEL (suggested by the operator)
+------------------------------------------------------------------------
+Redirecting kernel logs to a file is impossible before init (no block layer,
+no filesystem - and the kernel dies before start_kernel()), but the panel keeps
+scanning out the bootloader framebuffer, so the log can simply be *drawn*.
+
+Implementation (DIAG_SCREEN=1, scripts/host/prepare_stage_panics.py):
+ - the 8x16 VGA font is extracted from lib/fonts/font_8x16.c into
+   include/linux/diag_font.h (CONFIG_FONT_8x16 is off, so the font framework is
+   not used at all - just the 4096 bytes of glyph data);
+ - diag_screen_puts() draws one 200-column text line into physical
+   0x9e000000 (stride 1600*4), wrapping at the bottom;
+ - kernel/printk/printk.c::vprintk_store() mirrors every formatted line;
+ - diag_screen_init() is called right after paging_init(), i.e. as soon as the
+   linear mapping of the framebuffer exists.
+
+So from setup_arch() onwards - including panic() output and call traces - the
+kernel's own log is readable on the phone, with no console, no fbcon and no
+driver.  If the kernel dies before paging_init() the screen stays blank, which
+is itself consistent with the current pre-start_kernel death.
