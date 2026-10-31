@@ -218,4 +218,6 @@ So the proven recipe for *any* 64 MiB `boot` image on this device is:
 5. reboot; a hang costs one power cycle and the `boot_a` rescue restores
    stock `boot_b`.
 
-Detail: [15-play-integrity.md](15-play-integrity.md).
+Detail: [15-play-integrity.md](15-play-integrity.md). The full, copy-pasteable
+Magisk rooting procedure is
+[16-magisk-root-how-to.md](16-magisk-root-how-to.md).

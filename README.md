@@ -92,6 +92,7 @@ docs/
   13-recovery-bootrom.md    bootROM/FDL route analysis
   14-brom-recovery-runbook.md  bootROM recovery runbook
   15-play-integrity.md      Magisk root + Play Integrity work log (BASIC pass)
+  16-magisk-root-how-to.md step-by-step persistent Magisk root on this device
   evidence/                 captured successful-run logs
 patches/
   kernel-sprd/              the measured header delta (git patch) + the
@@ -305,6 +306,8 @@ hardening and measured reliability are in `docs/04-reliability-hardening.md`.
   bootROM/FDL route and its runbook
 - `docs/15-play-integrity.md` - Magisk root on the unlocked device: module
   stack, Play Integrity verdicts (BASIC passes, DEVICE still open)
+- `docs/16-magisk-root-how-to.md` - step-by-step persistent Magisk root on
+  this device (patch, AVB re-sign, `dd` to `boot_b`, verify)
 - `docs/evidence/` - captured successful-run logs and fastboot recon
 
 ## Kernel source
