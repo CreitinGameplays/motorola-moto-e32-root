@@ -1,0 +1,96 @@
+2026-10-31 12:41-13:05 - PlayIntegrityFork v18 + keybox/fingerprint A/B
+========================================================================
+
+Goal: unlock MEETS_DEVICE_INTEGRITY (SPIC raw verdict) on Moto E32
+(XT2227-1, Android 11, kernel 4.14.199, Unisoc T606), unlocked bootloader,
+Magisk 31.1 root. All runs SELinux Enforcing, no mali_kroot in the boot.
+
+Verdict matrix (SPIC 1.4.0, screenshots D:\AndroidSDKTools\pi\sNN.png):
+
+  s20-s23  PIFork v18 + TrickyStore 1.4.1 + AOSP default keybox
+           -> deviceRecognitionVerdict = ["MEETS_BASIC_INTEGRITY"]
+  s24-s26  PIFork v18 + TrickyStore 1.4.1 + Megatron keybox (Xiaomi RKP
+           leaf 405d3d10..., exp 2026-11-06; restored from
+           /data/local/tmp/pi/keybox_megatron_backup.xml, md5
+           984e70f768a8c07944229d5817b1209e verified)
+           -> ["MEETS_BASIC_INTEGRITY"]
+  s27-s28  PIFork v18 ALONE (TrickyStore disabled via
+           /data/adb/modules/tricky_store/disable)
+           -> ["MEETS_BASIC_INTEGRITY"]
+
+Raw verdict JSON seen in logcat (PlayCore/System.out, pid of SPIC):
+
+  I PlayCore: UID: [10239]  PID: [12732] IntegrityService : requestIntegrityToken(...)
+  I System.out:   "deviceIntegrity": {
+  I System.out:     "deviceRecognitionVerdict": ["MEETS_BASIC_INTEGRITY"],
+
+PIFork install (12:45):
+  - PlayIntegrityFork-v18.zip (osm0sis, 227895 bytes) pushed to
+    /data/local/tmp/pi/, installed with `magisk --install-module`.
+  - Installer banner: "! Universal SafetyNet Fix (USNF) module will be
+    removed on next reboot" -> USNF gone after reboot.
+  - `sh autopif4.sh --strong` (in /data/adb/modules/playintegrityfix)
+    output (excerpt):
+      TAGS=release-keys
+      SECURITY_PATCH=2026-10-05
+      DEVICE_INITIAL_SDK_INT=32
+      *.build.id=ZP11.260918.007
+      *.security_patch=2026-10-05
+      # Canary Released: 2026-10-07
+      # Estimated Expiry: 2026-11-18
+    -> custom.pif.prop written (600 bytes); TrickyStore
+       security_patch.txt auto-synced to "all=2026-10-05";
+       com.google.android.gms.unstable / com.android.vending killed.
+
+PIF activity proof (verboseLogs=1, logcat tag PIF/Native, after
+`killall com.google.android.gms.unstable` + respawn):
+
+  D PIF/Native: Read from file descriptor for 'dex' -> 19972 bytes
+  D PIF/Native: Read from file descriptor for 'config' -> 600 bytes
+  D PIF/Native: Converting config from prop format to JSON format
+  D PIF/Native: JSON contains 23 keys!
+  D PIF/Native: Verbose logging (level 1) enabled!
+  D PIF/Native: Spoofing SDK Level in Play Store disabled!
+  D PIF/Native: Spoofing Fingerprint in Play Store disabled!
+
+  Hooked pids identified via `ps -A`:
+    12314 = com.android.vending
+    12482 = com.google.android.gms.unstable   (DroidGuard host)
+
+  Note: PIF logs only at process spawn; nothing is logged during the
+  integrity request itself. A `logcat -c` before a forced respawn wipes
+  the spawn logs - capture logcat BEFORE killing the process.
+
+AOSP default keybox identification (KeyAttestation 1.8.4 after swap):
+  "AOSP software attestation root certificate"
+  "Private key of attestation key is well-known, the certificate chain
+   can be tampered with."
+  "Bootloader is locked"          <- spoofed by TrickyStore chain
+  leaf: CN=Android Keystore Key, not after: Feb 7, 2106
+  Keymaster 4.1 / TrustedEnvironment
+
+Magisk denylist table at time of tests (enforcement OFF, denylist=0):
+  com.android.vending, com.google.android.gsf, com.whatsapp (+isolated
+  variants), com.google.android.gms, com.google.android.gms.unstable
+
+Conclusions:
+  1. Keybox swap (AOSP <-> Megatron) does not change the verdict.
+  2. PIF alone gives BASIC (stronger than USNF alone, which gave
+     NO_INTEGRITY), but DEVICE still fails without TrickyStore -
+     consistent with the real attestation leaking
+     verifiedBootState=ORANGE from the broken TEE.
+  3. DEVICE is therefore neither a fingerprint problem nor a keybox-swap
+     problem on this A11 device. Remaining hypotheses: (a) Megatron
+     keybox revoked/profile-mismatched server-side; (b) Play Protect
+     certification status is a server-side per-device flag PIF cannot
+     change; (c) 2026 DroidGuard checks in GMS 26.43.30 exceed the
+     classic legacy path on Android 11.
+
+Wrap-up state (13:05):
+  Stack = Magisk 31.1 + Zygisk + PIFork v18 (Pixel Canary fingerprint,
+  exp ~2026-11-18) + TrickyStore 1.4.1 (Megatron keybox) + Shamiko 1.2.5.
+  denylist enforcement OFF; GMS on Shamiko hide list; SELinux Enforcing.
+  TrickyStore `disable` marker REMOVED after the PIF-alone test -> it
+  re-activates on next reboot (no reboot performed; current boot passes
+  BASIC with PIF alone). BASIC stable; DEVICE unsolved pending a valid
+  keybox.

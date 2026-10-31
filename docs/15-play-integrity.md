@@ -422,9 +422,204 @@ with:
 Reboot is required for Zygisk to load; confirm with
 `logcat | grep "is on the denylist"`.)
 
+### 2026-10-31 12:00-12:15 - **root cause of the all-red regression: permissive SELinux**
+
+The cheapest experiment (hypothesis 0) was decisive.
+
+1. `adb reboot`. Immediately after boot, with **no exploit run in that boot**:
+   `getenforce` = **Enforcing**.
+2. Checker run (TrickyStore inert, target.txt = `# none`, USNF installed):
+   **BASIC = green**, DEVICE = red, STRONG = red. Screenshot `s9.png`.
+3. So the earlier "all red" state had nothing to do with the keybox, the
+   target list or Magisk: **every one of those five attempts ran after
+   `mali_kroot` had set `selinux_state.enforcing = 0`, and DroidGuard treats
+   permissive SELinux as tampering.** The regression reproduces exactly:
+   permissive -> BASIC red; enforcing -> BASIC green.
+4. Consequence for the whole workflow: **do not run `mali_kroot` on a boot
+   where an integrity verdict matters.** Use Magisk `su` for root instead
+   (does not touch SELinux). Grant it once, from an exploit shell, by writing
+   the policy row (persists across boots):
+
+```
+/debug_ramdisk/magisk --sqlite "REPLACE INTO policies (uid,policy,until,logging,notification) VALUES (2000,2,0,1,1)"
+```
+
+   `policies` schema is `uid|policy|until|logging|notification`, `policy=2`
+   means "allow forever" (same encoding as the app's "grant" entry). After a
+   reboot with a clean boot:
+
+```
+adb shell su -c 'id'      -> uid=0(root) ... context=u:r:magisk:s0
+adb shell su -c getenforce -> Enforcing
+```
+
+   This is now the standard way to do root work from adb on this device:
+   `adb shell "su -c '<cmd>'"`, no exploit, SELinux stays Enforcing.
+   (Caveat: `su` needs a single-quoted command and the adb shell itself stays
+   uid 2000; `su -c` starts a new `u:r:magisk:s0` context.)
+
+### 2026-10-31 12:08 - state found on re-entry, and what it means
+
+Between two work sessions the device had been changed outside this log:
+
+- **Universal SafetyNet Fix v2.4.0** (`kdrag0n`, module id `safetynet-fix`)
+  installed at 11:59. Its `system.prop` contains the classic prop spoofs:
+  `ro.boot.verifiedbootstate=green`, `ro.boot.veritymode=enforcing`,
+  `vendor.boot.vbmeta.device_state=locked`, `ro.debuggable=0`,
+  `ro.secure=1`, `ro.build.tags=release-keys`. Verified live after a boot:
+  `getprop ro.boot.verifiedbootstate` -> **green**,
+  `getprop ro.boot.flash.locked` -> **1**, `ro.boot.veritymode` -> enforcing,
+  `ro.debuggable` -> 0. (The real bootloader state is still unlocked/orange;
+  these are `resetprop` values in RAM.)
+- Magisk "Systemless hosts" module enabled (12:02).
+- DenyList entries changed: the GMS/GSF/Vending rows were **replaced by
+  WhatsApp rows**, and su policies exist for `flar2.devcheck` (uid 10225) and
+  `com.termux` (uid 10226). Note this is actually *correct* for USNF 2.4.0:
+  it needs **Zygisk injection into GMS**, and a package on the DenyList is
+  exactly what Zygisk refuses to inject into - so GMS must **not** be on the
+  list while USNF is in use. (TrickyStore does not need GMS on the DenyList
+  either; it hooks keystore system-side.)
+
+### 2026-10-31 12:10 - TrickyStore active + Enforcing SELinux: BASIC green, DEVICE red
+
+With `target.txt` = gms, vending, gsf, keyattestation:
+
+- KeyAttestation: `Bootloader is locked`, chain = the keybox
+  (`Key Attestation CA1` -> `Droid CA2` -> `Droid CA3` -> leaf
+  `405d3d10...`, `manufacturer:Xiaomi`, leaf `not after 2026-11-06`),
+  `Version: Keymaster 4.1`, `Security level: TrustedEnvironment`,
+  key cert validity to 2106 (generated key). Same as before.
+- Play Integrity: **BASIC green, DEVICE red, STRONG red** (screenshot
+  `s10.png`). This is the same verdict as with USNF alone and with TrickyStore
+  inert - i.e. TrickyStore is currently adding nothing.
+
+### 2026-10-31 12:12 - `teeBroken` cannot be overridden by editing the file
+
+- Wrote `teeBroken=false` to `/data/adb/tricky_store/tee_status`, killed the
+  daemon (`kill -9 $(pidof TrickyStore)`; the `service.sh` loop then exits,
+  as designed, because the daemon returned non-zero), restarted it manually
+  (`cd /data/adb/modules/tricky_store && nohup ./daemon >/data/local/tmp/tricky_daemon.log 2>&1 &`).
+- After ~4 s the daemon **rewrote the file back to `teeBroken=true`**: the
+  value is the result of a live keystore probe, not a config knob. To get the
+  "patch the real leaf" path we would have to fix the probe itself (or use a
+  different implementation - see TEESimulator / TEESimulator-RS).
+- Practical note: starting the daemon from an interactive `adb shell` keeps
+  that shell alive (`nohup ... &` inherits the adb pty), which made the
+  command appear to hang until timeout. The daemon itself is fine; the log is
+  `/data/local/tmp/tricky_daemon.log`. Prefer restarting by reboot.
+
+### 2026-10-31 12:19-12:40 - A/B matrix with raw verdicts (SPIC) and Shamiko
+
+Installed **SPIC v1.4.0** (`com.henrikherzig.playintegritychecker`,
+github.com/herzhenr/spic-android) - unlike the nikolas checker it prints the
+raw `deviceIntegrity.deviceRecognitionVerdict`, which removes all guessing
+about what the three colored rows mean. Verdict matrix so far (all on fresh
+boots, SELinux Enforcing, no `mali_kroot` in the boot):
+
+| config | verdict |
+|---|---|
+| TrickyStore only (USNF disabled) - s12 | `[]` (NO_INTEGRITY) |
+| USNF only (TrickyStore disabled) - s14/s15 | `[]` (NO_INTEGRITY) |
+| USNF + TrickyStore, denylist=1, GMS **not** in list - s16 | `[MEETS_BASIC_INTEGRITY]` |
+| USNF + TrickyStore, denylist=1, **GMS + :unstable in list** - s17 | `[]` (NO_INTEGRITY) |
+| + Shamiko 1.2.5, denylist=1 - s18 | `[MEETS_BASIC_INTEGRITY]` |
+| + Shamiko, denylist=0 (enforcement off) - s19 | `[MEETS_BASIC_INTEGRITY]` |
+
+Conclusions:
+
+1. **USNF's prop spoof is load-bearing for BASIC** on this device: without it
+   (s12) the verdict is empty even though TrickyStore is serving a full
+   keybox chain to GMS. DroidGuard evidently also reads `ro.boot.*` /
+   `ro.debuggable` etc., and `orange`/`0` fails the check.
+2. **Magisk's enforced DenyList is what breaks TrickyStore** (s17): with GMS
+   on the enforced list, Magisk's denylist daemon prevents Zygisk module
+   injection into `com.google.android.gms`, so TrickyStore's keystore hook
+   never runs there and the verdict collapses to NO_INTEGRITY. This is the
+   classic "Enforce DenyList vs Zygisk modules" conflict.
+3. **Shamiko 1.2.5** (module id `zygisk_shamiko`, installed via
+   `magisk --install-module`) resolves the conflict: with Shamiko present the
+   enforced DenyList no longer blocks module injection (s18 BASIC green).
+   Shamiko's own mode is: Zygisk ON, *Enforce DenyList OFF*, denylist table
+   = its hide list.
+4. Odd observation: the `com.google.android.gms` +
+   `com.google.android.gms.unstable` denylist rows that existed during the
+   s17 boot were **gone** after the next reboot (before s18). Nothing in the
+   session removed them; possibly a Magisk-app interaction. Noted as
+   unexplained; it did not matter because Shamiko was already active.
+5. A Magisk-settings DB footgun worth recording: `--sqlite "REPLACE INTO
+   settings ... VALUES(0x64656e796c697374,0)"` does **not** match the text
+   key `denylist` - SQLite stores the hex literal as the *integer*
+   7234309844229518196, which TEXT affinity converts to that decimal string,
+   creating a junk row. Use a quoted text key (`VALUES("denylist",0)`) or
+   the CLI (`magisk --denylist disable`). The junk row was deleted.
+
+**Current working BASIC stack:** Magisk 31.1 + Zygisk + USNF 2.4.0 (props)
++ TrickyStore 1.4.1 (attestation) + Shamiko 1.2.5 (hiding), SELinux
+Enforcing, no exploit in the boot. Reproducible across three boots.
+
+**DEVICE is still missing** (`deviceRecognitionVerdict =
+[MEETS_BASIC_INTEGRITY]` only, s16/s18/s19). The Megatron keybox (Xiaomi RKP
+leaf `405d3d10...`, valid 2026-10-25..2026-11-06) does not produce
+MEETS_DEVICE_INTEGRITY - consistent with it being revoked/profile-mismatched
+on Google's side. DEVICE now hinges entirely on a *valid, non-revoked*
+keybox; the rest of the stack is in place.
+
+### 2026-10-31 12:41-13:05 - PIFork v18 + keybox/fingerprint A/B (s20-s28)
+
+Replaced the 2022-era props layer with the current standard. Installed
+**PlayIntegrityFork v18** (osm0sis, `playintegrityfix` module id); its
+installer auto-removes USNF on next reboot (it flags USNF as conflicting).
+Generated a fingerprint with `autopif4.sh --strong` from the module dir:
+Pixel Canary `ZP11.260918.007`, `SECURITY_PATCH=2026-10-05`, estimated expiry
+2026-11-18; it also auto-synced TrickyStore's `security_patch.txt`
+(`all=2026-10-05`) and killed the GMS/vending processes. GMS was re-added to
+the denylist table (Shamiko's hide list, enforcement stays OFF).
+
+Verdict matrix extension (all boots SELinux Enforcing, SPIC raw verdicts):
+
+| config | verdict |
+|---|---|
+| PIF + TrickyStore + **AOSP default keybox** - s20-s23 | `[MEETS_BASIC_INTEGRITY]` |
+| PIF + TrickyStore + **Megatron keybox** - s24-s26 | `[MEETS_BASIC_INTEGRITY]` |
+| **PIF alone** (TrickyStore disabled) - s27-s28 | `[MEETS_BASIC_INTEGRITY]` |
+
+Notes and conclusions:
+
+1. The TrickyStore default `keybox.xml` is the **AOSP software attestation
+   root** (KeyAttestation labels it exactly that: "Private key of attestation
+   key is well-known"). It produces the same verdict as the Megatron keybox -
+   i.e. swapping keyboxes alone does not unlock DEVICE here.
+2. **PIF alone still gives BASIC** on this device (unlike USNF alone, which
+   gave NO_INTEGRITY in s14/s15) - PIF's prop spoofing is strictly stronger.
+   But DEVICE still fails without TrickyStore, consistent with the real
+   (unspoofed) key attestation from the broken TEE leaking
+   `verifiedBootState=ORANGE` to GMS.
+3. PIF is verifiably active: verbose logs (`verboseLogs=1` in
+   `custom.pif.prop`, tag `PIF/Native`) show it hooks both
+   `com.android.vending` and `com.google.android.gms.unstable`, parses the
+   23-key config, and converts prop->JSON format. The raw verdict JSON is
+   also visible in logcat via PlayCore/System.out:
+   `"deviceRecognitionVerdict": ["MEETS_BASIC_INTEGRITY"]`.
+4. Therefore **DEVICE is neither a fingerprint problem nor a keybox-swap
+   problem** on this Android 11 device. Remaining explanations, in order:
+   (a) the Megatron keybox is revoked/profile-mismatched server-side (leaf
+   expires 2026-11-06) - needs a fresh, valid, profile-matched keybox;
+   (b) Play Protect *certification status* is a server-side per-device flag
+   (visible in Play Store settings) that PIF cannot change;
+   (c) DroidGuard's 2026 checks in GMS 26.43.30 require more than the classic
+   legacy path on A11.
+
+**State at wrap-up (2026-10-31 ~13:05):** stack = Magisk 31.1 + Zygisk +
+PIFork v18 (Pixel Canary fingerprint, exp ~2026-11-18) + TrickyStore 1.4.1
+(Megatron keybox restored from backup, md5-verified) + Shamiko 1.2.5;
+denylist enforcement OFF, GMS on the Shamiko hide list; SELinux Enforcing.
+TrickyStore's `disable` marker was removed after the PIF-alone test, so it
+re-activates on the next reboot; the current boot passes BASIC with PIF
+alone. BASIC is stable; DEVICE remains unsolved pending a valid keybox.
+
 ## 8. Working hypotheses (in order of likelihood)
 
-0. **SELinux Permissive (strongest, cheapest to test).** `mali_kroot` flips
+0. **SELinux Permissive - CONFIRMED 2026-10-31 12:08.** `mali_kroot` flips
    `selinux_state.enforcing` to 0 in RAM and it stays Permissive until reboot
    (`getenforce` -> `Permissive`, confirmed 2026-10-31 12:05). Every Play
    Integrity attempt in this session happened *after* an exploit run, i.e.
@@ -434,6 +629,9 @@ Reboot is required for Zygisk to load; confirm with
    red regardless of the TrickyStore configuration - and why the regression
    looked like "Magisk's fault". Test = reboot and check PI *before* touching
    the exploit (Magisk root via `su` does not need permissive).
+   **Result: permissive -> BASIC red; Enforcing -> BASIC green, reproducibly.
+   This hypothesis is closed: never run the exploit before an integrity
+   check; use `adb shell "su -c ..."` (policy row for uid 2000).**
 1. **Keybox/device profile mismatch (most likely, DEVICE)** - the attestation
    record says `manufacturer:Xiaomi`, `Keymaster 4.0`, RKP `Droid CA3`; the
    device is Motorola/hawaii/Keymaster 4.0-4.1 with a 2024-02 patch. Google
@@ -458,7 +656,15 @@ Reboot is required for Zygisk to load; confirm with
    `verifiedBootState=green` via TrickyStore + `boot_props_mode`, or accept
    that BASIC needs a `ro.boot.*` prop spoof (Magisk `resetprop` at
    post-fs-data, which affects new processes only).
-4. **GMS-side cached device state** - Play Integrity caches "device
+4. **USNF vs TrickyStore - DISPROVED as a conflict (2026-10-31 12:40).**
+   The A/B matrix shows the opposite: they are *complementary*. USNF alone
+   (s14) and TrickyStore alone (s12) both give NO_INTEGRITY; only the
+   combination gives BASIC (s16). USNF covers the `ro.boot.*`/build-prop
+   surface that DroidGuard checks locally; TrickyStore covers the
+   keystore/attestation surface. What *did* break BASIC was Magisk's
+   **enforced DenyList** blocking TrickyStore's injection into GMS (s17),
+   fixed by Shamiko (s18).
+5. **GMS-side cached device state** - Play Integrity caches "device
    integrity" server-side for a while; after switching the boot image the
    cached state may stay bad for hours. Worth re-testing after 12-24 h and
    after clearing GMS data (`pm clear com.google.android.gms` is risky - it
@@ -468,25 +674,37 @@ Reboot is required for Zygisk to load; confirm with
 
 Ordered, cheapest/most informative first:
 
-0. **Clean-boot control (5 min, do this first).** `adb reboot`, wait for
-   `sys.boot_completed=1`, `adb shell getenforce` (must print `Enforcing`),
-   then run the checker **without executing `mali_kroot` in that session**.
-   Expected: BASIC green again. If yes, the all-red regression is caused by
-   *Permissive SELinux* (and/or by whatever else root changed in RAM), not by
-   TrickyStore or the keybox - and the fix is simply to never run the exploit
-   on a boot where integrity matters (Magisk's `su` gives root without
-   touching SELinux). If BASIC is still red with Enforcing, move to step 1.
-   Note: also check whether `su`/Magisk root can be used without the exploit
-   (`su -c id`) - if Magisk SU is not yet granted, grant it from the app
-   (it must show the device as installed and `su` must work from `adb shell`).
-1. **Confirm the token is a verdict, not an error.** Get the raw JWT: either
-   add a tiny logger app that prints `requestIntegrityToken()` result/exception
-   (the checker swallows errors), or grep GMS/`Finsky` logs for the
-   server-side verdict reason (`logcat | grep -i droidguard`). If the token
-   contains `requestDetails`/`appIntegrity`/`deviceIntegrity` fields, dump the
-   whole JSON - `deviceIntegrity.deviceRecognitionVerdict` explains *which*
-   label failed and often carries a `recentDeviceActivity`/`deviceAttributes`
-   blob with the reason.
+0. **DONE (2026-10-31 12:08): clean boot gives BASIC green.** Root cause of
+   the all-red state = permissive SELinux. From now on: root work through
+   `adb shell "su -c ..."` (policy row for uid 2000 already added), never
+   through `mali_kroot` on a boot where a verdict matters.
+
+0b. **DONE (2026-10-31 12:40): USNF/TrickyStore A/B matrix + Shamiko.**
+   USNF and TrickyStore are complementary, not conflicting (both needed for
+   BASIC). The real BASIC killer was the enforced DenyList blocking
+   TrickyStore's injection into GMS; Shamiko 1.2.5 installed, DenyList
+   enforcement now OFF (`denylist=0`), BASIC stable across three boots
+   (s16/s18/s19). SPIC installed for raw-verdict readings.
+
+1. **DEVICE: validate/replace the keybox (the only remaining blocker).**
+   The Megatron keybox does not yield MEETS_DEVICE_INTEGRITY and its leaf
+   expires 2026-11-06. Steps: (a) run a keybox validity check (e.g.
+   chiteroman's KeyboxChecker or an online checker) to distinguish
+   "revoked/banned" from "profile mismatch"; (b) if banned, a fresh valid
+   keybox is required (user-supplied); (c) re-test SPIC after swapping
+   `/data/adb/tricky_store/keybox.xml` (no reboot needed - the daemon
+   reloads the file, but a reboot is the clean way).
+2. **DONE (2026-10-31 12:45): props layer modernized.** PlayIntegrityFork
+   v18 (osm0sis) installed; its installer auto-removed USNF. `autopif4.sh
+   --strong` generated a Pixel Canary fingerprint (`ZP11.260918.007`, patch
+   2026-10-05, est. expiry 2026-11-18) and synced TrickyStore's
+   `security_patch.txt`. Verdict unchanged: BASIC only (s20-s28) - see the
+   12:41-13:05 section above for the full A/B matrix.
+3. **Check whether GMS consumes TrickyStore's chain at all** (only needed if
+   the keybox swap does not move the verdict): (a) `logcat | grep -iE
+   "tricky|keymaster|attest"` while the checker runs; (b) SPIC's raw JSON
+   already shows the verdict shape - `deviceRecognitionVerdict` labels are
+   the whole signal.
 2. **Test `tee_status` override**: `echo teeBroken=false >
    /data/adb/tricky_store/tee_status` (or delete it), restart the daemon,
    re-run KeyAttestation. If the chain then keeps the device's real leaf and
