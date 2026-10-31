@@ -211,3 +211,30 @@ At C:\Users\Creitin\moto-root-test\scripts\host\run_boot_b_test.ps1:51 char:30
 +                              ~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (adb.exe: no devices/emulators found:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
+
+========================================================================
+boot_b test, 2026-10-30 21:20:55
+image : artifacts/kernel-build/boot_trace3.img
+        67108864 bytes, sha256 131AACD388DE750BEEE7EEA9AB77719990F7EFDF157D79542526CFEBFAFEF9D8
+========================================================================
+--- pre-flight ---
+slot            : _b
+running kernel  : Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020) (Android (6443078 based on r383902) clang version 11.0.1 (https://android.googlesource.com/toolchain/llvm-project b397f81060ce6d701042b782172ed13bee898b79), LLD 11.0.1 (/buildbot/tmp/tmp6_m7QH b397f81060ce6d701042b782172ed13bee898b79)) #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024
+--- push ---
+pushed sha256   : 131aacd388de750beee7eea9ab77719990f7efdf157d79542526cfebfafef9d8
+--- flash boot_b (root) ---
+attempt 1 : 67108864 bytes (64 M) copied, 0.901885 s, 71 M/s | 131aacd388de750beee7eea9ab77719990f7efdf157d79542526cfebfafef9d8
+read-back match : YES
+--- one-attempt slot b ---
+attempt 1 : uid=0 | before: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 ef 00 |  00 00 00 00 00 00 00 00 00 00 00 00 16 de b9 49 | block 32 bytes | 32 bytes (32 B) copied, 0.017020 s, 1.8 K/s | after: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 1f 00 |  00 00 00 00 00 00 00 00 00 00 00 00 b1 82 a5 20
+--- reboot ---
+reboot issued at 21:21:10
+t+   4s  absent
+
+VERDICT: HANG  (adb back after 333s)
+  => no adb, no reset: the CPU is hung before that stage
+     recover with a power cycle (slot b's try is spent, the SPL takes slot a
+     and the rescue restores Android), or brom_set_slot.ps1 -Slot a -ConfirmWrite
+post-reset state:
+5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 ef 00
+ 00 00 00 00 00 00 00 00 00 00 00 00 16 de b9 49

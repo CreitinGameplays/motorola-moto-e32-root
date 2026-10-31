@@ -109,6 +109,10 @@ def main():
                          "framebuffer-paint stub (scripts/host/entry_paint.py); "
                          "paints a white band before head.S so a hang proves "
                          "the bootloader entered the Image")
+    ap.add_argument("--entry-hang", action="store_true",
+                    help="like --entry-paint, but the stub ends with `b .` "
+                         "instead of `b stext`: paints one band and stops dead, "
+                         "to calibrate how long the panel keeps that image")
     args = ap.parse_args()
 
     kernel = pathlib.Path(args.kernel).read_bytes()
@@ -121,13 +125,15 @@ def main():
 
     img, h = build(base, kernel, args.cmdline_extra, ramdisk)
     ps = h["page_size"]
-    if args.entry_paint:
+    if args.entry_paint or args.entry_hang:
         import entry_paint  # noqa: E402  (sibling module)
-        stub = entry_paint.build_stub(kernel[:4])
+        first = 0x14000000 if args.entry_hang else kernel[:4]
+        stub = entry_paint.build_stub(first)
         img = bytearray(img)
         img[ps:ps + len(stub)] = stub
         img = bytes(img)
-        print("\nentry-paint stub written at payload offset 0x%x:" % ps)
+        print("\nentry-%s stub written at payload offset 0x%x:"
+              % ("hang" if args.entry_hang else "paint", ps))
         print("  %s" % stub.hex())
     out.write_bytes(img)
     print("\nbase %s (%d bytes)" % (base.name, base.stat().st_size))
@@ -140,7 +146,7 @@ def main():
     # the payload prefix must be byte-identical to what we intended to write
     # (img = [header page][kernel][...], so compare from the first payload page)
     ps = h["page_size"]
-    if args.entry_paint:
+    if args.entry_paint or args.entry_hang:
         print("  payload prefix matches kernel: %s (first %d bytes are the stub)"
               % (img[ps + entry_paint.STUB_SIZE:ps + len(kernel)] ==
                  kernel[entry_paint.STUB_SIZE:], entry_paint.STUB_SIZE))
