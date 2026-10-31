@@ -1,19 +1,20 @@
 # 15 - Play Integrity on the unlocked Moto E32 (no bootloader relock)
 
 Date started: 2026-10-31
-Status: **in progress, blocked** (2026-10-31 12:00)
+Status: **BASIC passes, DEVICE still open** (updated 2026-10-31 15:35)
 
 - persistent Magisk root works on `boot_b` (bootloader still unlocked);
-- TrickyStore 1.4.1 + keybox makes KeyAttestation report *locked*;
-- Play Integrity returns **all three verdicts false** in every configuration
-  tried, including with TrickyStore inert. This is a *regression*: before
-  Magisk was installed the same checker reported BASIC = pass.
-- Next experiment (cheapest): boot a stock, non-Magisk signed image and
-  re-check, to separate "Magisk present" from "keybox/attestation" as the
-  cause. See "next steps" at the end.
-
-Work log in section 7, hypotheses in 8, ordered next steps in 9, repro
-commands in 10, file inventory in 11.
+- **MEETS_BASIC_INTEGRITY is stable** across boots (last check s29, 14:35);
+- **MEETS_DEVICE_INTEGRITY is still missing** - the verdict is
+  `[MEETS_BASIC_INTEGRITY]` only, and that is unaffected by the keybox
+  (Megatron / AOSP / PIF-NEXT's bundled one) or by running without
+  TrickyStore; see section 7's A/B matrices and the remaining hypotheses in
+  section 8;
+- current stack: Magisk 31.1 + **Zygisk Next 1.5.2** (Magisk's built-in
+  Zygisk off) + **PlayIntegrityFix-NEXT v3.0** + TrickyStore 1.4.1 +
+  Shamiko 1.2.5 (installed, but not loaded under ZN - no `mazoku` marker);
+- Work log in section 7, hypotheses in 8, ordered next steps in 9, repro
+  commands in 10, file inventory in 11.
 
 ## 1. Objective and constraint
 
@@ -26,8 +27,9 @@ bootloader** and without losing the current setup:
 - bootloader unlocked in software via the `miscdata` marker
   (`ro.boot.flash.locked=0`, `ro.boot.verifiedbootstate=orange`)
 - `boot_a` = the proven restore rescue; `boot_b` = stock Android
-- root today is runtime only (`mali_kroot`), persistent root is desired anyway
-  for the attestation-spoofing daemon
+- root is **persistent Magisk** on `boot_b` (the runtime exploit `mali_kroot`
+  is kept only as an independent path - it forces SELinux Permissive and
+  breaks the BASIC verdict)
 
 ## 2. Device state at the start (2026-10-31)
 
@@ -41,6 +43,10 @@ bootloader** and without losing the current setup:
 | Play Store | installed, Google account signed in |
 | bootloader | unlocked (`flash.locked=0`, `verifiedbootstate=orange`) |
 | root | runtime only; exploit works (one SIGBUS run seen, retry OK) |
+
+This is the snapshot from ~12:00, **before** the Magisk module work of the
+same day. For the current state see the status header and the
+13:05-15:35 section.
 
 ## 3. How Play Integrity is decided (short)
 
@@ -617,6 +623,64 @@ TrickyStore's `disable` marker was removed after the PIF-alone test, so it
 re-activates on the next reboot; the current boot passes BASIC with PIF
 alone. BASIC is stable; DEVICE remains unsolved pending a valid keybox.
 
+### 2026-10-31 13:05-15:35 - module stack swap, Zygisk Next, device cleanup
+
+The device stack was changed again after the 13:05 wrap-up (not by this log,
+recorded here because it invalidates the "current stack" statements above):
+
+| item | at 13:05 | now (15:35) |
+|---|---|---|
+| props/attestation module | PlayIntegrityFork v18 (osm0sis) | **PlayIntegrityFix-NEXT v3.0** (chiteroman, forked by @ericinacio) |
+| Zygisk provider | Magisk built-in (`zygisk=1`) | **Zygisk Next 1.5.2** (`zygisksu`); Magisk's built-in Zygisk **off** (`zygisk=0`) |
+| Shamiko 1.2.5 | loaded, hiding root from GMS | installed but **not loaded** by Zygisk Next - its module dir has `machikado` but no `mazoku`, and ZN's `/data/adb/zygisksu/modules_info` lists only `playintegrityfix`. Its `service.sh` still runs and resets `ro.boot.*` to green/locked, so the props part works, the hiding part does not |
+| DenyList | enforcement OFF (`denylist=0`), GMS in the table | enforcement **ON** (`denylist=1`) but inert (Magisk's Zygisk is off); PIF-NEXT's `post-fs-data.sh` removes GMS from the table when enforcement is on - the table now holds only `com.android.vending` + `com.google.android.gsf` |
+| keybox | Megatron (Xiaomi RKP, 5903 B) | **PIF-NEXT's bundled keybox** (13219 B, md5 `0a5e6a23...`), also copied into `/data/adb/tricky_store/keybox.xml` |
+| extra module | - | `zn_magisk_compat` installed with `disable`+`remove` markers (pending removal on the next reboot) |
+
+- Verdict after the swap: **still `MEETS_BASIC_INTEGRITY` only** (s29,
+  14:35). The new keybox does not unlock DEVICE either.
+- PIF-NEXT ships both an `inject/` (107 KB) and a `zygisk/` (22 KB) library;
+  ZN's `modules_info` shows the loaded one is the `zygisk/` build (mapped size
+  28672/24576).
+- Zygisk Next replaces Magisk's `zygiskd` inside `/debug_ramdisk` (hence
+  `readlink /proc/<zygiskd64>/exe` still points at `/debug_ramdisk/magisk`).
+- The old Megatron keybox backup is still at `/data/local/tmp/pi/` and on the
+  host (`keybox_meow.xml`); the new one is `keybox_pifnext.xml` on the host.
+
+### 2026-10-31 14:32 - `/data/local/tmp` cleanup (2.67 GB -> 76 MB)
+
+Everything in `/data/local/tmp` was inventoried and reduced to what is
+genuinely needed.
+
+**Kept on the device:**
+- `boot_rescue_restore.img` - the proven A/B recovery image for slot a (also
+  at `artifacts/rescue/`)
+- `mali_kroot` - the exploit binary (also at `artifacts/mali_kroot`)
+- `resetprop` - prop utility
+- `pi/` - the Play Integrity working set: `keybox_megatron_backup.xml` (old
+  Megatron keybox), `keybox_pifnext.xml` (current keybox), the module zips
+  (PIFork v18, Shamiko 1.2.5, TrickyStore) and
+  `modules_snapshot_2026-10-31.tar` (the live module dirs, also on the host)
+- the on-device `.sh` toolset (the ones not in the repo were also pulled to
+  `D:\AndroidSDKTools\device-tmp-backup\scripts\`)
+
+**Deleted** (every candidate was first md5-checked against a host copy):
+- `siparena.bin` (1.6 GB), 24 x 64 MB boot/partition images (`boot_*.img`,
+  `bc/bs/ds/dw/s2/sb.img`), `backup/` (403 MB - identical to the host/cloud
+  partition backup), `fb_boot_probe/`, `dt/`, `dalvik-cache/`, the u-boot /
+  sysdump / misc dumps, the SIP experiment artifacts (`sip31*.ko`, `sip_page`,
+  `sipplain.bin`), `ksud`, `zygisk-ptrace64`, and the small logs/lists (pulled
+  to `D:\AndroidSDKTools\device-tmp-backup\{logs,pkgs\}`).
+
+**Backup locations (host + cloud):**
+- `D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\` (partition backup +
+  `SHA256SUMS`)
+- `D:\AndroidSDKTools\backups\hawaii-moto-e32-2026-10-30-backup.7z` and
+  `D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl.7z` - both also uploaded to
+  Google Drive
+- repo `artifacts/` (rescue image, slot-probe dumps, kernel `Image.*`,
+  `mali_kroot`, device tree)
+
 ## 8. Working hypotheses (in order of likelihood)
 
 0. **SELinux Permissive - CONFIRMED 2026-10-31 12:08.** `mali_kroot` flips
@@ -672,7 +736,7 @@ alone. BASIC is stable; DEVICE remains unsolved pending a valid keybox.
 
 ## 9. Ordered next steps
 
-Ordered, cheapest/most informative first:
+Ordered, cheapest/most informative first (state as of 2026-10-31 15:35):
 
 0. **DONE (2026-10-31 12:08): clean boot gives BASIC green.** Root cause of
    the all-red state = permissive SELinux. From now on: root work through
@@ -682,68 +746,76 @@ Ordered, cheapest/most informative first:
 0b. **DONE (2026-10-31 12:40): USNF/TrickyStore A/B matrix + Shamiko.**
    USNF and TrickyStore are complementary, not conflicting (both needed for
    BASIC). The real BASIC killer was the enforced DenyList blocking
-   TrickyStore's injection into GMS; Shamiko 1.2.5 installed, DenyList
-   enforcement now OFF (`denylist=0`), BASIC stable across three boots
-   (s16/s18/s19). SPIC installed for raw-verdict readings.
+   TrickyStore's injection into GMS. SPIC installed for raw-verdict readings.
 
-1. **DEVICE: validate/replace the keybox (the only remaining blocker).**
-   The Megatron keybox does not yield MEETS_DEVICE_INTEGRITY and its leaf
-   expires 2026-11-06. Steps: (a) run a keybox validity check (e.g.
-   chiteroman's KeyboxChecker or an online checker) to distinguish
-   "revoked/banned" from "profile mismatch"; (b) if banned, a fresh valid
-   keybox is required (user-supplied); (c) re-test SPIC after swapping
-   `/data/adb/tricky_store/keybox.xml` (no reboot needed - the daemon
-   reloads the file, but a reboot is the clean way).
-2. **DONE (2026-10-31 12:45): props layer modernized.** PlayIntegrityFork
-   v18 (osm0sis) installed; its installer auto-removed USNF. `autopif4.sh
-   --strong` generated a Pixel Canary fingerprint (`ZP11.260918.007`, patch
-   2026-10-05, est. expiry 2026-11-18) and synced TrickyStore's
-   `security_patch.txt`. Verdict unchanged: BASIC only (s20-s28) - see the
-   12:41-13:05 section above for the full A/B matrix.
+0c. **DONE (2026-10-31 12:45): props layer modernized** (PIFork v18 +
+   `autopif4 --strong` fingerprint). Verdict unchanged: BASIC only.
+
+0d. **DONE (2026-10-31 13:05-14:35): module stack swap to Zygisk Next 1.5.2 +
+   PlayIntegrityFix-NEXT v3.0**; BASIC still green (s29). See the
+   13:05-15:35 section above for the exact state.
+
+1. **DEVICE: validate the keybox (the only remaining blocker).** The active
+   keybox is now PIF-NEXT's bundled one (13219 B, md5 `0a5e6a23...`); the old
+   Megatron keybox (Xiaomi RKP, leaf expires 2026-11-06) is still available on
+   the host (`keybox_meow.xml`) and in `/data/local/tmp/pi/`. Steps:
+   (a) run a keybox validity check (e.g. chiteroman's KeyboxChecker or an
+   online checker) to distinguish "revoked/banned" from "profile mismatch";
+   (b) if banned, a fresh valid keybox is required (user-supplied);
+   (c) re-test SPIC after swapping `/data/adb/tricky_store/keybox.xml` (no
+   reboot needed - the daemon reloads the file, but a reboot is the clean
+   way).
+2. **Restore root hiding under Zygisk Next.** Shamiko 1.2.5 is installed but
+   **not loaded** by ZN (no `mazoku` marker in the module dir; ZN's
+   `modules_info` lists only `playintegrityfix`). BASIC survives without it,
+   but DEVICE/STRONG checks and banking apps are likely to need root hidden.
+   Options: add the `mazoku` marker so ZN picks the module up, or use a
+   Zygisk-Next-compatible hiding module. Also worth confirming that
+   PIF-NEXT's `inject/` library is actually the one in use (ZN currently
+   loads the `zygisk/` build).
 3. **Check whether GMS consumes TrickyStore's chain at all** (only needed if
    the keybox swap does not move the verdict): (a) `logcat | grep -iE
    "tricky|keymaster|attest"` while the checker runs; (b) SPIC's raw JSON
    already shows the verdict shape - `deviceRecognitionVerdict` labels are
    the whole signal.
-2. **Test `tee_status` override**: `echo teeBroken=false >
+4. **Test `tee_status` override**: `echo teeBroken=false >
    /data/adb/tricky_store/tee_status` (or delete it), restart the daemon,
    re-run KeyAttestation. If the chain then keeps the device's real leaf and
    only the extension is patched, re-test PI.
-3. **Try a profile-matching keybox** - `LufsX/keybox-lite`,
+5. **Try a profile-matching keybox** - `LufsX/keybox-lite`,
    `rawbin.dpejoh.com/catalog`, or the T.A.K.R. site with captcha; prefer one
    whose leaf says Motorola (or at least not Xiaomi) and whose validity is
-   long. Rotate before 2026-11-06 anyway.
-4. **Add a props layer** (Play Integrity Fix or Integrity-Box) with a
-   fingerprint that matches the keybox profile and recent patch levels; also
-   spoof `ro.boot.verifiedbootstate=green`, `ro.boot.flash.locked=1`,
-   `ro.boot.vbmeta.device_state=locked` via `resetprop` in
-   `post-fs-data.d` (note: `ro.boot.*` are read-only properties set by init
-   from the kernel cmdline - `resetprop` can still change them in memory for
-   new processes, but a mismatch with `/proc/cmdline` can itself be a tell).
-5. **Try TEESimulator-RS 6.0.1** instead of TrickyStore: it re-signs the real
+   long.
+6. **Keep the fingerprint and the keybox profile consistent.** PIF-NEXT ships
+   `pif.json` + its own `keybox.xml`; a fingerprint that disagrees with the
+   keybox's brand/device fields is a documented DEVICE killer. Check what
+   `pif.json` currently claims and align it with the keybox in use.
+7. **Try TEESimulator-RS 6.0.1** instead of TrickyStore: it re-signs the real
    TEE leaf and has `boot_props_mode` for `ro.boot.*` spoofing; on this device
    the TEE is healthy, so it may produce a *more* consistent record than
    TrickyStore's generated chain. Keep TrickyStore installed but disabled
    (Magisk module toggle) for A/B comparison.
-6. **Revert Magisk to isolate the trigger** (only if step 0 does not explain
-   it): temporarily boot a stock, signed-only boot image
-   (`artifacts/kernel-build/boot_stock_signed.img`, proven to boot) and re-run
-   the checker, again *without* running the exploit. If BASIC goes green, the
-   trigger is the Magisk ramdisk/module set; if it stays red, the trigger is
-   somewhere else (GMS state, account, earlier keybox experiments). Costs one
-   reboot write to `boot_b` (slot b one-attempt block first, `boot_a` rescue
-   stays in place).
-   Second variant of the same test, no flashing: disable the TrickyStore
-   module (`touch /data/adb/modules/tricky_store/disable`, reboot) and check
-   PI with Magisk alone.
-7. Only after BASIC is green: re-add `security_patch.txt`
-   (`system=2026-10-05`, `vendor=2026-10-05`, `boot=2026-10-05`), re-add the
-   targets, and test DEVICE/STRONG.
+8. **Revert Magisk to isolate the trigger** (only if the above does not
+   explain it): temporarily boot a stock, signed-only boot image
+   (`artifacts/kernel-build/Image.stock` + the repo's boot packaging, proven
+   to boot) and re-run the checker, again *without* running the exploit. If
+   BASIC goes green, the trigger is the Magisk ramdisk/module set; if it stays
+   red, the trigger is somewhere else (GMS state, account, earlier keybox
+   experiments). Costs one reboot write to `boot_b` (slot b one-attempt block
+   first, `boot_a` rescue stays in place).
+9. **GMS-side cached device state** - Play Integrity caches device integrity
+   server-side for a while; after switching the boot image or the module set
+   the cached state may stay bad for hours. Worth re-testing after 12-24 h
+   and after clearing GMS data (`pm clear com.google.android.gms` is risky -
+   it removes the account registration, re-login needed).
 
 ## 10. Repro cheat sheet
 
 ```bash
-# root shell for one command batch
+# root shell for one command batch - USE MAGISK SU on integrity-test boots.
+# The exploit leaves SELinux Permissive until reboot, which costs BASIC.
+MSYS_NO_PATHCONV=1 adb shell "su -c '<cmds>'"
+# only on a boot where the verdict does not matter:
 MSYS_NO_PATHCONV=1 adb shell 'set -e; /data/local/tmp/mali_kroot >/dev/null 2>&1; <cmds>'
 
 # TrickyStore state
@@ -753,9 +825,19 @@ ps -A | grep TrickyStore
 # change target list, then relaunch the app that checks (no reboot needed)
 printf "com.google.android.gms\ncom.android.vending\n" > /data/adb/tricky_store/target.txt
 
+# module / Zygisk state (Zygisk Next provider)
+cat /data/adb/zygisksu/modules_info          # which zygisk modules are loaded
+magisk --sqlite "SELECT * FROM settings"      # zygisk=0, denylist=1, ...
+magisk --sqlite "SELECT * FROM denylist"
+
 # UI: run checker and read verdicts
 adb shell am start -n gr.nikolasspyr.integritycheck/.MainActivity
 adb shell input tap 360 1056          # CHECK
+adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png D:/AndroidSDKTools/pi/
+
+# SPIC (raw verdict labels, the authoritative readout)
+adb shell am start -n com.henrikherzig.playintegritychecker/.MainActivity
+adb shell input tap 383 596           # CHECK
 adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png D:/AndroidSDKTools/pi/
 ```
 
@@ -765,9 +847,16 @@ adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png D:/AndroidSDKTool
 |---|---|
 | `D:\AndroidSDKTools\pi\Magisk-v31.1.apk` | Magisk manager |
 | `D:\AndroidSDKTools\pi\TrickyStore.zip` | TrickyStore 1.4.1 module |
-| `D:\AndroidSDKTools\pi\keybox_meow.xml` | decoded `Megatron` keybox (expires 2026-11-06) |
+| `D:\AndroidSDKTools\pi\PlayIntegrityFork-v18.zip` | PIFork v18 (osm0sis) - the props module used 12:45-13:05 |
+| `D:\AndroidSDKTools\pi\Shamiko-1.2.5.zip` | Shamiko 1.2.5 (installed; **not loaded** under Zygisk Next) |
+| `D:\AndroidSDKTools\pi\modules_snapshot_2026-10-31.tar` | snapshot of the live module dirs (PIF-NEXT v3.0, TrickyStore, Shamiko, Zygisk Next 1.5.2) |
+| `D:\AndroidSDKTools\pi\keybox_pifnext.xml` | **current** keybox, PIF-NEXT's bundled one (md5 `0a5e6a23...`) |
+| `D:\AndroidSDKTools\pi\keybox_meow.xml` | decoded `Megatron` keybox (leaf expires 2026-11-06), the previous keybox |
 | `D:\AndroidSDKTools\pi\magisk_patched_raw.img` | Magisk `boot_patch.sh` output, stale OEM footer |
 | `D:\AndroidSDKTools\pi\boot_magisk_avb.img` | **flashed to `boot_b`** (sha256 `90416c09...`) |
 | `D:\AndroidSDKTools\pi\KeyAttestation.apk`, `checker.apk` | verification apps |
-| `D:\AndroidSDKTools\pi\s1..s8.png`, `log_all.txt` | evidence |
+| `D:\AndroidSDKTools\pi\s1..s29.png`, `log_all.txt` | evidence |
+| `D:\AndroidSDKTools\device-tmp-backup\` | logs, package lists and non-repo scripts pulled off the device before the 2026-10-31 cleanup |
 | `D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\boot_b.img` | stock `boot_b` (sha256 `ccd0faff...`) |
+| `D:\AndroidSDKTools\backups\hawaii-moto-e32-2026-10-30-backup.7z` | full partition backup (also uploaded to Google Drive) |
+| `D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl.7z` | FDL set for the bootROM route (also uploaded to Google Drive) |

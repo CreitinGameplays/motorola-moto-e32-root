@@ -310,6 +310,7 @@ All dumps were taken with the runtime-root exploit (no flashing):
 
 ```bash
 adb shell 'chmod 755 /data/local/tmp/mali_kroot; /data/local/tmp/mali_kroot >/dev/null 2>&1; \
+  mkdir -p /data/local/tmp/bl; \
   dd if=/dev/block/by-name/uboot_a of=/data/local/tmp/bl/uboot_a.img bs=4096'
 adb pull /data/local/tmp/bl ./artifacts/bootloader/bl
 python scripts/host/analyze_bootloader.py artifacts/bootloader/bl

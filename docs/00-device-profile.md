@@ -14,10 +14,14 @@
 ## Security posture
 - **As shipped:** bootloader locked, AVB green, dm-verity enforcing, SELinux
   enforcing.
-- **Current state of the test device (2026-10-29):** bootloader unlocked in
+- **Current state of the test device (2026-10-31):** bootloader unlocked in
   software (`ro.boot.flash.locked=0`, `verifiedbootstate=orange`,
-  `vbmeta.device_state=unlocked`). SELinux is still `Enforcing` at boot; the
-  runtime exploit switches it to `Permissive` per shell session.
+  `vbmeta.device_state=unlocked`) and a **Magisk 31.1-patched `boot_b`** is
+  flashed, so root persists across reboots with SELinux still `Enforcing` and
+  Zygisk modules active (`docs/15-play-integrity.md`). The runtime exploit
+  remains available as an independent path and still switches SELinux to
+  `Permissive` per shell session - do not run it on a boot where a Play
+  Integrity verdict matters.
 - Bootloader: U-Boot `2015.07-g0bc803f` (QOGIRL6, Ontim build), `secure: true`,
   `androidboot.securefuse=true`, `androidboot.vbmeta.device_state=locked`
   as shipped, `lcs: 5`; AVB algorithm `SHA256_RSA4096` (Motorola key
@@ -49,7 +53,9 @@
 - `/dev/mali0` is world-rw (`gpu_device`), openable from shell
 - `/dev/ion` world-writable; `/proc/config.gz` readable
 - `adb pull` denied for `/system_ext/bin/linkturbonative`, `srmi_proxyd`
-- Termux installed but app not debuggable; no su/Magisk
+- Termux installed but app not debuggable; no su/Magisk *(this is the
+  baseline as found - Magisk was installed later, see
+  `docs/15-play-integrity.md`)*
 
 ## Firmware
 - Stock firmware mirror: https://mirrors.lolinet.com/firmware/lenomola/2022/hawaii/

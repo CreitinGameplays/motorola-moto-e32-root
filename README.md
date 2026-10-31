@@ -1,21 +1,34 @@
 # motorola-moto-e32-root
 
 Runtime root on the **Motorola Moto E32 (XT2227-1, "hawaii", Unisoc T606)**
-without unlocking the bootloader, via the ARM Mali GPU use-after-free
-**CVE-2021-28663 / CVE-2021-28664**.
+via the ARM Mali GPU use-after-free **CVE-2021-28663 / CVE-2021-28664**, and
+persistent **Magisk** root on the same device.
 
 The exploit turns the Mali `kbase` UAF into kernel physical read/write, then
 patches its own `cred` (uid/gid/capabilities) and `selinux_state.enforcing`.
 Root survives until reboot and is inherited by the parent adb shell.
 
-> **Status:** working and hardened. Final build verified **5/5 fresh boots and
-> 3/3 same-boot reruns**, first attempt, 2–5 s per run, no panic.
-> Root is **runtime only** - nothing is flashed.
+> **Status (2026-10-31): two root paths are live on this unit.**
 >
-> **Update:** the bootloader is now also unlocked, purely in software, using
-> the runtime root to mint the secure-world `VerifiedBoot-UNLOCK` marker into
-> `miscdata`. See `docs/07-unlock-how-to.md` and
-> `docs/06-secure-world-unlock-path.md`.
+> 1. **Runtime root (the exploit)** - working and hardened. Final build
+>    verified **5/5 fresh boots and 3/3 same-boot reruns**, first attempt,
+>    2-5 s per run, no panic. It needs no unlock and no pre-existing root and
+>    it writes nothing to flash, but the elevation is **lost on reboot**.
+> 2. **Persistent root (Magisk 31.1)** - the device's current state. A
+>    Magisk-patched `boot_b` (stock kernel, patched ramdisk) is flashed, so
+>    root survives reboots and Zygisk modules can run. The bootloader is
+>    unlocked (software `VerifiedBoot-UNLOCK` marker in `miscdata`).
+>    Module stack and Play Integrity results: `docs/15-play-integrity.md`;
+>    how the image was flashed: `docs/12-slot-b-testing-channel.md`.
+>
+> **Careful:** the runtime exploit clears `selinux_state.enforcing`, leaving
+> SELinux **Permissive** until the next reboot. That is a tamper signal and it
+> breaks Play Integrity's BASIC verdict - on any boot where an integrity
+> verdict matters, use Magisk `su` instead of the exploit.
+>
+> **Update:** the bootloader is unlocked in software, using the runtime root
+> to mint the secure-world `VerifiedBoot-UNLOCK` marker into `miscdata`. See
+> `docs/07-unlock-how-to.md` and `docs/06-secure-world-unlock-path.md`.
 >
 > **Proof:** an Android 15 GSI with no Motorola signature now boots on the
 > device (`ro.boot.flash.locked=0`, `verifiedbootstate=orange`,
@@ -30,6 +43,7 @@ Root survives until reboot and is inherited by the parent adb shell.
 | OS | Android 11, build `RORS31.335-58-1`, security patch 2024-02-05 |
 | Kernel | Linux 4.14.199+ (`#1 SMP PREEMPT`), KASLR effectively disabled |
 | Bootloader | unlocked in software (`ro.boot.flash.locked=0`, `verifiedbootstate=orange`) |
+| Current root | Magisk 31.1 (patched `boot_b`, slot `_b`), Zygisk Next 1.5.2 + modules; the exploit is kept as an independent path |
 | Access needed | USB debugging, `adb` shell (uid 2000); the exploit needs **no** unlock and **no** pre-existing root |
 
 Kernel addresses and struct offsets in the exploit are hardcoded for this
@@ -71,6 +85,11 @@ docs/
   10-kernel-source.md       the full kernel source: where it is, how it was
                             verified against the phone, and the measured gap
                             to the shipped build (closed by patches/kernel-sprd)
+  11-flash-gate.md          the fastboot download gate and how it was decoded
+  12-slot-b-testing-channel.md  boot_a rescue image + slot_b as the test channel
+  13-recovery-bootrom.md    bootROM/FDL route analysis
+  14-brom-recovery-runbook.md  bootROM recovery runbook
+  15-play-integrity.md      Magisk root + Play Integrity work log (BASIC pass)
   evidence/                 captured successful-run logs
 patches/
   kernel-sprd/              the measured header delta (git patch) + the
@@ -157,7 +176,10 @@ adb shell "id; getenforce; id -u"
 # uid=0(root) ... Permissive ... 0
 ```
 
-Reboot to remove root.
+Reboot to remove **this** root - the `cred`/`selinux_state` patches live in
+RAM only. (The device's *persistent* root comes from Magisk and is unaffected;
+see `docs/15-play-integrity.md`.) Note that running the exploit leaves SELinux
+Permissive until the reboot, which is a tamper signal for Play Integrity.
 
 ### 6. (Optional) reliability matrix
 
@@ -241,19 +263,26 @@ hardening and measured reliability are in `docs/04-reliability-hardening.md`.
 
 ## Limits / notes
 
-- Root is **in RAM only**: `cred` and `selinux_state` changes are lost on reboot.
-- The shell keeps the `u:r:shell:s0` SELinux context; permissive mode makes
-  that sufficient for DAC/capability access, not a policy come domain.
+- The **exploit**'s root is **in RAM only**: `cred` and `selinux_state`
+  changes are lost on reboot. The **Magisk** root on this unit is persistent
+  (patched `boot_b`) - the two paths are independent.
+- The exploit shell keeps the `u:r:shell:s0` SELinux context; permissive mode
+  makes that sufficient for DAC/capability access, not a policy come domain.
+  Magisk's `su` does give a policy-correct `u:r:magisk:s0` shell.
 - `CONFIG_STATIC_USERMODEHELPER=y` makes the classic `modprobe_path` trick
   unusable (not needed here).
 - The runtime exploit does not need an unlocked bootloader and no boot image is
   flashed by it. This unit's bootloader was later unlocked **in software**
-  (`miscdata` marker, no flashing of the boot chain - see
-  `docs/07-unlock-how-to.md`). The key/legacy unlock routes are dead ends
-  (`docs/05-bootloader-unlock-research.md`), and the separate fastboot
-  *download* gate still rejects unsigned images, so "unlocked" here means the
-  verified-boot/AVB policy is skipped, not that arbitrary fastboot flashing
-  works.
+  (`miscdata` marker - see `docs/07-unlock-how-to.md`) and a Magisk-patched
+  `boot_b` was flashed afterwards (see `docs/12-slot-b-testing-channel.md`);
+  `boot_a` holds the proven rescue/restore image. The key/legacy unlock routes
+  are dead ends (`docs/05-bootloader-unlock-research.md`), and the separate
+  fastboot *download* gate still rejects unsigned images, so "unlocked" here
+  means the verified-boot/AVB policy is skipped, not that arbitrary fastboot
+  flashing works.
+- The device boots Android with the bootloader unlocked, so Play Integrity
+  cannot reach MEETS_DEVICE_INTEGRITY without spoofing; the current stack
+  reaches **MEETS_BASIC_INTEGRITY** (`docs/15-play-integrity.md`).
 
 ## Documentation
 
@@ -263,9 +292,17 @@ hardening and measured reliability are in `docs/04-reliability-hardening.md`.
 - `docs/03-root-exploit.md` - the complete exploit chain and offsets
 - `docs/04-reliability-hardening.md` - failure analysis and hardening
 - `docs/05-bootloader-unlock-research.md` - bootloader unlock feasibility
+- `docs/07-unlock-how-to.md` - step-by-step software bootloader unlock
 - `docs/10-kernel-source.md` - the full kernel source: Motorola/Unisoc
   `kernel-sprd` @ `R-11-release-RORS`, verified against the phone (config,
   Kconfig, headers, device tree) plus the measured gap to the shipped build
+- `docs/11-flash-gate.md` - the fastboot download gate and how it was decoded
+- `docs/12-slot-b-testing-channel.md` - the `boot_a` rescue image and using
+  `boot_b` as the kernel-testing channel
+- `docs/13-recovery-bootrom.md` / `docs/14-brom-recovery-runbook.md` - the
+  bootROM/FDL route and its runbook
+- `docs/15-play-integrity.md` - Magisk root on the unlocked device: module
+  stack, Play Integrity verdicts (BASIC passes, DEVICE still open)
 - `docs/evidence/` - captured successful-run logs and fastboot recon
 
 ## Kernel source

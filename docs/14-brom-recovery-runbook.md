@@ -18,6 +18,15 @@ Proven once, 2026-10-30: reset to Android in ~74 s, stock `boot_b` restored.
 | Tool | `D:\AndroidSDKTools\spd\spd_dump_LibUSB_Release\spd_dump.exe` |
 | Backups | `D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\` |
 
+> **Note (2026-10-31):** `/data/local/tmp` on the test device was cleaned up
+> (2.67 GB -> 76 MB). The on-device scratch files used by the recovery path -
+> `set_slot_b_tries1.sh`, `boot_b.prev.img`, `mali_kroot` - are not all there
+> any more: push `set_slot_b_tries1.sh` from
+> `scripts/device/set_slot_b_tries1.sh` and `mali_kroot` from
+> `artifacts/mali_kroot` before use. The rescue image itself
+> (`artifacts/rescue/boot_rescue_restore.img`) is still on the device at
+> `/data/local/tmp/boot_rescue_restore.img` and on the host.
+
 The scripts verify these hashes themselves and abort on mismatch, so never
 edit the payloads in place.
 

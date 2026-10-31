@@ -32,6 +32,14 @@ adb push artifacts/sip_page  /data/local/tmp/sip_page
 adb shell 'chmod 755 /data/local/tmp/mali_kroot /data/local/tmp/sip_page'
 ```
 
+> **Note (2026-10-31):** `/data/local/tmp` on the test device was cleaned up
+> (2.67 GB -> 76 MB). The scratch files this procedure uses - `sip_page`,
+> `sip31.ko`, `sipplain.bin`, `marker.bin`, `marker80.bin`, `signed.bin`,
+> `verified.bin`, `siparena.bin`, `kroot.log` - are **not** on the device any
+> more; they are pushed from the host `artifacts/` tree (or created by the
+> steps themselves) exactly as shown. `artifacts/rescue/boot_rescue_restore.img`
+> and `artifacts/mali_kroot` are the only copies that matter.
+
 Two device facts shape the rest:
 
 * **root is per-process.** Every `adb shell` is a fresh process, so each step
