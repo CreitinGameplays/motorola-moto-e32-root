@@ -4,6 +4,8 @@ Date started: 2026-10-31
 Status: **BASIC passes, DEVICE still open** (updated 2026-10-31 15:35)
 
 - persistent Magisk root works on `boot_b` (bootloader still unlocked);
+  the full rooting procedure is written up in
+  [`docs/16-magisk-root-how-to.md`](16-magisk-root-how-to.md);
 - **MEETS_BASIC_INTEGRITY is stable** across boots (last check s29, 14:35);
 - **MEETS_DEVICE_INTEGRITY is still missing** - the verdict is
   `[MEETS_BASIC_INTEGRITY]` only, and that is unaffected by the keybox
