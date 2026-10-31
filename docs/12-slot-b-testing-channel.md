@@ -197,3 +197,25 @@ Evidence: [evidence/2026-10-30-slot-b-channel-working.txt](evidence/2026-10-30-s
 * If `boot_b` is corrupted *and* `/cache` is wiped, `boot_a` still works -
   that is the point of keeping the blob inside the image.
 * Unisoc BROM/FDL remains the fallback if `boot_a` itself is ever lost.
+
+## Update 2026-10-31: the channel carries a Magisk boot image
+
+The same channel now runs **persistent root** instead of a test kernel:
+Magisk v31.1 patched the *stock* `boot_b` ramdisk (kernel untouched), the
+image was re-signed with the throwaway AVB key
+(`D:\AndroidSDKTools\pi\boot_magisk_avb.img`, sha256 `90416c09...cad3c`),
+written with `dd`, read back hash-identical, slot b set to one attempt
+(`0x001f`), and Android booted on `_b` in ~50 s with `magiskd` running and
+`ro.boot.verifiedbootstate` still `orange`.
+
+So the proven recipe for *any* 64 MiB `boot` image on this device is:
+
+1. payload = Magisk/custom payload at the stock `Original image size`,
+2. `avbtool add_hash_footer` with `SHA256_RSA4096`, `--rollback_index 2`,
+   stock salt, `--partition_size 67108864`,
+3. `dd` to `boot_b` + readback compare,
+4. A/B block = one attempt for slot b,
+5. reboot; a hang costs one power cycle and the `boot_a` rescue restores
+   stock `boot_b`.
+
+Detail: [15-play-integrity.md](15-play-integrity.md).

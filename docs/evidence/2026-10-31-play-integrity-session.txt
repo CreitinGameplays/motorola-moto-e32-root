@@ -1,0 +1,98 @@
+2026-10-31  Play Integrity / Magisk / TrickyStore session on XT2227-1 (hawaii)
+=============================================================================
+Companion to docs/15-play-integrity.md. Raw host-side evidence lives in
+D:\AndroidSDKTools\pi\ (s1..s8.png, log_all.txt, ui*.xml).
+
+Device at start of session
+---------------------------
+serial ZF523X9NXW
+build  motorola/hawaii/hawaii:11/RORS31.335-58-1/612c2:user/release-keys
+patch  2024-02-05
+GMS    26.43.30
+props  ro.boot.flash.locked=0  ro.boot.verifiedbootstate=orange
+       ro.boot.vbmeta.device_state=unlocked
+SELinux after a clean boot: Enforcing; after mali_kroot: Permissive (RAM only)
+
+1. Baseline Play Integrity, before Magisk (checker.apk = Play Integrity API
+   Checker, gr.nikolasspyr.integritycheck), screenshot s1.png:
+
+   MEETS_BASIC_INTEGRITY    PASS
+   MEETS_DEVICE_INTEGRITY   FAIL
+   MEETS_STRONG_INTEGRITY   FAIL
+
+2. Magisk boot image written to boot_b (slot b one attempt, 0x001f):
+   image  D:\AndroidSDKTools\pi\boot_magisk_avb.img
+   sha256 90416c09f6359fdcc0711f36e214454421c42598518787f58c1916be6c5cad3c
+   stock  ccd0faff51ab24d921b2671c562f0fe08e7a1ba2b7f19bb93a5f2650eb4f7b18
+   after boot: slot _b, sys.boot_completed=1 in ~50 s, magiskd pid 467/468,
+   ro.boot.verifiedbootstate still orange, ro.boot.flash.locked=0.
+   Magisk app "additional setup" required before modules install
+   (otherwise "Incomplete Magisk install" from magisk --install-module).
+
+3. TrickyStore 1.4.1 (245-72b2e84) module installed; keybox Megatron copied to
+   /data/adb/tricky_store/keybox.xml; tee_status = teeBroken=true.
+
+4. KeyAttestation v1.8.4, TrickyStore INERT (target.txt = "# none"):
+   "Google hardware attestation root certificate"
+   "Bootloader is unlocked"
+   chain: SERIALNUMBER=f92009e853b6b045 (Google root) ->
+          SERIALNUMBER=d8bfe951c840a04d5170b5ade06d3a54, T=TEE ->
+          SERIALNUMBER=966cd7af79ad4fb82702eadf57406fb7, T=TEE ->
+          CN=Android Keystore Key
+   Attestation Version: Keymaster 4.0 / Security level: TrustedEnvironment
+   => the TEE is healthy and honestly reports the unlock.
+
+5. KeyAttestation, TrickyStore ACTIVE (targets gms/vending/gsf/keyattestation;
+   identical output with "?" leaf-hack suffixes):
+   "Unknown root certificate"  (expected: different Google CA than native)
+   "Bootloader is locked"      (attestation extension rewritten)
+   chain: CN=Key Attestation CA1 (2025-07-17..2035-07-15)
+       -> CN=Droid CA2, O=Google LLC   (2026-02-09..2029-02-08)
+       -> CN=Droid CA3, O=Google LLC   (2026-10-26..2027-01-04)
+       -> CN=405d3d105161e72c763ae726e2f1695f, O=TEE
+          (2026-10-25..2026-11-06, "certs issued in last 30 days: 64",
+           manufacturer:Xiaomi)
+       -> CN=Android Keystore Key
+   Attestation Version: Keymaster 4.0 / Security level: TrustedEnvironment
+
+6. Play Integrity verdict matrix (all runs after the root exploit had set
+   SELinux Permissive in RAM):
+
+   #  TrickyStore state                          patch.txt  BASIC DEVICE STRONG
+   1  gms,vending,gsf,keyattestation             yes        fail  fail   fail
+   2  same                                        no         fail  fail   fail
+   3  inert ("# none")                            no         fail  fail   fail
+   4  same targets with "?" suffixes               no         fail  fail   fail
+   5  inert + Zygisk + DenyList (gms, gms.unstable, vending, gsf)  fail fail fail
+
+   Screenshots: s3.png (1), s5.png (2), s6.png (4), s7.png (3), s8.png (5).
+
+7. PlayCore log from run 5 (log_all.txt), proving the API call succeeded and a
+   real verdict came back (no exception, no error toast):
+
+   11:54:54.801  PlayCore: IntegrityService : requestIntegrityToken(
+                            IntegrityTokenRequest{nonce=jqk9H5..., ...})
+   11:54:54.835  PlayCore: ServiceConnectionImpl.onServiceConnected(
+                            com.android.vending/...integrityservice.IntegrityService)
+   11:54:56.170  Finsky  : requestIntegrityToken() finished for gr.nikolasspyr.integritycheck.
+   11:54:56.175  PlayCore: OnRequestIntegrityTokenCallback : onRequestIntegrityToken
+
+   and the denylist actually being applied:
+
+   11:53:18.916  Magisk : zygisk64: [com.android.vending] is on the denylist
+   11:53:19.971  Magisk : zygisk64: [com.google.android.gms.unstable] is on the denylist
+
+8. Magisk settings DB before this work (no Zygisk, no DenyList):
+   key=bootloop|value=0
+   after: key=zygisk|value=1, key=denylist|value=1, denylist rows for
+   com.google.android.gms, com.google.android.gms.unstable,
+   com.android.vending, com.google.android.gsf.
+
+9. SELinux check at 12:05 (after an exploit run in that boot):
+   getenforce = Permissive
+   ro.boot.vbmeta.device_state = unlocked
+   ro.boot.flash.locked = 0
+   ro.boot.verifiedbootstate = orange
+   (mali_kroot patches selinux_state.enforcing 1->0 in RAM; lost on reboot)
+   => every PI attempt above ran with Permissive SELinux, the pre-Magisk
+      baseline with Enforcing. Untested confound, now the first next step.
