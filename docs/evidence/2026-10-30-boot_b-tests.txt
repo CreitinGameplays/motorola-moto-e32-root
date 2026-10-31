@@ -149,3 +149,65 @@ VERDICT: HANG  (adb back after 331s)
 post-reset state:
 5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 ef 00
  00 00 00 00 00 00 00 00 00 00 00 00 16 de b9 49
+
+========================================================================
+boot_b test, 2026-10-30 20:45:14
+image : artifacts/kernel-build/boot_nokaslr.img
+        67108864 bytes, sha256 D7F9400CAAAC057D9CD534B7DC4F299150DDE0E012A4B0CCFDB24B32622ACA83
+========================================================================
+--- pre-flight ---
+slot            : _b
+running kernel  : Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020) (Android (6443078 based on r383902) clang version 11.0.1 (https://android.googlesource.com/toolchain/llvm-project b397f81060ce6d701042b782172ed13bee898b79), LLD 11.0.1 (/buildbot/tmp/tmp6_m7QH b397f81060ce6d701042b782172ed13bee898b79)) #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024
+--- push ---
+pushed sha256   : d7f9400caaac057d9cd534b7dc4f299150dde0e012a4b0ccfdb24b32622aca83
+--- flash boot_b (root) ---
+attempt 1 : 67108864 bytes (64 M) copied, 0.832116 s, 77 M/s | d7f9400caaac057d9cd534b7dc4f299150dde0e012a4b0ccfdb24b32622aca83
+read-back match : YES
+--- one-attempt slot b ---
+attempt 1 : uid=0 | before: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 ef 00 |  00 00 00 00 00 00 00 00 00 00 00 00 16 de b9 49 | block 32 bytes | 32 bytes (32 B) copied, 0.007255 s, 4.3 K/s | after: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 1f 00 |  00 00 00 00 00 00 00 00 00 00 00 00 b1 82 a5 20
+--- reboot ---
+reboot issued at 20:45:32
+t+   3s  absent
+
+VERDICT: HANG  (adb back after 333s)
+  => no adb, no reset: the CPU is hung before that stage
+     recover with a power cycle (slot b's try is spent, the SPL takes slot a
+     and the rescue restores Android), or brom_set_slot.ps1 -Slot a -ConfirmWrite
+post-reset state:
+adb.exe : adb.exe: no devices/emulators found
+At C:\Users\Creitin\moto-root-test\scripts\host\run_boot_b_test.ps1:51 char:30
++ function Sh([string]$cmd) { (& $Adb shell $cmd 2>&1 | Out-String).Tri ...
++                              ~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (adb.exe: no devices/emulators found:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+========================================================================
+boot_b test, 2026-10-30 20:55:09
+image : artifacts/kernel-build/boot_bssskip.img
+        67108864 bytes, sha256 9F3686964BCAAE137C9BB47F2582C260D319807D71B0F106DC97F4E5A1422726
+========================================================================
+--- pre-flight ---
+slot            : _b
+running kernel  : Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020) (Android (6443078 based on r383902) clang version 11.0.1 (https://android.googlesource.com/toolchain/llvm-project b397f81060ce6d701042b782172ed13bee898b79), LLD 11.0.1 (/buildbot/tmp/tmp6_m7QH b397f81060ce6d701042b782172ed13bee898b79)) #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024
+--- push ---
+pushed sha256   : 9f3686964bcaae137c9bb47f2582c260d319807d71b0f106dc97f4e5a1422726
+--- flash boot_b (root) ---
+attempt 1 : 67108864 bytes (64 M) copied, 0.578619 s, 111 M/s | 9f3686964bcaae137c9bb47f2582c260d319807d71b0f106dc97f4e5a1422726
+read-back match : YES
+--- one-attempt slot b ---
+attempt 1 : uid=0 | before: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 ef 00 |  00 00 00 00 00 00 00 00 00 00 00 00 16 de b9 49 | block 32 bytes | 32 bytes (32 B) copied, 0.017691 s, 1.7 K/s | after: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 1f 00 |  00 00 00 00 00 00 00 00 00 00 00 00 b1 82 a5 20
+--- reboot ---
+reboot issued at 20:55:25
+t+   3s  absent
+
+VERDICT: HANG  (adb back after 333s)
+  => no adb, no reset: the CPU is hung before that stage
+     recover with a power cycle (slot b's try is spent, the SPL takes slot a
+     and the rescue restores Android), or brom_set_slot.ps1 -Slot a -ConfirmWrite
+post-reset state:
+adb.exe : adb.exe: no devices/emulators found
+At C:\Users\Creitin\moto-root-test\scripts\host\run_boot_b_test.ps1:51 char:30
++ function Sh([string]$cmd) { (& $Adb shell $cmd 2>&1 | Out-String).Tri ...
++                              ~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (adb.exe: no devices/emulators found:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError

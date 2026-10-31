@@ -25,11 +25,12 @@ panic_stage="${1:-0}"
 arm_stage="${2:-0}"
 smc_stage="${3:-0}"
 paint="${4:-0}"
-tag="p${panic_stage}a${arm_stage}s${smc_stage}q${paint}"
+screen="${5:-0}"
+tag="p${panic_stage}a${arm_stage}s${smc_stage}q${paint}c${screen}"
 cd "$HOME/kernel-sprd"
 export PATH="$HOME/toolchains/clang+llvm-11.0.1-x86_64-linux-gnu-ubuntu-20.10/bin:$PATH"
 
-python3 "$HOME/prepare_stage_panics.py" "$panic_stage" "$arm_stage" "$smc_stage" "$paint"
+python3 "$HOME/prepare_stage_panics.py" "$panic_stage" "$arm_stage" "$smc_stage" "$paint" "$screen"
 grep -n -E '^#define DIAG_(PANIC_STAGE|ARM_STAGE|ARM_TIMEOUT|SMC_STAGE|PAINT)' include/linux/diag_stage.h
 echo "arm hooks: $(grep -c 'DIAG_ARM_HOOK' init/main.c)  smc hooks: $(grep -c 'DIAG_SMC_HOOK' init/main.c)  paint hooks: $(grep -c 'DIAG_PAINT_HOOK' init/main.c)"
 grep -n 'DIAG_PAINT_HOOK' init/main.c | head -9
@@ -37,7 +38,7 @@ grep -n 'DIAG_PAINT_HOOK' init/main.c | head -9
 cp .config.diagwdt .config
 make -j2 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
     CC="clang --target=aarch64-linux-gnu-" LD=ld.lld LLVM_AR=llvm-ar LLVM_NM=llvm-nm \
-    KCFLAGS="-DDIAG_WDT_ARM -DDIAG_PANIC_AFTER_INIT -DDIAG_KVM_LATE_INIT" \
+    KCFLAGS="-DDIAG_WDT_ARM -DDIAG_PANIC_AFTER_INIT -DDIAG_KVM_LATE_INIT -DDIAG_EARLY_PAINT" \
     Image 2>&1 | tail -12
 
 cp arch/arm64/boot/Image "Image.$tag"
