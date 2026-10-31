@@ -1,5 +1,7 @@
 # motorola-moto-e32-root
 
+> Note: The main host used was Windows 10 and some of the required files (such as Android SDK, firmware files and others) were moved to an external disk (D:) to save C: storage space.
+
 Runtime root on the **Motorola Moto E32 (XT2227-1, "hawaii", Unisoc T606)**
 via the ARM Mali GPU use-after-free **CVE-2021-28663 / CVE-2021-28664**, and
 persistent **Magisk** root on the same device.
