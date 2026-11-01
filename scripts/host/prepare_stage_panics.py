@@ -48,8 +48,10 @@ HEADER = """#ifndef _LINUX_DIAG_STAGE_H
 #include <linux/mm.h>
 #include <asm/cacheflush.h>
 #include <asm/barrier.h>
+#include <asm/cputype.h>
 #include <asm/early_ioremap.h>
 #include <asm/fixmap.h>
+#include <asm/virt.h>
 #define DIAG_SCREEN %SCREEN%
 
 /*
@@ -187,6 +189,60 @@ static inline void diag_screen_tag(unsigned int n)
 	diag_screen_draw(0, diag_trace, diag_trace_len);
 }
 
+/* Hex without printf: this runs long before any console driver exists. */
+static inline char *diag_hex(char *p, unsigned long long v, unsigned int digits)
+{
+	while (digits--) {
+		unsigned int d = (unsigned int)(v >> (digits * 4)) & 0xf;
+
+		*p++ = d < 10 ? '0' + d : 'a' + d - 10;
+	}
+	return p;
+}
+
+/*
+ * Which exception level did the bootloader enter the kernel at?
+ *
+ * It cannot be asked afterwards: el2_setup() drops to EL1 before any driver
+ * runs, and the "CPU: All CPU(s) started at ELx" line of a normal boot has
+ * long scrolled out of dmesg (pstore only keeps post-console messages).  KVM
+ * on arm64 needs the kernel to have been entered at EL2 (or to run VHE), so
+ * print the raw __boot_cpu_mode[] pair, the is_hyp_mode_available() verdict
+ * and ID_AA64PFR0_EL1 (which reports whether EL2/EL3 exist at all) on the
+ * panel while the console still works.
+ */
+static inline void diag_el_report(void)
+{
+	char line[DIAG_COLS + 1];
+	const char *verdict;
+	char *p;
+	u64 pfr0;
+
+	asm volatile("mrs %0, id_aa64pfr0_el1" : "=r" (pfr0));
+
+	memcpy(line, "EL bcm=", 7);
+	p = diag_hex(line + 7, __boot_cpu_mode[0], 8);
+	*p++ = '/';
+	p = diag_hex(p, __boot_cpu_mode[1], 8);
+	memcpy(p, " hyp=", 5);
+	p += 5;
+	*p++ = is_hyp_mode_available() ? '1' : '0';
+	*p = '\\0';
+	diag_screen_puts(line, p - line);
+
+	memcpy(line, "PFR0=", 5);
+	p = diag_hex(line + 5, pfr0, 16);
+	memcpy(p, " MIDR=", 6);
+	p = diag_hex(p + 6, read_cpuid_id(), 8);
+	*p = '\\0';
+	diag_screen_puts(line, p - line);
+
+	verdict = is_hyp_mode_available() ?
+		"EL2: KVM can work on this device" :
+		"no EL2 -> KVM impossible here";
+	diag_screen_puts(verdict, strlen(verdict));
+}
+
 #define DIAG_TAG(n) diag_screen_tag(n)
 
 /*
@@ -206,9 +262,23 @@ static inline void diag_screen_init(void)
 #else
 static inline void diag_screen_init(void) { }
 #define DIAG_TAG(n) do { } while (0)
+#define DIAG_EL_REPORT do { } while (0)
 #endif
 
 #define DIAG_SCREEN_INIT diag_screen_init()
+#define DIAG_EL_REPORT diag_el_report()
+
+/*
+ * printk mirror entry point, defined exactly once, in
+ * arch/arm64/kernel/setup.c, next to the console itself.
+ *
+ * The state above is file-scope static, so every translation unit that
+ * includes this header gets its own copy.  A mirror hook compiled into
+ * kernel/printk/printk.c therefore used to see its own diag_scr_ready,
+ * which nothing ever sets, and drew nothing at all.  printk.c calls this
+ * function instead, so the text lands in the copy that owns the panel.
+ */
+void diag_stage_mirror(const char *text, size_t len);
 
 
 #define DIAG_PANIC_STAGE %PANIC%
@@ -562,8 +632,11 @@ def main():
             i = p.index("#include <linux/")
             p = p[:i] + "#include <linux/diag_stage.h>\n" + p[i:]
             print("added diag include to printk.c")
-        hook = ("\t#if DIAG_SCREEN\n\tdiag_screen_puts(text, text_len);\n\t#endif\n")
-        if "diag_screen_puts(text, text_len);" not in p:
+        hook = ("\t#if DIAG_SCREEN\n\tdiag_stage_mirror(text, text_len);\n\t#endif\n")
+        if "diag_stage_mirror(text, text_len);" not in p:
+            # drop a hook from an older generator (it drew into its own,
+            # never-initialised copy of the console state)
+            p = re.sub(r"[ \t]*#if DIAG_SCREEN\n[ \t]*diag_screen_puts\(text, text_len\);\n[ \t]*#endif\n", "", p)
             anchor = "\treturn log_output(facility, level, lflags,\n"
             if p.count(anchor) == 1:
                 p = p.replace(anchor, hook + anchor, 1)
@@ -572,7 +645,7 @@ def main():
                 print("WARN: printk log_output anchor not unique")
     else:
         p = p.replace("#include <linux/diag_stage.h>\n", "")
-        p = re.sub(r"[ \t]*#if DIAG_SCREEN\n[ \t]*diag_screen_puts\(text, text_len\);\n[ \t]*#endif\n", "", p)
+        p = re.sub(r"[ \t]*#if DIAG_SCREEN\n[ \t]*diag_(stage_mirror|screen_puts)\(text, text_len\);\n[ \t]*#endif\n", "", p)
     pk.write_text(p)
 
     # setup_arch() trace (paint mode 2): milestones inside
@@ -595,6 +668,23 @@ def main():
             print("added #include <linux/diag_stage.h> to setup.c")
         else:
             print("WARN: include anchor missing in setup.c")
+    # The printk mirror must land in this file's copy of the console state;
+    # see the long comment on diag_stage_mirror() in the header.
+    mirror_def = (
+        "#if DIAG_SCREEN\n"
+        "/* the one copy of the panel console that printk mirrors into */\n"
+        "void diag_stage_mirror(const char *text, size_t len)\n"
+        "{\n"
+        "\tdiag_screen_puts(text, len);\n"
+        "}\n"
+        "#endif\n")
+    if "void diag_stage_mirror" not in t:
+        inc = "#include <linux/diag_stage.h>\n"
+        if t.count(inc) == 1:
+            t = t.replace(inc, inc + "\n" + mirror_def, 1)
+            print("added diag_stage_mirror() to setup.c")
+        else:
+            print("WARN: no diag include anchor for diag_stage_mirror()")
     for anchor, hook in SETUP_TRACE:
         if hook.strip() in t:
             continue
@@ -612,10 +702,21 @@ def main():
         print("inserted %s in setup.c" % hook10.strip())
     # the on-screen console can start once the linear map exists
     screen_init = "\tDIAG_SCREEN_INIT;\n"
+    el_report = ("\t/* KVM needs the kernel to have been entered at EL2: record\n"
+                 "\t * what the bootloader actually handed over, while we can\n"
+                 "\t * still draw text on the panel.\n"
+                 "\t */\n"
+                 "\tDIAG_EL_REPORT;\n")
     paging = "\tpaging_init();\n"
     if screen_init.strip() not in t and t.count(paging) == 1:
         t = t.replace(paging, paging + screen_init, 1)
         print("inserted %s in setup.c" % screen_init.strip())
+    if el_report.strip() not in t:
+        if screen_init in t:
+            t = t.replace(screen_init, screen_init + el_report, 1)
+            print("inserted DIAG_EL_REPORT in setup.c")
+        else:
+            print("WARN: no DIAG_SCREEN_INIT anchor for DIAG_EL_REPORT")
     setup.write_text(t)
 
     # the end-of-init panic must not mask any instrument
