@@ -1470,3 +1470,45 @@ same as the paint bands of 34/40, so the mapping is already known, and the
 numbers survive even when nothing prints.  DIAG_TAG() is called from
 diag_paint()/diag_paint_early(), so every existing probe site reports itself
 with no extra hooks.
+
+------------------------------------------------------------------------
+46. WHERE THE KERNEL CHANGES LIVE NOW (git, 2026-11-01)
+------------------------------------------------------------------------
+The VM tree ~/kernel-sprd is a blob:none clone of
+MotorolaMobilityLLC/kernel-sprd: 738,535 commits, a 2.48 GB pack and a 930 MB
+checkout.  Pushing that history anywhere is not an option, so the work was
+committed locally instead of being left in the working tree:
+
+  branch  hawaii-diag         7 commits on top of R-11-release-RORS
+                              c4e610cd833c ("Add design file")
+  tag     hawaii-diag-20261101
+
+  6eaac916 gitignore: ignore local build outputs and experiment artefacts
+  270faf94 sprd: build fixes for the OSS drop
+  b4c3685f mm/fs: backport fget_many/fput_many and split anon_vma counters
+  b937d31a sipc: copy_from_user() variant that keeps a shared-memory tail
+  4806eeba uapi: SPRD jpg/vsp map sizes and sensor private-key ioctl
+  c096f1b7 diag: on-panel boot tracing (bands, milestone line, printk mirror)
+  218e22ee diag: generated header snapshot, branch notes, device config
+
+.gitignore now hides the tree's own output (Image.*, System.map.*, *.dtbo,
+*.symversions, localversion, the reconstructed configs), so `git status` is
+empty and every remaining difference is deliberate.
+
+The series was verified the only way that matters: `git am 0001..0007` on a
+pristine worktree of c4e610cd yields the branch tree exactly (both
+9cc008dbdcbaac9a9e516147d367f26f91c8710a, zero files different).  One
+amendment was needed to get there - diag/configs/phone.config was committed
+with CRLF line endings and `git am` drops CR by default, which rewrote all
+4888 lines.
+
+Copies of the series are in the PC repository and pushed to origin/main:
+
+  patches/kernel-sprd/branch-hawaii-diag/0001..0007-*.patch
+  patches/kernel-sprd/branch-hawaii-diag/hawaii-diag-full.diff
+  patches/kernel-sprd/branch-hawaii-diag/{README.md,phone.config}
+
+Non-source material was moved out of the kernel tree to ~/kernel-diag/
+(images/ 431 MB, patches/, scripts/, configs/, README.md) so that a later
+`git clean -xdf` in the kernel tree cannot destroy the only copy of an
+experiment image (Image.* is not reproducible once the source moves on).
