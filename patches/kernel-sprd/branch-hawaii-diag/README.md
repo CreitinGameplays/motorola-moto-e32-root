@@ -6,6 +6,10 @@ vendor OSS drop it is based on.  Applying this series to a pristine checkout
 reproduces that branch **byte for byte** (verified with `git am` + tree-hash
 comparison, `0` files different).
 
+A single-commit snapshot of the same tree is published as
+[motorola-moto-e32-kernel](https://github.com/CreitinGameplays/motorola-moto-e32-kernel)
+(tree hash `9cc008db`, identical to the branch).
+
     base    MotorolaMobilityLLC/kernel-sprd
             branch R-11-release-RORS, commit c4e610cd833c ("Add design file")
     series  0001..0007
