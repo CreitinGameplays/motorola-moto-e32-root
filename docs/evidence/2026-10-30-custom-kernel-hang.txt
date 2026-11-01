@@ -1679,3 +1679,87 @@ kernel repository is now self-contained:
 `~/kernel-diag/scripts/export_to_github.sh` was rewritten for this model
 (orphan import + cherry-pick + tree-hash gate + force push) and refuses to
 publish a dirty tree or a tree mismatch.
+
+------------------------------------------------------------------------
+51. THE FIRST PANEL PHOTO CHANGES THE DIAGNOSIS (2026-11-01, evening)
+------------------------------------------------------------------------
+The image with the fixed printk mirror (boot_elreport.img, sha
+c9e887ce428184485e4b932a2bbf5e9d10a57fc1fbfd4af71f5a38042e86eaac) put
+*real kernel text* on the panel for the first time.  The operator's photo,
+rotated and read, shows:
+
+    15 16 17 18 19
+    Call trace:
+      atomic_notifier_call_chain+0x48/0x150
+      cpu_pm_exit+0x2c/0x54
+      arm_enter_idle_state+0x30/0x50
+      cpuidle_enter_state+0x218/0x310
+      do_idle...
+      cpu_startup_entry...
+      kernel_init...
+      start_kernel...
+    ---[ end trace ... ]---
+
+Three conclusions, none of them "the kernel hangs in setup_arch":
+
+ 1. The kernel reached the **idle loop**: do_idle() <- cpu_startup_entry()
+    <- start_kernel().  setup_arch() finished long ago; the last thing that
+    happened was a CPU entering cpuidle.  So the custom kernel boots, and
+    the problem is that **userspace never comes up** (no adb, the display
+    never leaves our console, so SurfaceFlinger never ran).
+ 2. The trace is the stock `WARN(1, "Invalid notifier called!")` from
+    kernel/notifier.c, under `#ifdef CONFIG_DEBUG_NOTIFIERS`.  That option
+    is in the *shipping* config (phone.config, read off the phone), so it
+    is not something we added.  The check is
+    `func_ptr_is_kernel_text(nb->notifier_call)`, and
+    `core_kernel_text()` stops accepting .init.text once
+    `system_state == SYSTEM_RUNNING` (init/main.c:1082).  Something on the
+    **CPU_PM chain** is registered from freed init text, so the notifier is
+    *skipped* at every cpuidle exit - and because it is a WARN, it fires
+    again at every single idle entry.  That is why the panel showed only
+    this backtrace: the flood overwrote the real log tail, and the first
+    line of it ("CPU: ... PID: ... Comm: ...") was wiped by the next
+    identical WARN.
+ 3. The milestone line stopped at 19 although init/main.c's stage tags 22..28
+    were compiled in.  Same root cause as the printk mirror: the console
+    state was file-scope **static** in diag_stage.h, so every translation
+    unit that included the header had its own copy of `diag_scr_ready`,
+    permanently false except in setup.c.  The tags in init/main.c and the
+    mirror in printk.c were both drawing into a console that was never
+    switched on.
+
+So two of the three "silences" were bugs in our own instrumentation, not
+properties of the kernel.
+
+Recovery note: after the hang the device came back by itself in ~12 min
+(the SPL spent slot b's single try, fell back to the slot-a rescue, which
+restored boot_b and rebooted into Android with Magisk root intact).  The
+test runner's 330 s window was too short and reported that recovery as a
+HANG; it is now 900 s.
+
+------------------------------------------------------------------------
+52. FIXES IN THE NEXT IMAGE (boot_sharedstate.img)
+------------------------------------------------------------------------
+Image: Image.p0a0s0q2c1 sha 710d490732fe5bc7c0ef8d07683d1418dff11d523ae751e
+20909d97fbcc05ab5; packed as boot_sharedstate.img, sha
+ed1882f9657eb5118a9b6d5cc7e1b0b662abef8d1ebdf43809567e6b6f73a972.
+
+ a. One console instance for the whole kernel: `struct diag_console
+    diag_state`, defined in arch/arm64/kernel/setup.c, declared in
+    diag_stage.h.  The stage tags 22..28 and the printk mirror now share
+    the same state as the setup_arch() milestones.
+ b. Rows 1..3 are permanent and carry the EL2 report (__boot_cpu_mode[0/1],
+    is_hyp_mode_available(), ID_AA64PFR0_EL1, MIDR + the verdict).  KVM on
+    arm64 needs the kernel to have been entered at EL2; that fact is now
+    readable no matter how long the log gets.
+ c. The per-idle-entry WARN is replaced by a one-time report that names the
+    offending notifier block and its callback (`%px` / `%pS`), then keeps
+    skipping it exactly as before.  The log tail is finally visible.
+ d. The paint bands no longer overwrite the text console once it is up.
+
+Kernel-side commit: 6f3a8650f8fa "diag: one shared console instance,
+permanent EL2 header, one-time notifier report" on branch hawaii-diag,
+published to the kernel repository (GitHub main 93e0a7816572, 9 commits).
+The generator and the build script now live in the kernel tree as
+diag/prepare_stage_panics.py and diag/stage_build.sh, so the kernel
+repository can reproduce its own instrumentation.
