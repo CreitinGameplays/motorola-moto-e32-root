@@ -25,8 +25,10 @@
     The 64 MiB boot image to test (e.g. artifacts\kernel-build\boot_p0a0s1.img).
 
 .PARAMETER WaitSeconds
-    How long to wait for adb after the reboot.  Measured fallback is ~172 s;
-    the default 330 s leaves slack without turning a hang into a long wait.
+    How long to wait for adb after the reboot.  Measured recovery after a
+    hang is ~12 min (the SPL falls back to the slot-a rescue, which restores
+    boot_b and reboots), so the default is 900 s - with the old 330 s the
+    recovery was misreported as a HANG.
 
 .PARAMETER Out
     Evidence file to append to.  Default: docs\evidence\<date>-boot_b-tests.txt
@@ -38,7 +40,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$Image,
     [string]$Adb = 'D:\AndroidSDKTools\adb\adb.exe',
-    [int]$WaitSeconds = 330,
+    [int]$WaitSeconds = 900,
     [string]$Out
 )
 

@@ -84,10 +84,27 @@ HEADER = """#ifndef _LINUX_DIAG_STAGE_H
 #define DIAG_ROWS\t((DIAG_FB_ROWS - DIAG_TOP) / DIAG_CH)
 #define DIAG_BG\t0x000000U
 
-static bool diag_scr_ready;
-static unsigned int diag_scr_row = 1;\t/* row 0 is the milestone line */
-static char diag_trace[DIAG_COLS + 1];
-static unsigned int diag_trace_len;
+/*
+ * The console state is ONE object with external linkage, not a set of
+ * file-scope statics.  This header is included by several translation units
+ * (setup.c, printk.c, init/main.c), and with statics each of them had its own
+ * diag_scr_ready - permanently false everywhere except setup.c.  That is why
+ * the stage tags compiled into init/main.c never appeared on the milestone
+ * line, and why the printk mirror in printk.c drew nothing.  setup.c defines
+ * the single instance.
+ */
+#define DIAG_HEAD\t4U\t/* row 0: milestones, rows 1..3: permanent info */
+
+struct diag_console {
+\tbool ready;
+\tunsigned int row;
+\tunsigned int trace_len;
+\tchar trace[DIAG_COLS + 1];
+\tunsigned int head_lines;
+\tchar head[DIAG_HEAD - 1][DIAG_COLS + 1];
+};
+
+extern struct diag_console diag_state;
 
 static inline u8 *diag_screen_row(unsigned int row)
 {
@@ -142,31 +159,58 @@ static inline void diag_screen_clear(void)
 {
 	u8 *fb = diag_screen_row(0);
 	unsigned long y;
+	unsigned int i;
 
 	for (y = 0; y < (unsigned long)(DIAG_FB_ROWS - DIAG_TOP); y++)
 		memset(fb + y * DIAG_FB_STRIDE, 0, DIAG_FB_STRIDE);
 	__flush_dcache_area(fb, (unsigned long)(DIAG_FB_ROWS - DIAG_TOP) *
 			    DIAG_FB_STRIDE);
-	diag_scr_row = 1;
-	if (diag_trace_len)
-		diag_screen_draw(0, diag_trace, diag_trace_len);
+	diag_state.row = DIAG_HEAD;
+	if (diag_state.trace_len)
+		diag_screen_draw(0, diag_state.trace, diag_state.trace_len);
+	for (i = 0; i < diag_state.head_lines; i++)
+		diag_screen_draw(i + 1, diag_state.head[i],
+				 strlen(diag_state.head[i]));
+}
+
+/*
+ * Permanent information rows (1..3).  They survive both scrolling and the
+ * clear() that scrolling performs, so a fact like "which EL did the kernel
+ * boot at" is still readable when the log is long.
+ */
+static inline void diag_screen_head(unsigned int n, const char *text,
+				    unsigned int len)
+{
+	unsigned int i;
+
+	if (n >= DIAG_HEAD - 1)
+		return;
+	if (len > DIAG_COLS)
+		len = DIAG_COLS;
+	for (i = 0; i < len; i++)
+		diag_state.head[n][i] =
+			(text[i] >= 0x20 && text[i] <= 0x7e) ? text[i] : ' ';
+	diag_state.head[n][len] = '\\0';
+	if (n + 1 > diag_state.head_lines)
+		diag_state.head_lines = n + 1;
+	diag_screen_draw(n + 1, diag_state.head[n], len);
 }
 
 static inline void diag_screen_puts(const char *text, size_t len)
 {
 	size_t i = 0;
 
-	if (!diag_scr_ready || !text)
+	if (!diag_state.ready || !text)
 		return;
 	while (i < len) {
 		unsigned int n = len - i;
 
 		if (n > DIAG_COLS)
 			n = DIAG_COLS;
-		if (diag_scr_row >= DIAG_ROWS)
+		if (diag_state.row >= DIAG_ROWS)
 			diag_screen_clear();
-		diag_screen_draw(diag_scr_row, text + i, n);
-		diag_scr_row++;
+		diag_screen_draw(diag_state.row, text + i, n);
+		diag_state.row++;
 		i += n;
 	}
 }
@@ -174,19 +218,19 @@ static inline void diag_screen_puts(const char *text, size_t len)
 /* Append a band number to the permanent milestone line. */
 static inline void diag_screen_tag(unsigned int n)
 {
-	if (!diag_scr_ready)
+	if (!diag_state.ready)
 		return;
-	if (diag_trace_len >= 3 &&
-	    diag_trace[diag_trace_len - 3] == '0' + (n / 10) % 10 &&
-	    diag_trace[diag_trace_len - 2] == '0' + n % 10)
+	if (diag_state.trace_len >= 3 &&
+	    diag_state.trace[diag_state.trace_len - 3] == '0' + (n / 10) % 10 &&
+	    diag_state.trace[diag_state.trace_len - 2] == '0' + n % 10)
 		return;\t/* no consecutive duplicates */
-	if (diag_trace_len + 4 > DIAG_COLS)
+	if (diag_state.trace_len + 4 > DIAG_COLS)
 		return;
-	diag_trace[diag_trace_len++] = '0' + (n / 10) % 10;
-	diag_trace[diag_trace_len++] = '0' + n % 10;
-	diag_trace[diag_trace_len++] = ' ';
-	diag_trace[diag_trace_len] = '\\0';
-	diag_screen_draw(0, diag_trace, diag_trace_len);
+	diag_state.trace[diag_state.trace_len++] = '0' + (n / 10) % 10;
+	diag_state.trace[diag_state.trace_len++] = '0' + n % 10;
+	diag_state.trace[diag_state.trace_len++] = ' ';
+	diag_state.trace[diag_state.trace_len] = '\\0';
+	diag_screen_draw(0, diag_state.trace, diag_state.trace_len);
 }
 
 /* Hex without printf: this runs long before any console driver exists. */
@@ -207,9 +251,8 @@ static inline char *diag_hex(char *p, unsigned long long v, unsigned int digits)
  * runs, and the "CPU: All CPU(s) started at ELx" line of a normal boot has
  * long scrolled out of dmesg (pstore only keeps post-console messages).  KVM
  * on arm64 needs the kernel to have been entered at EL2 (or to run VHE), so
- * print the raw __boot_cpu_mode[] pair, the is_hyp_mode_available() verdict
- * and ID_AA64PFR0_EL1 (which reports whether EL2/EL3 exist at all) on the
- * panel while the console still works.
+ * put the raw __boot_cpu_mode[] pair, the is_hyp_mode_available() verdict and
+ * ID_AA64PFR0_EL1 on the permanent rows while the console still works.
  */
 static inline void diag_el_report(void)
 {
@@ -228,19 +271,21 @@ static inline void diag_el_report(void)
 	p += 5;
 	*p++ = is_hyp_mode_available() ? '1' : '0';
 	*p = '\\0';
-	diag_screen_puts(line, p - line);
+	diag_screen_head(0, line, p - line);
 
 	memcpy(line, "PFR0=", 5);
 	p = diag_hex(line + 5, pfr0, 16);
 	memcpy(p, " MIDR=", 6);
 	p = diag_hex(p + 6, read_cpuid_id(), 8);
 	*p = '\\0';
-	diag_screen_puts(line, p - line);
+	diag_screen_head(1, line, p - line);
 
 	verdict = is_hyp_mode_available() ?
 		"EL2: KVM can work on this device" :
 		"no EL2 -> KVM impossible here";
-	diag_screen_puts(verdict, strlen(verdict));
+	diag_screen_head(2, verdict, strlen(verdict));
+
+	diag_state.row = DIAG_HEAD;
 }
 
 #define DIAG_TAG(n) diag_screen_tag(n)
@@ -254,29 +299,27 @@ static inline void diag_el_report(void)
 
 static inline void diag_screen_init(void)
 {
-	diag_scr_ready = true;
+	diag_state.ready = true;
 	diag_screen_clear();
-	diag_screen_puts("DIAG: milestones on line 1, log below", 39);
 	diag_screen_tag(15);\t/* paging_init() just returned */
 }
 #else
 static inline void diag_screen_init(void) { }
 #define DIAG_TAG(n) do { } while (0)
 #define DIAG_EL_REPORT do { } while (0)
+#define DIAG_SCR_READY 0
 #endif
 
 #define DIAG_SCREEN_INIT diag_screen_init()
 #define DIAG_EL_REPORT diag_el_report()
+#define DIAG_SCR_READY diag_state.ready
 
 /*
  * printk mirror entry point, defined exactly once, in
- * arch/arm64/kernel/setup.c, next to the console itself.
- *
- * The state above is file-scope static, so every translation unit that
- * includes this header gets its own copy.  A mirror hook compiled into
- * kernel/printk/printk.c therefore used to see its own diag_scr_ready,
- * which nothing ever sets, and drew nothing at all.  printk.c calls this
- * function instead, so the text lands in the copy that owns the panel.
+ * arch/arm64/kernel/setup.c, next to the console itself.  The state is a
+ * single global now, but keeping one entry point means the mirror cannot
+ * drift from the console (and is the place a lock would go if printk from
+ * several CPUs ever races here).
  */
 void diag_stage_mirror(const char *text, size_t len);
 
@@ -342,9 +385,15 @@ static inline void diag_paint(unsigned int band)
 \t\t\t\t\t      band * DIAG_PAINT_BAND);
 \tunsigned int i;
 
-\tfor (i = 0; i < DIAG_PAINT_BAND / sizeof(u64); i++)
-\t\tp[i] = ~0ULL;
-\tdsb(sy);
+\t/*
+\t * Once the text console is up the band would only overwrite the log it
+\t * is pointing at, so keep the milestone tag and skip the fill.
+\t */
+\tif (!DIAG_SCR_READY) {
+\t\tfor (i = 0; i < DIAG_PAINT_BAND / sizeof(u64); i++)
+\t\t\tp[i] = ~0ULL;
+\t\tdsb(sy);
+\t}
 \tDIAG_TAG(band);
 }
 
@@ -648,6 +697,54 @@ def main():
         p = re.sub(r"[ \t]*#if DIAG_SCREEN\n[ \t]*diag_(stage_mirror|screen_puts)\(text, text_len\);\n[ \t]*#endif\n", "", p)
     pk.write_text(p)
 
+    # One report per boot for an invalid notifier, instead of a WARN per idle
+    # entry.  CONFIG_DEBUG_NOTIFIERS (also set in the shipping config) rejects
+    # callbacks that are not in core kernel text; something on the CPU_PM chain
+    # is outside it, so the stock WARN fires at every cpuidle exit and buries
+    # the real log tail under an identical backtrace.
+    nf = ROOT / "kernel" / "notifier.c"
+    n = nf.read_text()
+    decl = "static bool diag_bad_notifier_reported;\n"
+    if decl not in n:
+        anchor = "static int notifier_call_chain(struct notifier_block **nl,\n"
+        if n.count(anchor) == 1:
+            n = n.replace(anchor,
+                          "#include <linux/printk.h>\n" + decl + "\n" + anchor, 1)
+            print("added diag_bad_notifier_reported to notifier.c")
+        else:
+            print("WARN: notifier.c has no notifier_call_chain anchor")
+    if "diag: invalid notifier" not in n:
+        warn = ("#ifdef CONFIG_DEBUG_NOTIFIERS\n"
+                "\t\tif (unlikely(!func_ptr_is_kernel_text(nb->notifier_call))) {\n"
+                "\t\t\tWARN(1, \"Invalid notifier called!\");\n"
+                "\t\t\tnb = next_nb;\n"
+                "\t\t\tcontinue;\n"
+                "\t\t}\n"
+                "#endif\n")
+        repl = ("#ifdef CONFIG_DEBUG_NOTIFIERS\n"
+                "\t\tif (unlikely(!func_ptr_is_kernel_text(nb->notifier_call))) {\n"
+                "\t\t\t/*\n"
+                "\t\t\t * DIAG: report once, naming the block and its callback,\n"
+                "\t\t\t * then keep skipping it.  On this device this is the\n"
+                "\t\t\t * CPU_PM chain, so the stock WARN fires at every\n"
+                "\t\t\t * cpuidle exit and buries the log tail.\n"
+                "\t\t\t */\n"
+                "\t\t\tif (!diag_bad_notifier_reported) {\n"
+                "\t\t\t\tdiag_bad_notifier_reported = true;\n"
+                "\t\t\t\tpr_err(\"diag: invalid notifier %px callback=%pS (skipped)\\n\",\n"
+                "\t\t\t\t       nb, nb->notifier_call);\n"
+                "\t\t\t}\n"
+                "\t\t\tnb = next_nb;\n"
+                "\t\t\tcontinue;\n"
+                "\t\t}\n"
+                "#endif\n")
+        if n.count(warn) != 1:
+            print("WARN: notifier.c anchor found %d times" % n.count(warn))
+        else:
+            n = n.replace(warn, repl, 1)
+            print("patched notifier.c: one-time invalid-notifier report")
+    nf.write_text(n)
+
     # setup_arch() trace (paint mode 2): milestones inside
     # arch/arm64/kernel/setup.c, bands 1..9.  The first ones must use
     # early_ioremap() because the linear mapping of 0x9e000000 only appears
@@ -670,9 +767,22 @@ def main():
             print("WARN: include anchor missing in setup.c")
     # The printk mirror must land in this file's copy of the console state;
     # see the long comment on diag_stage_mirror() in the header.
-    mirror_def = (
+    old_mirror = (
         "#if DIAG_SCREEN\n"
         "/* the one copy of the panel console that printk mirrors into */\n"
+        "void diag_stage_mirror(const char *text, size_t len)\n"
+        "{\n"
+        "\tdiag_screen_puts(text, len);\n"
+        "}\n"
+        "#endif\n")
+    if old_mirror in t:
+        # a previous run inserted the wrapper without the shared instance
+        t = t.replace(old_mirror, "", 1)
+    mirror_def = (
+        "#if DIAG_SCREEN\n"
+        "/* the single console instance shared by every translation unit */\n"
+        "struct diag_console diag_state;\n"
+        "\n"
         "void diag_stage_mirror(const char *text, size_t len)\n"
         "{\n"
         "\tdiag_screen_puts(text, len);\n"
