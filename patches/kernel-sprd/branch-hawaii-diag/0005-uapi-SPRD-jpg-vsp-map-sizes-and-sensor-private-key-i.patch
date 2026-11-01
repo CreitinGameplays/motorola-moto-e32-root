@@ -1,0 +1,61 @@
+From 4806eebadd8c2db4db24205ca9077d98a63f054e Mon Sep 17 00:00:00 2001
+From: Creitin Gameplays <clton999@outlook.com>
+Date: Sun, 1 Nov 2026 14:31:17 +0000
+Subject: [PATCH 5/7] uapi: SPRD jpg/vsp map sizes and sensor private-key ioctl
+
+SPRD_JPG_MAP_SIZE, SPRD_VSP_MAP_SIZE 0x14000 and SENSOR_IO_PRI_KEY are required by the shipping RORS camera/HAL userspace; the OSS drop publishes older values.
+---
+ include/uapi/video/sprd_jpg.h      | 1 +
+ include/uapi/video/sprd_sensor_k.h | 3 +++
+ include/uapi/video/sprd_vsp.h      | 2 +-
+ 3 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/include/uapi/video/sprd_jpg.h b/include/uapi/video/sprd_jpg.h
+index ed816aacc476..088c59ee6f7c 100644
+--- a/include/uapi/video/sprd_jpg.h
++++ b/include/uapi/video/sprd_jpg.h
+@@ -18,6 +18,7 @@
+ #include <linux/compat.h>
+ #endif
+ 
++#define SPRD_JPG_MAP_SIZE 0x6000
+ #define SPRD_JPG_IOCTL_MAGIC 'm'
+ #define JPG_CONFIG_FREQ _IOW(SPRD_JPG_IOCTL_MAGIC, 1, unsigned int)
+ #define JPG_GET_FREQ    _IOR(SPRD_JPG_IOCTL_MAGIC, 2, unsigned int)
+diff --git a/include/uapi/video/sprd_sensor_k.h b/include/uapi/video/sprd_sensor_k.h
+index 64f3eafc5586..98443ed5a273 100644
+--- a/include/uapi/video/sprd_sensor_k.h
++++ b/include/uapi/video/sprd_sensor_k.h
+@@ -140,6 +140,7 @@ struct sensor_muti_aec_i2c_tag {
+ #define AEC_I2C_SENSOR_MAX 3
+ 
+ #define SENSOR_IOC_MAGIC			'R'
++#define SENSOR_IOC_PRIVATE_KEY		0x789A
+ 
+ #define SENSOR_IO_PD	\
+ 	 _IOW(SENSOR_IOC_MAGIC,  0,  uint8_t)
+@@ -191,6 +192,8 @@ struct sensor_muti_aec_i2c_tag {
+ 	_IOW(SENSOR_IOC_MAGIC,  23, struct sensor_muti_aec_i2c_tag)
+ #define SENSOR_IO_IF_SWITCH            \
+ 	_IOW(SENSOR_IOC_MAGIC,  24, struct sensor_if_cfg_tag)
++#define SENSOR_IO_PRI_KEY	\
++	_IOW(SENSOR_IOC_MAGIC, 	25, uint32_t)
+ #define SENSOR_IO_READ_OTPDATA	\
+ 	_IOWR(SENSOR_IOC_MAGIC, 254, struct _sensor_otp_param_tag)
+ #define SENSOR_IO_GET_SOCID	\
+diff --git a/include/uapi/video/sprd_vsp.h b/include/uapi/video/sprd_vsp.h
+index 9feeaf859be1..6a0f4404b7be 100644
+--- a/include/uapi/video/sprd_vsp.h
++++ b/include/uapi/video/sprd_vsp.h
+@@ -16,7 +16,7 @@
+ #include <linux/ioctl.h>
+ #include <linux/compat.h>
+ 
+-#define SPRD_VSP_MAP_SIZE 0xA000
++#define SPRD_VSP_MAP_SIZE 0x14000
+ #define SPRD_VSP_CLK_LEVEL_NUM 5
+ 
+ #define SPRD_VSP_IOCTL_MAGIC 'm'
+-- 
+2.47.3
+
