@@ -1763,3 +1763,101 @@ published to the kernel repository (GitHub main 93e0a7816572, 9 commits).
 The generator and the build script now live in the kernel tree as
 diag/prepare_stage_panics.py and diag/stage_build.sh, so the kernel
 repository can reproduce its own instrumentation.
+
+------------------------------------------------------------------------
+53. THE SECOND PANEL PHOTO: EL2 CONFIRMED, HANG PINNED TO do_initcalls()
+------------------------------------------------------------------------
+Photo: 20261101_131437.jpg (operator's phone camera, rotated 270 deg and
+cropped).  It was taken with boot_sharedstate.img on the screen.
+
+Row 0 (milestone line):   15 16 17 18 19 22 23 24 27
+Row 1 (permanent):        EL bcm=.../... hyp=1  KVM:possible
+Row 2 (permanent):        PFR0=... MIDR=...
+Row 3 (permanent):        EL2: KVM can work on this device
+Rows 4+:                 the kernel log tail (SPRD debuglog / sdio lines)
+
+Three results, in order of importance.
+
+ a. **EL2 is confirmed.**  `is_hyp_mode_available()` is true, so the
+    bootloader hands the kernel over at EL2 with the hypervisor mode
+    available.  The standing KVM question ("can this kernel ever run KVM on
+    this device?") is answered: **yes**, if the build keeps the EL2 entry
+    path.  `__boot_cpu_mode[0]` is the mode the kernel was entered in,
+    `__boot_cpu_mode[1]` the secondary-CPU mode (BOOT_MODE_HYP == 2).  The
+    panel prints both raw values so the claim can be checked by eye.
+    (Vendor config still has `# CONFIG_VIRTUALIZATION is not set` and
+    `# CONFIG_ARM64_VHE is not set`, and `config KVM` is `bool`, so a
+    separate kvm.ko is impossible - the feature must be built in.)
+
+ b. **The hang is inside do_initcalls().**  The milestone line stops at tag
+    27.  The tags are, in order: 22 = before setup_arch(), 23 = after
+    page_alloc_init(), 24 = after check_bugs(), 25 = before rest_init(),
+    26 = before kernel_init_freeable(), 27 = after do_pre_smp_initcalls(),
+    28 = after do_basic_setup().  Tag 28 is missing, so **do_basic_setup()
+    never returned** - and do_basic_setup() is the caller of
+    do_initcalls().  The custom kernel therefore reaches the initcall
+    table and dies inside one of the initcalls, which is a completely
+    different (and much more tractable) problem than "userspace never
+    comes up".
+
+ c. **Tags 25 and 26 could never have appeared.**  The generator inserted
+    the stage-5 and stage-6 markers *after* `rest_init();` and
+    `kernel_init_freeable();`.  Neither of those ever returns (rest_init()
+    calls kernel_init(), which ends in the idle loop; kernel_init_freeable()
+    ends in prepare_namespace()/run_init_process), so both markers were
+    dead code.  The 2026-11-01 build had them after the call, so their
+    absence from the panel was expected and told us nothing.
+
+Three bugs of the instrumentation itself were visible in the same photo:
+
+ d. **The text was unreadable.**  The glyph renderer never advanced the row
+    pointer inside its vertical-scale loop:
+
+        for (i = 0; i < DIAG_SCALE; i++)
+            for (j = 0; j < DIAG_SCALE; j++)
+                diag_scr_pixel(line + (x * DIAG_SCALE + j) * 3U, rgb);
+
+    `i` was unused, so every font pixel was drawn as a 3x1 horizontal dash
+    instead of a 3x3 block: the letters came out as a mesh of dashes that
+    the camera renders as overlapping strokes.  Fixed to advance the row
+    by i * DIAG_FB_STRIDE.  The cell also had no spacing at all (the glyph
+    filled the whole cell), so the cell is now 26 px wide and 56 px tall
+    (24 px glyph + 2 px column gap, 48 px glyph + 8 px line gap): 61
+    columns x 12 rows.
+
+ e. **The marker accumulation.**  The generator was not idempotent: the
+    branch carries the previous instrumentation as a commit, so every run
+    inserted a second copy of every marker (init/main.c had DIAG_STAGE_2
+    twice, and the markers drifted into dead positions).  The generator now
+    strips all of its markers before inserting them again.
+
+ f. **The notifier WARN flood is gone.**  With the one-time report in
+    place, the panel shows the real log tail instead of a hundred identical
+    "Invalid notifier called!" backtraces - the fix from commit 6f3a8650
+    works.
+
+------------------------------------------------------------------------
+54. THE NEXT IMAGE: boot_initcall.img
+------------------------------------------------------------------------
+Image: Image.p0a0s0q2c1 sha ba5c6cfa3da218317c125ba926b05d8350f4c5f0bcf0c
+45b7997db851102efb3; packed as boot_initcall.img, sha
+5d8cd5b1e53cbd347fc1f604b90747e24308fb7c617332811758a5d8a52d5408.
+
+ a. Solid glyphs + spacing (see 53.d).
+ b. Stage tags 25 and 26 moved *before* rest_init() and
+    kernel_init_freeable(), so they now really fire.
+ c. The generator strips its own markers before inserting them (53.e).
+ d. **New: the live initcall name.**  do_one_initcall() writes the name of
+    the initcall it is about to run to a permanent header row:
+
+        IC: <name>
+
+    If an initcall hangs, the panel names it.  %pF resolves through
+    kallsyms, whose tables are static and therefore usable long before
+    do_initcalls() runs.
+ e. The KVM verdict moved from row 3 into row 1 ("KVM:possible" /
+    "KVM:impossible") to make room for the initcall row.
+
+Kernel-side commit: 5db166d108d8 "diag: solid glyphs, readable spacing,
+live initcall name on the panel" on branch hawaii-diag, published to the
+kernel repository (GitHub main 66a8a90c5262, 10 commits).
