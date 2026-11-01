@@ -78,16 +78,13 @@ Log "pushed sha256   : $devHash"
 if ($devHash.ToLower() -ne $imgHash.ToLower()) { Log "ABORT: push hash mismatch"; $lines | Out-File -Append -Encoding utf8 $Out; throw "push hash mismatch" }
 
 Log "--- flash boot_b (root) ---"
-# mali_kroot is probabilistic (internal 4 attempts, still can fail), and each
-# adb shell is a fresh process, so root must be established and verified in the
-# same shell as the dd.  Retry the whole step a few times.
+# Use persistent Magisk su, not mali_kroot: the exploit temporarily leaves
+# SELinux permissive and can spoil integrity measurements. Keep the privileged
+# write and hash in one su invocation.
 $rb = $null
 for ($i = 1; $i -le 4; $i++) {
-    $w = Sh ("/data/local/tmp/mali_kroot >/dev/null 2>&1; " +
-             "if [ `$(id -u) = 0 ]; then " +
-             "dd if=/data/local/tmp/$bak.img of=/dev/block/by-name/boot_b bs=1M 2>`&1 | tail -1; " +
-             "sync; sha256sum /dev/block/by-name/boot_b | awk '{print `$1}'; " +
-             "else echo NOROOT; fi")
+    $w = Sh ("su -c 'dd if=/data/local/tmp/$bak.img of=/dev/block/by-name/boot_b bs=1M && " +
+             "sync && sha256sum /dev/block/by-name/boot_b | head -c 64'")
     Log "attempt $i : $($w -replace "`r?`n", ' | ')"
     $rb = ($w -split "`n" | Where-Object { $_ -match '^[0-9a-f]{64}$' } | Select-Object -Last 1)
     if ($rb) { break }
@@ -102,13 +99,11 @@ Log "read-back match : YES"
 
 Log "--- one-attempt slot b ---"
 # This step MUST succeed: it is what makes the SPL fall back to slot a when the
-# kernel hangs, i.e. what makes a hang recoverable without BROM.  mali_kroot is
-# probabilistic, so retry until the block really shows b.tries = 1.
+# kernel hangs, i.e. what makes a hang recoverable without BROM. Retry until
+# the block really shows b.tries = 1.
 $slotOk = $false
 for ($i = 1; $i -le 5; $i++) {
-    $s = Sh ("/data/local/tmp/mali_kroot >/dev/null 2>&1; " +
-             "if [ `$(id -u) = 0 ]; then sh /data/local/tmp/set_slot_b_tries1.sh; " +
-             "else echo NOROOT; fi")
+    $s = Sh "su -c 'sh /data/local/tmp/set_slot_b_tries1.sh'"
     Log "attempt $i : $($s -replace "`r?`n", ' | ')"
     if ($s -match '1f 00' ) { $slotOk = $true; break }
     Start-Sleep -Seconds 2
@@ -145,14 +140,36 @@ $elapsed = [int]((Get-Date) - $t0).TotalSeconds
 Log ""
 Log "VERDICT: $verdict  (adb back after ${elapsed}s)" 
 if ($verdict -eq 'RESET') {
-    Log "  => the kernel reached the stage whose hook fired and PSCI SYSTEM_RESET works"
+    Log "  => the device reset and Android returned; inspect captured pstore records"
 } else {
-    Log "  => no adb, no reset: the CPU is hung before that stage"
+    Log "  => no adb and no reset observed; the watchdog may not have armed or fired"
     Log "     recover with a power cycle (slot b's try is spent, the SPL takes slot a"
     Log "     and the rescue restores Android), or brom_set_slot.ps1 -Slot a -ConfirmWrite"
 }
 Log "post-reset state:"
-Log (Sh '/data/local/tmp/mali_kroot >/dev/null 2>&1; dd if=/dev/block/by-name/misc bs=1 skip=2048 count=32 2>/dev/null | od -An -tx1')
+Log (Sh "su -c 'dd if=/dev/block/by-name/misc bs=1 skip=2048 count=32 2>/dev/null | od -An -tx1'")
+
+# Preserve the warm-reset ramoops records immediately. A manual cold power
+# cycle clears DRAM and loses these; the rescue boot can continue Android, but
+# capture before doing any more diagnosis/reboots.
+if ($verdict -eq 'RESET') {
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $pstoreDir = 'artifacts\kernel-build\pstore-' + $stamp
+    New-Item -ItemType Directory -Force -Path $pstoreDir | Out-Null
+    foreach ($name in @('console-ramoops-0', 'dmesg-ramoops-0', 'pmsg-ramoops-0')) {
+        $remote = "/data/local/tmp/diag-$stamp-$name"
+        $local = Join-Path $pstoreDir $name
+        $copy = Sh ("su -c 'cat /sys/fs/pstore/$name > $remote 2>/dev/null'")
+        $pull = (& $Adb pull $remote $local 2>&1 | Out-String).Trim()
+        if (Test-Path $local) {
+            $size = (Get-Item $local).Length
+            Log "pstore capture  : $name ($size bytes) -> $local"
+            Sh "su -c 'rm -f $remote'" | Out-Null
+        } else {
+            Log "pstore missing : $name ($pull)"
+        }
+    }
+}
 
 $lines | Out-File -Append -Encoding utf8 $Out
 Write-Host "appended to $Out"
