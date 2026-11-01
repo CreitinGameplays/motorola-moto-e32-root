@@ -1,0 +1,280 @@
+From b4c3685f2a5c39a2c58ccecdd4bda69d41b87f2a Mon Sep 17 00:00:00 2001
+From: Creitin Gameplays <clton999@outlook.com>
+Date: Sun, 1 Nov 2026 14:31:15 +0000
+Subject: [PATCH 3/7] mm/fs: backport fget_many/fput_many and split anon_vma
+ counters
+
+Matches the RORS userspace ABI expectations: fget_many()/fput_many() for batched file references, and the upstream anon_vma num_children/num_active_vmas split that replaces the single degree counter.
+---
+ fs/file.c            | 19 ++++++++++++++-----
+ fs/file_table.c      |  9 +++++++--
+ include/linux/file.h |  2 ++
+ include/linux/fs.h   |  4 +++-
+ include/linux/rmap.h | 17 ++++++++++-------
+ mm/rmap.c            | 32 ++++++++++++++++++--------------
+ 6 files changed, 54 insertions(+), 29 deletions(-)
+
+diff --git a/fs/file.c b/fs/file.c
+index 96ed066ab89e..c55f8e838ed5 100644
+--- a/fs/file.c
++++ b/fs/file.c
+@@ -690,7 +690,7 @@ void do_close_on_exec(struct files_struct *files)
+ 	spin_unlock(&files->file_lock);
+ }
+ 
+-static struct file *__fget(unsigned int fd, fmode_t mask)
++static struct file *__fget(unsigned int fd, fmode_t mask, unsigned int refs)
+ {
+ 	struct files_struct *files = current->files;
+ 	struct file *file;
+@@ -705,23 +705,32 @@ static struct file *__fget(unsigned int fd, fmode_t mask)
+ 		 */
+ 		if (file->f_mode & mask)
+ 			file = NULL;
+-		else if (!get_file_rcu(file))
++		else if (!get_file_rcu_many(file, refs))
+ 			goto loop;
++		else if (__fcheck_files(files, fd) != file) {
++			fput_many(file, refs);
++			goto loop;
++		}
+ 	}
+ 	rcu_read_unlock();
+ 
+ 	return file;
+ }
+ 
++struct file *fget_many(unsigned int fd, unsigned int refs)
++{
++	return __fget(fd, FMODE_PATH, refs);
++}
++
+ struct file *fget(unsigned int fd)
+ {
+-	return __fget(fd, FMODE_PATH);
++	return __fget(fd, FMODE_PATH, 1);
+ }
+ EXPORT_SYMBOL(fget);
+ 
+ struct file *fget_raw(unsigned int fd)
+ {
+-	return __fget(fd, 0);
++	return __fget(fd, 0, 1);
+ }
+ EXPORT_SYMBOL(fget_raw);
+ 
+@@ -752,7 +761,7 @@ static unsigned long __fget_light(unsigned int fd, fmode_t mask)
+ 			return 0;
+ 		return (unsigned long)file;
+ 	} else {
+-		file = __fget(fd, mask);
++		file = __fget(fd, mask, 1);
+ 		if (!file)
+ 			return 0;
+ 		return FDPUT_FPUT | (unsigned long)file;
+diff --git a/fs/file_table.c b/fs/file_table.c
+index 61517f57f8ef..4ceb4982ffea 100644
+--- a/fs/file_table.c
++++ b/fs/file_table.c
+@@ -261,9 +261,9 @@ void flush_delayed_fput(void)
+ 
+ static DECLARE_DELAYED_WORK(delayed_fput_work, delayed_fput);
+ 
+-void fput(struct file *file)
++void fput_many(struct file *file, unsigned int refs)
+ {
+-	if (atomic_long_dec_and_test(&file->f_count)) {
++	if (atomic_long_sub_and_test(refs, &file->f_count)) {
+ 		struct task_struct *task = current;
+ 
+ 		if (likely(!in_interrupt() && !(task->flags & PF_KTHREAD))) {
+@@ -282,6 +282,11 @@ void fput(struct file *file)
+ 	}
+ }
+ 
++void fput(struct file *file)
++{
++	fput_many(file, 1);
++}
++
+ /*
+  * synchronous analog of fput(); for kernel threads that might be needed
+  * in some umount() (and thus can't use flush_delayed_fput() without
+diff --git a/include/linux/file.h b/include/linux/file.h
+index 279720db984a..d26462b127a3 100644
+--- a/include/linux/file.h
++++ b/include/linux/file.h
+@@ -13,6 +13,7 @@
+ struct file;
+ 
+ extern void fput(struct file *);
++extern void fput_many(struct file *, unsigned int);
+ 
+ struct file_operations;
+ struct vfsmount;
+@@ -41,6 +42,7 @@ static inline void fdput(struct fd fd)
+ }
+ 
+ extern struct file *fget(unsigned int fd);
++extern struct file *fget_many(unsigned int fd, unsigned int refs);
+ extern struct file *fget_raw(unsigned int fd);
+ extern unsigned long __fdget(unsigned int fd);
+ extern unsigned long __fdget_raw(unsigned int fd);
+diff --git a/include/linux/fs.h b/include/linux/fs.h
+index 0355cfe6d62d..97ab480ed945 100644
+--- a/include/linux/fs.h
++++ b/include/linux/fs.h
+@@ -938,7 +938,9 @@ static inline struct file *get_file(struct file *f)
+ 	atomic_long_inc(&f->f_count);
+ 	return f;
+ }
+-#define get_file_rcu(x) atomic_long_inc_not_zero(&(x)->f_count)
++#define get_file_rcu_many(x, cnt)	\
++	atomic_long_add_unless(&(x)->f_count, (cnt), 0)
++#define get_file_rcu(x) get_file_rcu_many((x), 1)
+ #define fput_atomic(x)	atomic_long_add_unless(&(x)->f_count, -1, 1)
+ #define file_count(x)	atomic_long_read(&(x)->f_count)
+ 
+diff --git a/include/linux/rmap.h b/include/linux/rmap.h
+index 06addbbacf68..dde4678de11d 100644
+--- a/include/linux/rmap.h
++++ b/include/linux/rmap.h
+@@ -43,13 +43,6 @@ struct anon_vma {
+ 	 */
+ 	atomic_t refcount;
+ 
+-	/*
+-	 * Count of child anon_vmas and VMAs which points to this anon_vma.
+-	 *
+-	 * This counter is used for making decision about reusing anon_vma
+-	 * instead of forking new one. See comments in function anon_vma_clone.
+-	 */
+-	unsigned degree;
+ 
+ 	struct anon_vma *parent;	/* Parent of this anon_vma */
+ 
+@@ -64,6 +57,16 @@ struct anon_vma {
+ 
+ 	/* Interval tree of private "related" vmas */
+ 	struct rb_root_cached rb_root;
++
++	/*
++	 * Count of child anon_vmas and VMAs which points to this anon_vma.
++	 *
++	 * This counter is used for making decision about reusing anon_vma
++	 * instead of forking new one. See comments in function anon_vma_clone.
++	 */
++	unsigned long num_children;
++	/* Count of VMAs whose ->anon_vma pointer points to this object. */
++	unsigned long num_active_vmas;
+ };
+ 
+ /*
+diff --git a/mm/rmap.c b/mm/rmap.c
+index 057e5411b4c3..9bf3ca14fab5 100644
+--- a/mm/rmap.c
++++ b/mm/rmap.c
+@@ -82,7 +82,8 @@ static inline struct anon_vma *anon_vma_alloc(void)
+ 	anon_vma = kmem_cache_alloc(anon_vma_cachep, GFP_KERNEL);
+ 	if (anon_vma) {
+ 		atomic_set(&anon_vma->refcount, 1);
+-		anon_vma->degree = 1;	/* Reference for first vma */
++		anon_vma->num_children = 0;
++		anon_vma->num_active_vmas = 0;
+ 		anon_vma->parent = anon_vma;
+ 		/*
+ 		 * Initialise the anon_vma root to point to itself. If called
+@@ -190,6 +191,7 @@ int __anon_vma_prepare(struct vm_area_struct *vma)
+ 		anon_vma = anon_vma_alloc();
+ 		if (unlikely(!anon_vma))
+ 			goto out_enomem_free_avc;
++		anon_vma->num_children++; /* self-parent link for new root */
+ 		allocated = anon_vma;
+ 	}
+ 
+@@ -199,8 +201,7 @@ int __anon_vma_prepare(struct vm_area_struct *vma)
+ 	if (likely(!vma->anon_vma)) {
+ 		vma->anon_vma = anon_vma;
+ 		anon_vma_chain_link(vma, avc, anon_vma);
+-		/* vma reference or self-parent link for new root */
+-		anon_vma->degree++;
++		anon_vma->num_active_vmas++;
+ 		allocated = NULL;
+ 		avc = NULL;
+ 	}
+@@ -279,19 +280,19 @@ int anon_vma_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
+ 		anon_vma_chain_link(dst, avc, anon_vma);
+ 
+ 		/*
+-		 * Reuse existing anon_vma if its degree lower than two,
+-		 * that means it has no vma and only one anon_vma child.
++		 * Reuse existing anon_vma if it has no vma and only one
++		 * anon_vma child.
+ 		 *
+-		 * Do not chose parent anon_vma, otherwise first child
+-		 * will always reuse it. Root anon_vma is never reused:
++		 * Root anon_vma is never reused:
+ 		 * it has self-parent reference and at least one child.
+ 		 */
+-		if (!dst->anon_vma && anon_vma != src->anon_vma &&
+-				anon_vma->degree < 2)
++		if (!dst->anon_vma && src->anon_vma &&
++		    anon_vma->num_children < 2 &&
++		    anon_vma->num_active_vmas == 0)
+ 			dst->anon_vma = anon_vma;
+ 	}
+ 	if (dst->anon_vma)
+-		dst->anon_vma->degree++;
++		dst->anon_vma->num_active_vmas++;
+ 	unlock_anon_vma_root(root);
+ 	return 0;
+ 
+@@ -341,6 +342,7 @@ int anon_vma_fork(struct vm_area_struct *vma, struct vm_area_struct *pvma)
+ 	anon_vma = anon_vma_alloc();
+ 	if (!anon_vma)
+ 		goto out_error;
++	anon_vma->num_active_vmas++;
+ 	avc = anon_vma_chain_alloc(GFP_KERNEL);
+ 	if (!avc)
+ 		goto out_error_free_anon_vma;
+@@ -361,7 +363,7 @@ int anon_vma_fork(struct vm_area_struct *vma, struct vm_area_struct *pvma)
+ 	vma->anon_vma = anon_vma;
+ 	anon_vma_lock_write(anon_vma);
+ 	anon_vma_chain_link(vma, avc, anon_vma);
+-	anon_vma->parent->degree++;
++	anon_vma->parent->num_children++;
+ 	anon_vma_unlock_write(anon_vma);
+ 
+ 	return 0;
+@@ -393,7 +395,7 @@ void unlink_anon_vmas(struct vm_area_struct *vma)
+ 		 * to free them outside the lock.
+ 		 */
+ 		if (RB_EMPTY_ROOT(&anon_vma->rb_root.rb_root)) {
+-			anon_vma->parent->degree--;
++			anon_vma->parent->num_children--;
+ 			continue;
+ 		}
+ 
+@@ -401,7 +403,8 @@ void unlink_anon_vmas(struct vm_area_struct *vma)
+ 		anon_vma_chain_free(avc);
+ 	}
+ 	if (vma->anon_vma)
+-		vma->anon_vma->degree--;
++		vma->anon_vma->num_active_vmas--;
++
+ 	unlock_anon_vma_root(root);
+ 
+ 	/*
+@@ -412,7 +415,8 @@ void unlink_anon_vmas(struct vm_area_struct *vma)
+ 	list_for_each_entry_safe(avc, next, &vma->anon_vma_chain, same_vma) {
+ 		struct anon_vma *anon_vma = avc->anon_vma;
+ 
+-		VM_WARN_ON(anon_vma->degree);
++		VM_WARN_ON(anon_vma->num_children);
++		VM_WARN_ON(anon_vma->num_active_vmas);
+ 		put_anon_vma(anon_vma);
+ 
+ 		list_del(&avc->same_vma);
+-- 
+2.47.3
+

@@ -1,0 +1,366 @@
+From c096f1b790c190da41da509258a3345b42e1f529 Mon Sep 17 00:00:00 2001
+From: Creitin Gameplays <clton999@outlook.com>
+Date: Sun, 1 Nov 2026 14:31:29 +0000
+Subject: [PATCH 6/7] diag: on-panel boot tracing (paint bands, milestone line,
+ printk mirror)
+
+DIAG ONLY. Used to find where this build stops on the Moto E32, where the
+display is the only usable output and the board hangs instead of panicking.
+
+ * head.S: unconditional probes 22/23/24 before/after __create_page_tables()
+   and __cpu_setup(); they store a full 128 KB band straight to the physical
+   bootloader framebuffer while the MMU is still off.
+ * setup.c: DIAG_EARLY_HOOK(10) at setup_arch() entry, DIAG_TRACE_HOOK(11..19)
+   at each milestone, DIAG_SCREEN_INIT right after paging_init().
+ * printk.c: mirror every formatted record into the framebuffer console.
+ * sprd_wdt_fiq.c: under DIAG_WDT_ARM, arm the AON watchdog in probe() (this
+   driver never registers a watchdog and stock passes wdten=0, so a stall
+   otherwise hangs forever).
+ * virt/kvm/arm/arm.c: under DIAG_KVM_LATE_INIT, register KVM from a
+   late_initcall instead of module_init.
+
+The framebuffer console is 24 bpp packed RGB888, stride 1600*3 = 4800, and
+draws 24x48 glyphs from lib/fonts/font_8x16.c; the panel keeps scanning the
+buffer (physical 0x9e000000, logobuffer@9e000000, 11.2 MB reserved) while the
+kernel is stuck, so the last line drawn is readable without a console, UART or
+pstore. Row 0 accumulates the number of every probe that fired, so one boot
+names the last completed step even when the kernel prints nothing.
+---
+ arch/arm64/kernel/head.S        | 19 +++++++++++
+ arch/arm64/kernel/setup.c       | 12 +++++++
+ drivers/watchdog/sprd_wdt_fiq.c | 21 +++++++++++++
+ init/main.c                     | 56 +++++++++++++++++++++++++++++++++
+ kernel/printk/printk.c          |  4 +++
+ virt/kvm/arm/arm.c              |  6 ++++
+ 6 files changed, 118 insertions(+)
+
+diff --git a/arch/arm64/kernel/head.S b/arch/arm64/kernel/head.S
+index c5af12aea39a..b11874f0830e 100644
+--- a/arch/arm64/kernel/head.S
++++ b/arch/arm64/kernel/head.S
+@@ -116,13 +116,31 @@ pe_header:
+ 	 *  x24        __primary_switch() .. relocate_kernel()
+ 	 *                                        current RELR displacement
+ 	 */
++
++/*
++ * DIAG: paint band \band through a *physical* store.  Only valid while the
++ * MMU is off, which is exactly where these probes sit (stext).  Clobbers
++ * x9/x10/x11, which the boot path does not use before start_kernel().
++ */
++	.macro	diag_probe, band
++	movz	x10, #(((0x9e000000 + (\band) * 0x20000) >> 16) & 0xffff), lsl #16
++	movk	x10, #((0x9e000000 + (\band) * 0x20000) & 0xffff)
++	movn	x9, #0
++	movz	x11, #8192
++9991:	stp	x9, x9, [x10], #16
++	subs	x11, x11, #1
++	b.ne	9991b
++	.endm
++
+ ENTRY(stext)
+ 	bl	preserve_boot_args
+ 	bl	el2_setup			// Drop to EL1, w0=cpu_boot_mode
++	diag_probe 22
+ 	adrp	x23, __PHYS_OFFSET
+ 	and	x23, x23, MIN_KIMG_ALIGN - 1	// KASLR offset, defaults to 0
+ 	bl	set_cpu_boot_mode_flag
+ 	bl	__create_page_tables
++	diag_probe 23
+ 	/*
+ 	 * The following calls CPU setup code, see arch/arm64/mm/proc.S for
+ 	 * details.
+@@ -130,6 +148,7 @@ ENTRY(stext)
+ 	 * the TCR will have been set.
+ 	 */
+ 	bl	__cpu_setup			// initialise processor
++	diag_probe 24
+ 	b	__primary_switch
+ ENDPROC(stext)
+ 
+diff --git a/arch/arm64/kernel/setup.c b/arch/arm64/kernel/setup.c
+index 0c0c53e3d652..85d1d2586204 100644
+--- a/arch/arm64/kernel/setup.c
++++ b/arch/arm64/kernel/setup.c
+@@ -30,6 +30,7 @@
+ #include <linux/bootmem.h>
+ #include <linux/screen_info.h>
+ #include <linux/init.h>
++#include <linux/diag_stage.h>
+ #include <linux/kexec.h>
+ #include <linux/root_dev.h>
+ #include <linux/cpu.h>
+@@ -244,6 +245,7 @@ u64 __cpu_logical_map[NR_CPUS] = { [0 ... NR_CPUS-1] = INVALID_HWID };
+ 
+ void __init setup_arch(char **cmdline_p)
+ {
++	DIAG_EARLY_HOOK(10);
+ 	pr_info("Boot CPU: AArch64 Processor [%08x]\n", read_cpuid_id());
+ 
+ 	sprintf(init_utsname()->machine, UTS_MACHINE);
+@@ -256,8 +258,10 @@ void __init setup_arch(char **cmdline_p)
+ 
+ 	early_fixmap_init();
+ 	early_ioremap_init();
++	DIAG_TRACE_HOOK(11, 1);
+ 
+ 	setup_machine_fdt(__fdt_pointer);
++	DIAG_TRACE_HOOK(12, 1);
+ 
+ 	/*
+ 	 * Initialise the static keys early as they may be enabled by the
+@@ -265,6 +269,7 @@ void __init setup_arch(char **cmdline_p)
+ 	 */
+ 	jump_label_init();
+ 	parse_early_param();
++	DIAG_TRACE_HOOK(13, 1);
+ 
+ 	/*
+ 	 *  Unmask asynchronous aborts after bringing up possible earlycon.
+@@ -281,8 +286,11 @@ void __init setup_arch(char **cmdline_p)
+ 	xen_early_init();
+ 	efi_init();
+ 	arm64_memblock_init();
++	DIAG_TRACE_HOOK(14, 1);
+ 
+ 	paging_init();
++	DIAG_TRACE_HOOK(15, 0);
++	DIAG_SCREEN_INIT;
+ 
+ 	acpi_table_upgrade();
+ 
+@@ -291,12 +299,14 @@ void __init setup_arch(char **cmdline_p)
+ 
+ 	if (acpi_disabled)
+ 		unflatten_device_tree();
++		DIAG_TRACE_HOOK(16, 0);
+ 
+ 	bootmem_init();
+ 
+ 	kasan_init();
+ 
+ 	request_standard_resources();
++	DIAG_TRACE_HOOK(17, 0);
+ 
+ 	early_ioremap_reset();
+ 
+@@ -307,7 +317,9 @@ void __init setup_arch(char **cmdline_p)
+ 
+ 	cpu_read_bootcpu_ops();
+ 	smp_init_cpus();
++	DIAG_TRACE_HOOK(18, 0);
+ 	smp_build_mpidr_hash();
++	DIAG_TRACE_HOOK(19, 0);
+ 
+ 	/* Init percpu seeds for random tags after cpus are set up. */
+ 	kasan_init_tags();
+diff --git a/drivers/watchdog/sprd_wdt_fiq.c b/drivers/watchdog/sprd_wdt_fiq.c
+index a45ffa67134b..ba23b7c35e36 100644
+--- a/drivers/watchdog/sprd_wdt_fiq.c
++++ b/drivers/watchdog/sprd_wdt_fiq.c
+@@ -364,6 +364,27 @@ static int sprd_wdt_fiq_probe(struct platform_device *pdev)
+ 	wdt_fiq = wdt;
+ 	platform_set_drvdata(pdev, wdt);
+ 
++#ifdef DIAG_WDT_ARM
++	/*
++	 * DIAG build only (KCFLAGS=-DDIAG_WDT_ARM).
++	 *
++	 * This driver never calls watchdog_register_device(), and stock Android
++	 * passes androidboot.wdten=0, so nothing ever arms a watchdog: a hard
++	 * stop of the SoC (a bus access that never completes) therefore hangs
++	 * for ever with no panic, no reboot and no dump.  Arm the AON watchdog
++	 * here, where its clocks and the new-version bit are already set up by
++	 * sprd_wdt_fiq_enable(), so a stall resets the board after
++	 * DIAG_WDT_TIMEOUT seconds and the bootloader can capture the crash.
++	 */
++	wdt->wdd.timeout = 30;
++	if (sprd_wdt_fiq_set_timeout(&wdt->wdd, 30))
++		pr_err("DIAG: could not set watchdog timeout\n");
++	if (sprd_wdt_fiq_start(&wdt->wdd))
++		pr_err("DIAG: could not start watchdog\n");
++	else
++		pr_info("DIAG: AON watchdog armed, 30 s\n");
++#endif
++
+ 	return 0;
+ }
+ 
+diff --git a/init/main.c b/init/main.c
+index 94934726048a..2459cc7debcd 100644
+--- a/init/main.c
++++ b/init/main.c
+@@ -540,28 +540,46 @@ static void __init mm_init(void)
+ 	pti_init();
+ }
+ 
++#include <linux/diag_stage.h>
++
+ asmlinkage __visible void __init start_kernel(void)
+ {
+ 	char *command_line;
+ 	char *after_dashes;
++	DIAG_STAGE_1;
++	DIAG_EARLY_HOOK(1);
++	DIAG_SMC_HOOK(1);
+ 
+ 	set_task_stack_end_magic(&init_task);
++	DIAG_EARLY_HOOK(2);
+ 	smp_setup_processor_id();
++	DIAG_EARLY_HOOK(3);
+ 	debug_objects_early_init();
++	DIAG_EARLY_HOOK(4);
+ 
+ 	cgroup_init_early();
++	DIAG_EARLY_HOOK(5);
+ 
+ 	local_irq_disable();
+ 	early_boot_irqs_disabled = true;
++	DIAG_EARLY_HOOK(6);
+ 
+ 	/*
+ 	 * Interrupts are still disabled. Do necessary setups, then
+ 	 * enable them.
+ 	 */
+ 	boot_cpu_init();
++	DIAG_EARLY_HOOK(7);
+ 	page_address_init();
++	DIAG_EARLY_HOOK(8);
+ 	pr_notice("%s", linux_banner);
++	DIAG_EARLY_HOOK(9);
+ 	setup_arch(&command_line);
++	DIAG_STAGE_2;
++	DIAG_ARM_HOOK(2);
++	DIAG_SMC_HOOK(2);
++	DIAG_PAINT_HOOK(2);
++	DIAG_STAGE_2;
+ 	/*
+ 	 * Set up the the initial canary and entropy after arch
+ 	 * and after adding latent and command line entropy.
+@@ -581,6 +599,11 @@ asmlinkage __visible void __init start_kernel(void)
+ 
+ 	build_all_zonelists(NULL);
+ 	page_alloc_init();
++	DIAG_STAGE_3;
++	DIAG_ARM_HOOK(3);
++	DIAG_SMC_HOOK(3);
++	DIAG_PAINT_HOOK(3);
++	DIAG_STAGE_3;
+ 
+ 	pr_notice("Kernel command line: %s\n", boot_command_line);
+ 	/* parameters may set static keys */
+@@ -733,6 +756,11 @@ asmlinkage __visible void __init start_kernel(void)
+ 	delayacct_init();
+ 
+ 	check_bugs();
++	DIAG_STAGE_4;
++	DIAG_ARM_HOOK(4);
++	DIAG_SMC_HOOK(4);
++	DIAG_PAINT_HOOK(4);
++	DIAG_STAGE_4;
+ 
+ 	acpi_subsystem_init();
+ 	arch_post_acpi_subsys_init();
+@@ -744,6 +772,11 @@ asmlinkage __visible void __init start_kernel(void)
+ 
+ 	/* Do the rest non-__init'ed, we're now alive */
+ 	rest_init();
++	DIAG_STAGE_5;
++	DIAG_ARM_HOOK(5);
++	DIAG_SMC_HOOK(5);
++	DIAG_PAINT_HOOK(5);
++	DIAG_STAGE_5;
+ 
+ 	prevent_tail_call_optimization();
+ }
+@@ -1036,6 +1069,11 @@ static int __ref kernel_init(void *unused)
+ 	int ret;
+ 
+ 	kernel_init_freeable();
++	DIAG_STAGE_6;
++	DIAG_ARM_HOOK(6);
++	DIAG_SMC_HOOK(6);
++	DIAG_PAINT_HOOK(6);
++	DIAG_STAGE_6;
+ 	/* need to finish all async __init code before freeing the memory */
+ 	async_synchronize_full();
+ 	ftrace_free_init_mem();
+@@ -1046,6 +1084,14 @@ static int __ref kernel_init(void *unused)
+ 
+ 	rcu_end_inkernel_boot();
+ 
++#if defined(DIAG_PANIC_AFTER_INIT) && DIAG_PANIC_STAGE == 0 && DIAG_ARM_STAGE == 0 && DIAG_SMC_STAGE == 0 && DIAG_PAINT == 0 && DIAG_ARM_STAGE == 0 && DIAG_SMC_STAGE == 0 && DIAG_ARM_STAGE == 0
++	/* DIAG build only (KCFLAGS=-DDIAG_PANIC_AFTER_INIT): prove that the
++	 * kernel finished every initcall and hand the full boot log to SPRD
++	 * sysdump before userspace starts.  Used to tell a kernel that hangs
++	 * apart from a kernel that boots with dead display/USB.
++	 */
++	panic("DIAG: kernel init complete, about to exec init");
++#endif
+ 	pr_emerg("run init\n");
+ 	if (ramdisk_execute_command) {
+ 		ret = run_init_process(ramdisk_execute_command);
+@@ -1103,6 +1149,11 @@ static noinline void __init kernel_init_freeable(void)
+ 
+ 	do_pre_smp_initcalls();
+ 	lockup_detector_init();
++	DIAG_STAGE_7;
++	DIAG_ARM_HOOK(7);
++	DIAG_SMC_HOOK(7);
++	DIAG_PAINT_HOOK(7);
++	DIAG_STAGE_7;
+ 
+ 	smp_init();
+ 	sched_init_smp();
+@@ -1112,6 +1163,11 @@ static noinline void __init kernel_init_freeable(void)
+ 	page_ext_init();
+ 
+ 	do_basic_setup();
++	DIAG_STAGE_8;
++	DIAG_ARM_HOOK(8);
++	DIAG_SMC_HOOK(8);
++	DIAG_PAINT_HOOK(8);
++	DIAG_STAGE_8;
+ 
+ 	test_executor_init();
+ 
+diff --git a/kernel/printk/printk.c b/kernel/printk/printk.c
+index ac1a83bc3330..d0335c28ea69 100644
+--- a/kernel/printk/printk.c
++++ b/kernel/printk/printk.c
+@@ -16,6 +16,7 @@
+  *	01Mar01 Andrew Morton
+  */
+ 
++#include <linux/diag_stage.h>
+ #include <linux/kernel.h>
+ #include <linux/mm.h>
+ #include <linux/tty.h>
+@@ -2019,6 +2020,9 @@ int vprintk_store(int facility, int level,
+ 	if (dict)
+ 		lflags |= LOG_PREFIX|LOG_NEWLINE;
+ 
++	#if DIAG_SCREEN
++	diag_screen_puts(text, text_len);
++	#endif
+ 	return log_output(facility, level, lflags,
+ 			  dict, dictlen, text, text_len);
+ }
+diff --git a/virt/kvm/arm/arm.c b/virt/kvm/arm/arm.c
+index 09ef6260477e..a0c31e383828 100644
+--- a/virt/kvm/arm/arm.c
++++ b/virt/kvm/arm/arm.c
+@@ -1522,4 +1522,10 @@ static int arm_init(void)
+ 	return rc;
+ }
+ 
++#ifdef DIAG_KVM_LATE_INIT
++/* DIAG build only: see patches/kernel-sprd/diag-only-kvm-late-init.patch */
++late_initcall(arm_init);
++#else
+ module_init(arm_init);
++#endif
++
+-- 
+2.47.3
+

@@ -1,0 +1,79 @@
+From 270faf94f53ec2701ed0e791e661069520b85234 Mon Sep 17 00:00:00 2001
+From: Creitin Gameplays <clton999@outlook.com>
+Date: Sun, 1 Nov 2026 14:31:14 +0000
+Subject: [PATCH 2/7] sprd: build fixes for the OSS drop
+
+devfreq/sprd and staging/sprd/sfp need -I$(src) because their trace/header includes are directory-relative; vhost_vring_ioctl() takes an unsigned int cmd, as the forwarded ioctl() prototype does in this tree.
+---
+ drivers/devfreq/sprd/Makefile     | 6 ++++++
+ drivers/staging/sprd/sfp/Makefile | 6 ++++++
+ drivers/vhost/vhost.c             | 2 +-
+ drivers/vhost/vhost.h             | 4 ++--
+ 4 files changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/devfreq/sprd/Makefile b/drivers/devfreq/sprd/Makefile
+index bdb1391fa941..a684bfdddeb5 100644
+--- a/drivers/devfreq/sprd/Makefile
++++ b/drivers/devfreq/sprd/Makefile
+@@ -2,3 +2,9 @@ obj-$(CONFIG_DEVFREQ_SPRD_AUTO_DFS)     += sprd_dfs_auto_drv.o
+ obj-$(CONFIG_DEVFREQ_GOV_SPRD_SCENE)     += sprd_scene_governor.o
+ obj-$(CONFIG_DEVFREQ_SPRD_EXT_VOTE_UMS512)     += sprd_dfs_vote_ums512.o
+ obj-$(CONFIG_DEVFREQ_SPRD_EXT_VOTE_ROC1)     += sprd_dfs_vote_roc1.o
++
++# sprd_dfs_trace.h uses TRACE_INCLUDE_PATH "."; the trace machinery
++# includes "./sprd_dfs_trace.h" from include/trace/define_trace.h, so the
++# source directory must be on the include path (same pattern as
++# drivers/gpu/drm/sprd).
++ccflags-y += -I$(src)
+diff --git a/drivers/staging/sprd/sfp/Makefile b/drivers/staging/sprd/sfp/Makefile
+index e24c63d848e9..7648f674a222 100644
+--- a/drivers/staging/sprd/sfp/Makefile
++++ b/drivers/staging/sprd/sfp/Makefile
+@@ -11,3 +11,9 @@ obj-$(CONFIG_SPRD_SFP_SUPPORT)  += sfp_ipa.o
+ obj-$(CONFIG_SPRD_IPA_V3_SUPPORT)  += sfp_netlink.o
+ obj-$(CONFIG_SPRD_IPA_V3_SUPPORT)  += sfp_filter.o
+ obj-$(CONFIG_SPRD_SFP_TEST)  += sfp_test.o
++
++# sfp_tuple.c includes <sfp.h>, and sfp.h itself includes "sfp_hash.h";
++# the shipping kernel builds this driver (102 sfp_* symbols in System.map),
++# so the published Makefile is simply missing its own directory on the
++# include path.
++ccflags-y += -I$(src)
+diff --git a/drivers/vhost/vhost.c b/drivers/vhost/vhost.c
+index 85edacc0be47..287b2c76e73a 100644
+--- a/drivers/vhost/vhost.c
++++ b/drivers/vhost/vhost.c
+@@ -1376,7 +1376,7 @@ static long vhost_set_memory(struct vhost_dev *d, struct vhost_memory __user *m)
+ 	return -EFAULT;
+ }
+ 
+-long vhost_vring_ioctl(struct vhost_dev *d, int ioctl, void __user *argp)
++long vhost_vring_ioctl(struct vhost_dev *d, unsigned int ioctl, void __user *argp)
+ {
+ 	struct file *eventfp, *filep = NULL;
+ 	bool pollstart = false, pollstop = false;
+diff --git a/drivers/vhost/vhost.h b/drivers/vhost/vhost.h
+index 6e8f67ff1e1c..ab9ef2a25a13 100644
+--- a/drivers/vhost/vhost.h
++++ b/drivers/vhost/vhost.h
+@@ -49,7 +49,7 @@ void vhost_poll_stop(struct vhost_poll *poll);
+ void vhost_poll_flush(struct vhost_poll *poll);
+ void vhost_poll_queue(struct vhost_poll *poll);
+ void vhost_work_flush(struct vhost_dev *dev, struct vhost_work *work);
+-long vhost_vring_ioctl(struct vhost_dev *d, int ioctl, void __user *argp);
++long vhost_vring_ioctl(struct vhost_dev *d, unsigned int ioctl, void __user *argp);
+ 
+ struct vhost_log {
+ 	u64 addr;
+@@ -189,7 +189,7 @@ void vhost_dev_reset_owner(struct vhost_dev *, struct vhost_umem *);
+ void vhost_dev_cleanup(struct vhost_dev *, bool locked);
+ void vhost_dev_stop(struct vhost_dev *);
+ long vhost_dev_ioctl(struct vhost_dev *, unsigned int ioctl, void __user *argp);
+-long vhost_vring_ioctl(struct vhost_dev *d, int ioctl, void __user *argp);
++long vhost_vring_ioctl(struct vhost_dev *d, unsigned int ioctl, void __user *argp);
+ int vhost_vq_access_ok(struct vhost_virtqueue *vq);
+ int vhost_log_access_ok(struct vhost_dev *);
+ 
+-- 
+2.47.3
+
