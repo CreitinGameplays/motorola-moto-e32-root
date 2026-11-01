@@ -1765,7 +1765,7 @@ diag/prepare_stage_panics.py and diag/stage_build.sh, so the kernel
 repository can reproduce its own instrumentation.
 
 ------------------------------------------------------------------------
-53. THE SECOND PANEL PHOTO: EL2 CONFIRMED, HANG PINNED TO do_initcalls()
+53. THE SECOND PANEL PHOTO: EL2 CONFIRMED, HANG BOUNDED TO do_basic_setup()
 ------------------------------------------------------------------------
 Photo: 20261101_131437.jpg (operator's phone camera, rotated 270 deg and
 cropped).  It was taken with boot_sharedstate.img on the screen.
@@ -1789,16 +1789,17 @@ Three results, in order of importance.
     `# CONFIG_ARM64_VHE is not set`, and `config KVM` is `bool`, so a
     separate kvm.ko is impossible - the feature must be built in.)
 
- b. **The hang is inside do_initcalls().**  The milestone line stops at tag
-    27.  The tags are, in order: 22 = before setup_arch(), 23 = after
-    page_alloc_init(), 24 = after check_bugs(), 25 = before rest_init(),
-    26 = before kernel_init_freeable(), 27 = after do_pre_smp_initcalls(),
-    28 = after do_basic_setup().  Tag 28 is missing, so **do_basic_setup()
-    never returned** - and do_basic_setup() is the caller of
-    do_initcalls().  The custom kernel therefore reaches the initcall
-    table and dies inside one of the initcalls, which is a completely
-    different (and much more tractable) problem than "userspace never
-    comes up".
+ b. **The hang is after tag 27 and before tag 28, in do_basic_setup().**
+    Tag 27 is emitted after do_pre_smp_initcalls()/lockup_detector_init();
+    tag 28 is emitted only after do_basic_setup() returns.  Missing tag 28
+    bounds the stall to do_basic_setup(), but does NOT prove it reached
+    do_initcalls(): do_basic_setup() first calls cpuset_init_smp(),
+    shmem_init(), driver_init(), init_irq_proc(), do_ctors(), and
+    usermodehelper_enable(), then calls do_initcalls().  An infinite loop or
+    blocking operation in any of those earlier steps would produce the same
+    panel.  The earlier claim that this photo pinned the hang inside
+    do_initcalls() was too strong; the next probe records each setup step and
+    each initcall independently.
 
  c. **Tags 25 and 26 could never have appeared.**  The generator inserted
     the stage-5 and stage-6 markers *after* `rest_init();` and
@@ -1861,3 +1862,57 @@ Image: Image.p0a0s0q2c1 sha ba5c6cfa3da218317c125ba926b05d8350f4c5f0bcf0c
 Kernel-side commit: 5db166d108d8 "diag: solid glyphs, readable spacing,
 live initcall name on the panel" on branch hawaii-diag, published to the
 kernel repository (GitHub main 66a8a90c5262, 10 commits).
+
+------------------------------------------------------------------------
+55. PANEL RENDERER REJECTED; HEADLESS RAMOOPS + EARLY WATCHDOG PROBE
+------------------------------------------------------------------------
+The operator's photo `20261101_150101.jpg` of `boot_initcall.img` showed the
+text substantially less readable than the previous image. The enlarged font
+change is rejected as a debug channel: no attempt will be made to read further
+logs from that rendering. The phone was manually recovered to Android 11 on
+slot _b, with the stock kernel and Magisk root verified; boot_b again matched
+its known-good Magisk image (`90416c09…`).
+
+Important correction after reviewing the source-level ordering: tag 27 is
+before do_basic_setup(), and tag 28 is after it. Missing 28 only narrows the
+hang to do_basic_setup(), which includes several setup calls before
+`do_initcalls()`. It did not establish that an initcall itself was running.
+The next image therefore emits breadcrumbs before *each* pre-initcall setup
+operation and each `do_one_initcall()` invocation.
+
+A much easier capture channel is available than the display:
+
+* The live DT has `ramoops@fff80000`, 256 KiB reserved, with 32 KiB each for
+  console, dump records, and pmsg. `ramoops_init()` is a postcore initcall,
+  before the suspected device initcalls. The printk ring is 1 MiB. The panel
+  test's manual cold power-cycle erased DRAM, so the missing old custom log in
+  `/sys/fs/pstore` was expected; pstore must be read after a warm reset, not
+  after a cold power cycle.
+* The kernel's AON watchdog probe already uses the driver's proper clocks and
+  register setup to arm a 30-second hardware timeout in DIAG builds. The
+  probe had been registered at device_initcall level, too late to catch a
+  device-initcall hang. A diagnostic-only `DIAG_WDT_EARLY_INIT` build now
+  registers the platform driver at `subsys_initcall()` (after OF clock setup,
+  before device_initcalls such as KVM). If boot continues, the normal late
+  hang-debug feeder takes over; a pre-feeder stall should reset the SoC while
+  retaining DRAM.
+* A one-line `pr_emerg("DIAG: ...")` breadcrumb is emitted before every
+  `do_basic_setup()` step and immediately before every initcall. The packed
+  test image appends `ignore_loglevel`, since the bootloader supplies
+  `console=null loglevel=1`. This avoids relying on printk's DEBUG log level
+  or on the framebuffer. The 32 KiB persistent console ring should contain
+  the last breadcrumb after the watchdog reset; this behavior still needs to
+  be validated on-device.
+* The boot test runner now attempts to copy `console-ramoops-0`,
+  `dmesg-ramoops-0`, and `pmsg-ramoops-0` to `artifacts/kernel-build/` as
+  soon as adb returns after a reset, before further reboots.
+
+Kernel-side commit `45f975a7eae7` was published to GitHub (`main` =
+`0200d7b116ec`). Build verified: Image sha256
+`1b466089aa21e505084a2563b0fa8acbbd94e9d577f938c92d80f9f38a8e780b`, packed
+`boot_ramlog.img` sha256
+`8004b9cf4b9a070fee1c19271a07986d79e70dbada5e438c40c48cd35807451f`.
+The warm-watchdog/pstore behavior has not yet been tested. The next action is
+a one-attempt boot_b test of `boot_ramlog.img`;
+if the early watchdog fails to reset, use the already-proven slot-a rescue
+recovery, and do not cold-cycle until pstore has had a chance to be copied.
