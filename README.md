@@ -326,6 +326,13 @@ measured and is closed: `patches/kernel-sprd/` holds the 7-header backport and
 the reconstructed production config fragment. Full write-up:
 `docs/10-kernel-source.md`.
 
+On the build VM the working tree is a git branch, `hawaii-diag` (7 commits on
+`c4e610cd`), with the diag instrumentation and the build/ABI fixes; it is
+exported as `patches/kernel-sprd/branch-hawaii-diag/` so it can be re-applied
+to a pristine checkout (`git am 0001..0007` reproduces the branch tree
+exactly). A single-commit snapshot of that tree is published as
+[motorola-moto-e32-kernel](https://github.com/CreitinGameplays/motorola-moto-e32-kernel).
+
 ## License
 
 [MIT](LICENSE). The vulnerability research is provided for education and

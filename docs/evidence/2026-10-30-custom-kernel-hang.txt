@@ -1512,3 +1512,33 @@ Non-source material was moved out of the kernel tree to ~/kernel-diag/
 (images/ 431 MB, patches/, scripts/, configs/, README.md) so that a later
 `git clean -xdf` in the kernel tree cannot destroy the only copy of an
 experiment image (Image.* is not reproducible once the source moves on).
+
+------------------------------------------------------------------------
+47. THE BRANCH IS PUBLISHED (2026-11-01)
+------------------------------------------------------------------------
+Pushing the vendor history was never possible (738k commits, 2.48 GB pack),
+so the public repository is a flat snapshot instead:
+
+  https://github.com/CreitinGameplays/motorola-moto-e32-kernel
+  commit 96939b2a535a3407f10bfcec6296a038fba10a8d, 63,946 files, 181 MiB pack
+  tree   9cc008dbdcbaac9a9e516147d367f26f91c8710a  == hawaii-diag tree
+
+Two traps on the way, both worth remembering:
+
+ 1. `git archive` is the wrong export tool here: the vendor `.gitattributes`
+    carries export-ignore rules, so the snapshot silently lost 14 files
+    (.gitattributes itself, .get_maintainer.ignore, arch/sh/boot/**.scr,
+    scripts/Makefile.dtbo, tools/power/acpi/tools/**).  Export with
+    `git ls-files -z | tar -T -` instead.
+ 2. A fresh `git init` + `git add -A` re-applies `.gitignore`, which drops
+    files the vendor tracks but this tree ignores - our own new `*.dtbo` rule
+    eats `scripts/Makefile.dtbo`, `.*` eats `.gitattributes` and
+    `.get_maintainer.ignore`, and the tree's `tools/power/acpi/.gitignore`
+    eats the tool sources.  `git add -A -f` plus the tree-hash check is what
+    makes the snapshot exact.
+
+Auth is a write deploy key on the VM (`~/.ssh/github_hawaii_kernel`, alias
+`github-hawaii`), so no personal token or key lives on the build host.
+`~/kernel-diag/scripts/export_to_github.sh` recreates the repo from the branch
+and refuses to push if the tree hashes differ; the 1.4 GB export directory is
+deleted afterwards (disk is at 90 %).
