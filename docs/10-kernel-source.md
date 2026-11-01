@@ -477,4 +477,4 @@ phone.
 | `artifacts/kernel-src/*.defconfig`, `*_diff_config` | the exact build inputs fetched from the public tree |
 
 | `patches/kernel-sprd/branch-hawaii-diag/` | the whole working branch (`hawaii-diag`) as an applyable series on top of `c4e610cd`, incl. the diag instrumentation, `phone.config` and the flat diff |
-| `https://github.com/CreitinGameplays/motorola-moto-e32-kernel` | single-commit public snapshot of that branch (tree hash identical); refresh with `~/kernel-diag/scripts/export_to_github.sh` on the build VM |
+| `https://github.com/CreitinGameplays/motorola-moto-e32-kernel` | public history of that branch: a root import commit with the vendor tree verbatim + the 7 real commits (visible diffs, tree hash identical); refresh with `~/kernel-diag/scripts/export_to_github.sh` on the build VM |
