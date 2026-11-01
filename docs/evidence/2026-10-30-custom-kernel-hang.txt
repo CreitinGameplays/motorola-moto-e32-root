@@ -1542,3 +1542,140 @@ Auth is a write deploy key on the VM (`~/.ssh/github_hawaii_kernel`, alias
 `~/kernel-diag/scripts/export_to_github.sh` recreates the repo from the branch
 and refuses to push if the tree hashes differ; the 1.4 GB export directory is
 deleted afterwards (disk is at 90 %).
+
+------------------------------------------------------------------------
+48. MODVERSIONS CLOSES THE MODULE CHANNEL (2026-11-01)
+------------------------------------------------------------------------
+The obvious shortcut for answering "which EL did the boot ROM hand us" is a
+tiny module on the *stock* kernel: no flash, no boot_b risk.  It does not
+work on this device.
+
+`elprobe.ko` (probe source in the session notes, ~/elprobe on the VM) was
+built against ~/kernel-sprd with the release string matched exactly:
+
+    LOCALVERSION=+ BUILD_NUMBER=612c2 make modules_prepare
+    -> include/generated/utsrelease.h  "4.14.199+-ab612c2"
+
+i.e. vermagic `4.14.199+-ab612c2 SMP preempt mod_unload modversions aarch64`,
+byte-identical to the running kernel's `4.14.199+-ab612c2`.  Insmod still
+fails, and not on vermagic:
+
+    [ 5096.529656] elprobe: disagrees about version of symbol module_layout
+
+So CONFIG_MODVERSIONS=y compares the CRC of `struct module` (computed over
+its layout by genksyms) between the module and the running kernel, and the
+published source does not produce the shipped binary's CRC.  The vendor build
+was made from a slightly different tree/toolchain than the OSS drop, which is
+exactly what this repository already found on other axes (7 headers, the
+BUILD_NUMBER, the missing KVM options).  A module built here can never load,
+so there is no zero-flash kernel-code channel.
+
+Two side products of that attempt, both needed for the custom kernel anyway:
+
+  a. The release string is produced by `Makefile:1341`:
+         UTS_RELEASE=$(KERNELRELEASE)-ab$(BUILD_NUMBER)
+     and NOT by LOCALVERSION.  A 1-byte `localversion` file containing "+"
+     was also present in the tree (left over from an earlier experiment) and
+     added a second "+".  The recipe that reproduces the phone is:
+         rm -f localversion .scmversion
+         make LOCALVERSION=+ BUILD_NUMBER=612c2 ... modules_prepare
+     LOCALVERSION=+ is required explicitly: scripts/setlocalversion appends
+     the "+" only when the tree is not at a clean annotated tag, and our
+     hawaii-diag export *is* tagged, so the automatic "+" disappears.
+     Rebuilding the release header also needs `modules_prepare`; `make
+     kernelrelease` alone printed the right string but left
+     include/generated/utsrelease.h stale, and the module kept the old magic.
+
+  b. `insmod` failing is the only trace: dmesg carries one line, and the
+     `Exec format error` from insmod says nothing about why.
+
+------------------------------------------------------------------------
+49. THE PRINTK MIRROR WAS DRAWING INTO ITS OWN EMPTY COPY (a real bug)
+------------------------------------------------------------------------
+Every earlier run showed the banner and the milestone line `15 16 17 18 19`
+but never a single mirrored printk after paging_init().  That was read as
+"the kernel prints nothing", but it was an artifact:
+
+  - diag_stage.h kept the console state in file-scope statics
+    (`static bool diag_scr_ready`, `diag_scr_row`, `diag_trace`, ...);
+  - the header is included by kernel/printk/printk.c as well, so printk.c
+    got its own copy of `diag_scr_ready`, permanently false;
+  - diag_screen_puts() starts with `if (!diag_scr_ready) return;`, so every
+    mirrored line was dropped in printk.c before touching the panel.
+
+setup.c's copy *was* initialised (that is why the banner and bands worked),
+which made the symptom look like kernel silence.  Fixed by giving the header
+a single entry point with external linkage:
+
+    void diag_stage_mirror(const char *text, size_t len);   /* header */
+
+    #if DIAG_SCREEN                                          /* setup.c */
+    void diag_stage_mirror(const char *text, size_t len)
+    {
+        diag_screen_puts(text, len);
+    }
+    #endif
+
+and the printk hook now calls diag_stage_mirror(text, text_len).  The
+`diag_scr_ready` gate keeps its original purpose (no writes to 0x9e000000
+before paging_init() installs the linear map), but from setup_arch() onwards
+the panel now mirrors printk for real.  If the next run still shows no text
+below the milestone line, that is now a genuine statement about the kernel.
+
+Also new in the same image: DIAG_EL_REPORT, printed right after
+DIAG_SCREEN_INIT.  It draws
+
+    EL bcm=<__boot_cpu_mode[0]>/<__boot_cpu_mode[1]> hyp=<is_hyp_mode_available()>
+    PFR0=<ID_AA64PFR0_EL1> MIDR=<MIDR>
+    EL2: KVM can work on this device      (or: no EL2 -> KVM impossible here)
+
+0xe12/0xe12 with hyp=1 means the kernel really was entered at EL2 (KVM is
+possible); anything else means no kernel built from this source can provide
+KVM on this device.  Report-only stage tags 22..28 were added to the
+milestone line at the same time, covering the post-setup_arch() stages.
+
+------------------------------------------------------------------------
+50. THE KERNEL REPO NOW CARRIES THE REAL DIFFS, NOT A SNAPSHOT (2026-11-01)
+------------------------------------------------------------------------
+Section 47 published one flat commit of the branch tree.  That works as a
+tree dump but not as a reviewable change set: with no parent commit there is
+no base, so GitHub can show no diff, and the only way to see what changed
+was the patch series in the moto-root-test repo.  Fixed by publishing the
+history itself, minus the vendor history:
+
+    commit 4b20781c  root import: tree == vendor c4e610cd833c, no parents
+    commit a9552ea3  gitignore: local build outputs ...
+    commit 5771ee61  sprd: build fixes for the OSS drop
+    commit 7cb42bad  mm/fs: fget_many/fput_many, anon_vma counters
+    commit cbf6722c  sipc: copy_from_user() without zeroing the tail
+    commit bdede343  uapi: SPRD jpg/vsp sizes, sensor ioctl
+    commit 204b84b0  diag: on-panel boot tracing
+    commit 2ef79910  diag: header snapshot, branch notes, phone.config
+
+Why the vendor history is not needed for this: a push transfers only the
+objects reachable from the pushed ref.  The import commit has no parents, so
+the 738k vendor commits are unreachable and never travel - the push was
+68,022 objects / 182 MiB, and the 8 commits above are all that exist on
+GitHub.
+
+Two things this trick gets for free:
+
+  - `git checkout --orphan publish <vendor-commit>` sets the index to the
+    vendor tree *from git's own object store*, so no files are copied and
+    neither export trap applies: no `.gitattributes` export-ignore loss, no
+    `.gitignore` re-filtering.  `git write-tree` must equal the vendor tree
+    hash (checked), and only then is the import committed.
+  - the 7 commits are applied with `git cherry-pick c4e610cd..hawaii-diag`,
+    so authorship, dates and messages are preserved instead of being
+    re-typed, and the final tree is compared against the branch:
+      9cc008dbdcbaac9a9e516147d367f26f91c8710a  (identical, verified)
+
+Consequence for this repo: `patches/kernel-sprd/branch-hawaii-diag/` is no
+longer the only way to read the changes - it stays as the applyable series
+(`git am 0001..0007` on a pristine checkout) and as an offline copy, but the
+kernel repository is now self-contained:
+  base commit  = vendor OSS drop, verbatim
+  next commits = our changes, with diffs
+`~/kernel-diag/scripts/export_to_github.sh` was rewritten for this model
+(orphan import + cherry-pick + tree-hash gate + force push) and refuses to
+publish a dirty tree or a tree mismatch.
