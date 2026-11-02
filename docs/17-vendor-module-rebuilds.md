@@ -55,17 +55,69 @@ For the rest the options are:
 
 ## Recommended order
 
-1. `incrementalfs`: rebuild from AOSP (source exists, small, self-contained,
-   and its absence affects Play Store/app updates on /data). Quick win.
-2. WiFi (`sprdwl_ng`): try source hunt (Transsion/HMD/realme UMS9230 drops,
-   qogirl6 variant, SC2355 per the .ko strings). If found, port like mali.
-   If not found, evaluate option 3 (force-load probe) carefully.
+1. `incrementalfs`: **already in the tree** (`fs/incfs`, `CONFIG_INCREMENTAL_FS=m`),
+   and a 4.14.199+ vermagic-matching `incrementalfs.ko` is built in the VPS
+   object tree - it just needs to be shipped in a Magisk module like mali.
+   Quick win, unblocks Play/app incremental updates.
+2. WiFi (`sprdwl_ng`): source located - the **mu300-linux** project keeps
+   the Unisoc SC2355 "combo" WLAN driver alive
+   (`upstream/modules/sprd_wlan_combo`, GPL-2.0 Unisoc 2021-2022 drop, the
+   same sprdwl family with KERNEL_VERSION gates down to 4.14). The vendor
+   `.ko` on the phone identifies as SC2355, and our tree already contains
+   the WCN bus it plugs into (`drivers/misc/sprdwcn`, built-in: marlin
+   probe + `include/misc/marlin_platform.h` + `mchn.h` + `wcn_bus.h` with
+   `sprdwcn_bus_chn_init`), which the live dmesg shows initializing fine.
+   **Imported into the kernel tree** as `drivers/net/wireless/sprd_wlan/`
+   (common/ + sc2355/, SDIO variant, in-tree Kbuild/Kconfig, new
+   `CONFIG_SPRD_WLAN_COMBO`), per the "put drivers in the custom kernel
+   tree" rule. 4.14 port in progress (compile-fix rounds):
+   - `nl80211.h`: the Android tree already has `NL80211_WAPI_VERSION_1`
+     (no shim needed; mu300's compat header assumed mainline headers)
+   - `timer_shutdown_sync` -> `del_timer_sync` (compat header)
+   - `change_beacon`: 6.0 `cfg80211_ap_update` vs 4.14
+     `cfg80211_beacon_data` (version-gated)
+   - `set_wiphy_params`: 6.1 added `radio_idx` (version-gated)
+   - `tdls_mgmt`: 6.6 added `link_id` (version-gated, .c+.h)
+   - `sprd_wlan_remove`: void -> int (4.14 platform_driver)
+   - `iface.c`: `wcn_mu300_recover` (mu300-only) stubbed out, missing
+     `linux/of.h`/`etherdevice.h` includes added, `fallthrough` ->
+     comment, `eth_hw_addr_set` -> `memcpy(dev->dev_addr)` (7 sites)
+   - `npi.c`: genl 6.x split-ops -> 4.14 `struct genl_ops` with per-op
+     `.policy` (family-level `.policy` is 6.x-only)
+   - `report.c`/`scan.c`: `ktime_get_boottime_ts64` (5.0) ->
+     `ktime_get_boot_ns` (4.14), version-gated
+   - `sprd_wlan_power_status_sync` (mu300 helper, used by the driver's
+     power paths): added to the in-tree WCN bus
+     (`drivers/misc/sprdwcn/wcn_bus.c` + declaration in
+     `include/misc/wcn_bus.h`) - built-in, so the kernel Image relink
+     carries the export
+   - `mm.h`: `linux/dma-direct.h` (5.x) -> `linux/dma-mapping.h`
+   - `tx.c`: `sc2355_set_thread_uclamp` -> no-op (util clamp is 5.4+;
+     the driver's RT priorities carry the intent)
+   - `vendor.c`: 4.20+ `.policy`/`.maxattr` designators and
+     `VENDOR_CMD_RAW_DATA` sentinel dropped (4.14
+     `wiphy_vendor_command` has neither; the handlers parse with the
+     policy tables themselves)
+   - `sdio.c`: `fallthrough` -> comment
+   - Kbuild: SC2355 + SDIO **and** PCIE objects are linked (the calls
+     are guarded by runtime `hw_type == SPRD_HW_SC2355_PCIE` checks;
+     dropping pcie.o left 29 undefined symbols)
+   - Magisk module skeleton: `artifacts/wlan-module/` (loads at
+     post-fs-data after the Mali module; logs to
+     `/data/local/tmp/wlan_module_load.log`), installer
+     `scripts/host/install_wlan_magisk_module.ps1`
+
+Port lessons (for the camera stack later): the mu300 tree's sources are
+5.4-shaped with KERNEL_VERSION gates mostly for 5.15/6.x; 4.14 needs the
+*older* API forms (genl per-op policy, no util clamp, no
+`ktime_get_boottime_ts64`, `eth_hw_addr_set` by hand, `fallthrough`
+comment, `.remove` returns int). All fixes are in-tree, gated where the
+mu300 tree might be reused for newer kernels.
 3. Camera (`sprd_camera` + `sprd_sensor` + `sprd_cpp` + `sprd_fd` +
-   `sprd_flash_drv` + `flash_ic_ocp8135b`): biggest chunk; same source hunt
-   (`sprd_camera` is the common Unisoc camera driver, the sensor-specific
-   parts live in vendor trees).
-4. BT (`sprdbt_sdio_tty`)/FM/SAR: likely die with WiFi (same WCN stack)
-   or are trivial once the WCN bus hal matches.
+   `sprd_flash_drv` + `flash_ic_ocp8135b`): same source hunt next; no
+   candidate found yet (OSS drop has nothing).
+4. BT (`sprdbt_sdio_tty`)/FM/SAR: mu300 also keeps `sprdbt_tty`; BT may
+   follow the same route once WiFi works.
 
 ## Verification data (from the running device)
 

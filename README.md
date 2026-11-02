@@ -109,6 +109,9 @@ docs/
   17-vendor-module-rebuilds.md  WiFi/camera/incrementalfs on the custom
                             kernel: which vendor modules fail, source
                             availability, and the rebuild plan
+  18-kernel-build-flash-howto.md  build the custom kernel from source and
+                            flash it: toolchain, config, build, pack/sign,
+                            dd flash, Magisk module staging, verification
   evidence/                 captured successful-run logs
 patches/
   kernel-sprd/              the measured header delta (git patch) + the
@@ -334,6 +337,9 @@ hardening and measured reliability are in `docs/04-reliability-hardening.md`.
 - `docs/17-vendor-module-rebuilds.md` - WiFi/camera on the custom kernel:
   which vendor modules fail to load (`module_layout` CRC mismatch), where
   their sources might come from, and the rebuild order
+- `docs/18-kernel-build-flash-howto.md` - build the custom kernel from
+  source and flash it end to end (toolchain, config, build, pack/sign,
+  dd flash via boot_b, Magisk module staging, verification, recovery)
 - `docs/evidence/` - captured successful-run logs, fastboot recon and the
   kernel bring-up evidence (Mali abort root-cause, fix, autoload success)
 
