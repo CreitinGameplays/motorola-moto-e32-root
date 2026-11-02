@@ -1,0 +1,52 @@
+# KVM works on the custom kernel (2026-11-02, operator-verified)
+
+The original goal of the custom-kernel work is **achieved**:
+`/dev/kvm` on the in-tree 4.14.199 kernel boots real guests.
+
+Operator side test (Termux QEMU 11.1.2, on the running custom kernel):
+
+    su -c '
+    export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+    export LD_PRELOAD=/data/data/com.termux/files/home/libkvm_flash0_only.so
+    exec taskset -c 0-1 qemu-system-aarch64 \
+      -machine virt,gic-version=3,its=off -accel kvm -cpu host -smp 2 -m 2016 \
+      -drive if=pflash,format=raw,unit=0,readonly=on,file=.../edk2-aarch64-code.fd \
+      -drive if=pflash,format=raw,unit=1,file=.../QEMU_VARS.fd \
+      -device ramfb -device nec-usb-xhci,id=xhci \
+      -device usb-kbd,bus=xhci.0 -device usb-tablet,bus=xhci.0 \
+      -drive if=none,id=debian,media=cdrom,format=raw,readonly=on,\
+file=/sdcard/Documents/debian-13.7.0-arm64-netinst.iso \
+      -device usb-storage,id=debian-usb,drive=debian,bus=xhci.0,bootindex=1 \
+      -drive if=none,id=disk,format=qcow2,file=/sdcard/debian.qcow2 \
+      -device virtio-blk-pci,drive=disk,bootindex=2 \
+      -boot order=d,menu=on -vnc 127.0.0.1:1 -monitor stdio'
+
+Result: the **Debian 13.7 arm64 netinst boots to the installer** in QEMU
+with `-accel kvm` (edk2 UEFI via ramfb, virtio-blk qcow2 disk, VNC out);
+"very fast" per the operator. No install was performed, but the guest
+reached the installer UI.
+
+Notes from the test:
+- QEMU must run **as root** (`su -c`) to open `/dev/kvm` (root-only misc
+  device, `10:232`), inside Termux's environment
+  (`LD_LIBRARY_PATH`/`LD_PRELOAD` are Termux-side plumbing).
+- `-cpu host`, GICv3, `-smp 2`, 2 GiB guest RAM: the T606's EL2
+  virtualization extensions work under our kernel; the earlier diag work
+  confirmed KVM init at boot (`kvm [1]: 16-bit VMID`, GICv3 sysreg
+  interface) and `/dev/kvm` exists (misc 10:232, root-only).
+- Expectation: most Linux ARM64 guests should work. **Windows ARM64 is
+  untested.**
+
+Kernel-side reference:
+- the KVM bring-up was part of the diag series (early EL2/KVM init work
+  in the hawaii-diag branch); the non-LTO boot fix made it reachable
+- `docs/evidence/2026-11-01-nolto-boot-test.txt`: first boot with KVM
+  initialized and /dev/kvm present
+- `docs/evidence/2026-11-02-mali-autoload-success.txt`: the kernel now
+  boots Android fully (GPU + WiFi), KVM intact
+
+## What is left around KVM
+
+- nothing functional; possible follow-ups: a permission wrapper (udev-ish
+  chown/group for /dev/kvm) so non-root Termux can use it, and a
+  Windows ARM64 guest test for the compatibility matrix

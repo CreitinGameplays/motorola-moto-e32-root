@@ -112,6 +112,9 @@ docs/
   18-kernel-build-flash-howto.md  build the custom kernel from source and
                             flash it: toolchain, config, build, pack/sign,
                             dd flash, Magisk module staging, verification
+  19-rescue-image-howto.md  the boot_a rescue image: build it, dd it to
+                            boot_a, verify, and use it to recover a hung
+                            test kernel (plus the A/B steady state)
   evidence/                 captured successful-run logs
 patches/
   kernel-sprd/              the measured header delta (git patch) + the
@@ -340,6 +343,9 @@ hardening and measured reliability are in `docs/04-reliability-hardening.md`.
 - `docs/18-kernel-build-flash-howto.md` - build the custom kernel from
   source and flash it end to end (toolchain, config, build, pack/sign,
   dd flash via boot_b, Magisk module staging, verification, recovery)
+- `docs/19-rescue-image-howto.md` - the `boot_a` rescue image: build it
+  (`scripts/rescue/rescue_init.c` + `build_rescue.py`), dd it to
+  `boot_a`, verify the read-back, and use it when a test kernel hangs
 - `docs/evidence/` - captured successful-run logs, fastboot recon and the
   kernel bring-up evidence (Mali abort root-cause, fix, autoload success)
 

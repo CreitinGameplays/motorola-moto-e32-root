@@ -155,7 +155,8 @@ Preconditions (the script checks them):
 If the test kernel hangs: hold Power ~15 s once. Slot b's single attempt is
 spent, the SPL falls back to `boot_a`, the rescue rewrites stock `boot_b`
 and reboots Android. Full runbook: `docs/14-brom-recovery-runbook.md`
-(BROM/FDL only if even the rescue is unreachable).
+(BROM/FDL only if even the rescue is unreachable). Building and flashing
+the rescue itself: `docs/19-rescue-image-howto.md`.
 
 ## 6. Stage the Magisk modules (GPU, and WiFi when enabled)
 
@@ -212,6 +213,16 @@ later at post-fs-data.
 * SAR sensor (`aw9610x_sar`)
 * `incrementalfs` is in-tree (`fs/incfs`, `=m`) but not yet staged as a
   Magisk module - optional, affects Play incremental installs on /data
+
+## 9. KVM (the reason this kernel exists)
+
+`/dev/kvm` is created early (misc 10:232, root-only) - the diag series
+carried the early KVM/EL2 init. Verified: a Debian 13 arm64 netinst
+boots to its installer in Termux QEMU with `-accel kvm -cpu host`
+(GICv3 `its=off`, virtio-blk qcow2, UEFI ramfb, VNC). QEMU must run as
+root (`su -c`) to open `/dev/kvm`. Windows ARM64 guests are untested.
+The exact command line is in
+`docs/evidence/2026-11-02-kvm-verified.txt`.
 
 ## Reference
 
