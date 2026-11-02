@@ -67,7 +67,7 @@ firmware. Other builds need their symbols re-derived - see
 
 ## Requirements
 
-**Host**
+**Host (exploit + unlock paths)**
 - `git`
 - `adb` (Android platform-tools) with the device authorized
 - Android **NDK** with the LLVM toolchain (tested with r27c; any recent NDK is
@@ -75,11 +75,48 @@ firmware. Other builds need their symbols re-derived - see
 - Windows PowerShell 5.1+ or Linux/macOS with `bash`
 - Optional: Python 3 + `vmlinux-to-elf` (only to re-derive symbols/offsets)
 
+**Host (boot-image tooling: pack/sign/flash)**
+- Python 3 (the `scripts/host/` helpers: `pack_and_sign_boot.py`,
+  `build_rescue.py`, `build_avb_boot.py`, `misc_ab.py`, ...)
+- `avbtool` (Android Verified Boot; a checkout of
+  `platform/external/avb`) - used to add the `AVB0`/`AVBf` hash footers
+  and to verify images
+- `openssl` - `build_avb_boot.py` generates the throwaway RSA4096 AVB key
+- **Magisk apk** (only for the initial patched image; the repo then works
+  from the known-good patched base) - see
+  [16](docs/16-magisk-root-how-to.md)
+- the stock partition backups under
+  `D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\` (boot images,
+  misc) - the packers refuse to run without the exact stock base
+
+**Host (kernel build)**
+- a Linux machine/VM: `clang`/`lld` **11.0.1** (same toolchain as the
+  shipped kernel - keeps vermagic/CRCs stable for the prebuilt Magisk
+  modules), flex, bison, bc, libssl-dev; full how-to:
+  [18](docs/18-kernel-build-flash-howto.md)
+
+**Host (BootROM/FDL recovery, optional)**
+- `spd_dump.exe` (Unisoc BROM tool, LibUSB build) in
+  `D:\AndroidSDKTools\spd\spd_dump_LibUSB_Release`
+- the UMS9230 FDL images in
+  `D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\` (fdl1/fdl2 + the
+  patched fdl2)
+- runbook: [14](docs/14-brom-recovery-runbook.md)
+
+**Host (reverse engineering, optional)**
+- `capstone` (python module) - the uboot/trustx scripts
+- `pycryptodome` (python module) - `unisoc_unlock_variants.py`
+
 **Device**
 - Moto E32 XT2227-1 on the firmware above (`adb shell getprop ro.build.fingerprint`)
 - USB debugging enabled, host key authorized
 - Bootloader: the exploit works whether it is locked or unlocked (this unit has
   since been unlocked in software - see `docs/07-unlock-how-to.md`)
+
+Paths: this project keeps the big binary dependencies off C:
+`D:\AndroidSDKTools\` holds adb/platform-tools, avbtool, backups,
+firmware/FDL images and spd_dump; build outputs land in
+`artifacts/` (gitignored).
 
 ## Repository layout
 
