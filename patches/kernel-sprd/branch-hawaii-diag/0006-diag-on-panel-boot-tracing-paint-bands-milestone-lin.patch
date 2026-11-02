@@ -1,8 +1,8 @@
 From c096f1b790c190da41da509258a3345b42e1f529 Mon Sep 17 00:00:00 2001
 From: Creitin Gameplays <clton999@outlook.com>
 Date: Sun, 1 Nov 2026 14:31:29 +0000
-Subject: [PATCH 6/7] diag: on-panel boot tracing (paint bands, milestone line,
- printk mirror)
+Subject: [PATCH 06/17] diag: on-panel boot tracing (paint bands, milestone
+ line, printk mirror)
 
 DIAG ONLY. Used to find where this build stops on the Moto E32, where the
 display is the only usable output and the board hangs instead of panicking.

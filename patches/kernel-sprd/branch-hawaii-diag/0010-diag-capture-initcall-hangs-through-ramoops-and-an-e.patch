@@ -1,0 +1,327 @@
+From 45f975a7eae702862c8010162adbee9264b90c0f Mon Sep 17 00:00:00 2001
+From: Creitin Gameplays <clton999@outlook.com>
+Date: Sun, 1 Nov 2026 18:40:52 +0000
+Subject: [PATCH 10/17] diag: capture initcall hangs through ramoops and an
+ early AON watchdog
+
+The panel rendering became less readable after the glyph scaling change, so
+this diagnostic image disables the framebuffer text console. Instead,
+init/main.c emits one pr_emerg breadcrumb before each do_basic_setup step and
+before each initcall. The 32 KiB ramoops console ring is registered by
+postcore_initcall and should retain the final breadcrumb across a warm reset.
+The image cmdline adds ignore_loglevel so console=null/loglevel=1 cannot
+filter those messages.
+
+For DIAG_WDT_EARLY_INIT builds, register the Spreadtrum watchdog platform
+driver at subsys_initcall rather than device_initcall. This is after OF clock
+setup and before device initcalls such as KVM, and the existing DIAG probe
+arms the hardware watchdog using the driver's clock setup. The late-initcall
+feeder takes over in a continuing boot. A pre-feeder hang should now cause a
+warm hardware reset and preserve ramoops, avoiding a manual cold power cycle.
+
+Build verified with scripts/host/stage_build.sh 0 0 0 0 0; packed 64 MiB
+image boot_ramlog.img has intact ARMd Image header and cmdline token
+ignore_loglevel. Device test is pending.
+---
+ diag/README.md                  | 33 ++++++++++++++++++++++++++++
+ diag/early-wdt-init.diff        | 23 ++++++++++++++++++++
+ diag/prepare_stage_panics.py    | 38 +++++++++++++++++++++++++++++----
+ diag/stage_build.sh             |  8 +++----
+ drivers/watchdog/sprd_wdt_fiq.c | 11 ++++++++++
+ include/linux/diag_stage.h      | 13 +++++------
+ init/main.c                     |  8 +++++++
+ kernel/printk/printk.c          |  4 ----
+ 8 files changed, 120 insertions(+), 18 deletions(-)
+ create mode 100644 diag/early-wdt-init.diff
+
+diff --git a/diag/README.md b/diag/README.md
+index 3d9420cfa217..cdf937681f6e 100644
+--- a/diag/README.md
++++ b/diag/README.md
+@@ -109,3 +109,36 @@ stages 2..8) now draw on the milestone line and will say how far
+     ~/kernel-diag/patches/   format-patch series + full diff of this branch
+     ~/kernel-diag/scripts/   copies of the helper scripts from $HOME
+     ~/kernel-diag/configs/   phone.config (vendor config read off the device)
++
++## Headless initcall-hang capture (2026-11-01)
++
++The panel font path is currently disabled in the diagnostic image: the
++operator's photo showed that enlarging glyphs made text less readable. Do not
++use the framebuffer text console as the next debug channel.
++
++Instead the image uses the existing device-tree ramoops reservation at
++`0xfff80000` (256 KiB total; 32 KiB console, 32 KiB record and 32 KiB pmsg).
++`ramoops_init()` is a postcore initcall, so its persistent console is available
++before driver/device initcalls. `init/main.c` emits a one-line `pr_emerg`
++breadcrumb immediately before each initcall, plus before every step in
++`do_basic_setup()`. `ignore_loglevel` is appended to the boot-image command
++line so `console=null loglevel=1` does not filter out the breadcrumbs. The
++last breadcrumb should survive a warm reset in `console-ramoops-0` and name
++the operation/initcall that did not return.
++
++The Spreadtrum AON watchdog driver is registered at `subsys_initcall()` only
++when `DIAG_WDT_EARLY_INIT` is defined. That is after OF clock-provider setup
++but before `device_initcall()` (where KVM init is registered). Its existing
++DIAG probe code arms the real watchdog using the driver's clock/register setup;
++the normal late-initcall feeder takes over if boot continues. A pre-feeder
++stall should therefore reset the SoC instead of requiring a cold power cycle,
++which would erase ramoops. The userspace test image is packed with
++`--cmdline-extra ignore_loglevel` and with `screen=0`.
++
++Build:
++
++    ./diag/stage_build.sh 0 0 0 0 0
++
++Then pack the Image using the stock boot image as base and append
++`ignore_loglevel`. This is a diagnostic-only watchdog/initcall breadcrumb
++change; it is not intended to ship.
+diff --git a/diag/early-wdt-init.diff b/diag/early-wdt-init.diff
+new file mode 100644
+index 000000000000..45c3c40febe4
+--- /dev/null
++++ b/diag/early-wdt-init.diff
+@@ -0,0 +1,23 @@
++diff --git a/drivers/watchdog/sprd_wdt_fiq.c b/drivers/watchdog/sprd_wdt_fiq.c
++index ba23b7c35e36..f99df74e3789 100644
++--- a/drivers/watchdog/sprd_wdt_fiq.c
+++++ b/drivers/watchdog/sprd_wdt_fiq.c
++@@ -500,7 +500,18 @@ static struct platform_driver sprd_watchdog_fiq_driver = {
++ 		.pm = &sprd_wdt_fiq_pm_ops,
++ 	},
++ };
+++#ifdef DIAG_WDT_EARLY_INIT
+++/* Diagnostic build only: arm the hardware before device_initcalls, where
+++ * the suspected stall (notably KVM init) may occur.  Subsys init is late
+++ * enough for OF clock providers but still precedes device_initcall(). */
+++static int __init sprd_watchdog_fiq_diag_init(void)
+++{
+++	return platform_driver_register(&sprd_watchdog_fiq_driver);
+++}
+++subsys_initcall(sprd_watchdog_fiq_diag_init);
+++#else
++ module_platform_driver(sprd_watchdog_fiq_driver);
+++#endif
++ 
++ MODULE_AUTHOR("Ling Xu <ling_ling.xu@unisoc.com>");
++ MODULE_DESCRIPTION("Spreadtrum Watchdog Timer Controller Driver");
+diff --git a/diag/prepare_stage_panics.py b/diag/prepare_stage_panics.py
+index 5ac4e4fd4dc1..03bf20e3b2fa 100755
+--- a/diag/prepare_stage_panics.py
++++ b/diag/prepare_stage_panics.py
+@@ -324,19 +324,20 @@ static inline void diag_screen_init(void)
+ 	diag_screen_clear();
+ 	diag_screen_tag(15);\t/* paging_init() just returned */
+ }
++#define DIAG_EL_REPORT diag_el_report()
++#define DIAG_INITCALL_NAME(fn) \\
++\tdo { if (DIAG_SCREEN) diag_show_initcall((void *)(fn)); } while (0)
++#define DIAG_SCR_READY diag_state.ready
+ #else
+ static inline void diag_screen_init(void) { }
+ #define DIAG_TAG(n) do { } while (0)
+ #define DIAG_EL_REPORT do { } while (0)
+ #define DIAG_INITCALL_NAME(fn) do { } while (0)
+ #define DIAG_SCR_READY 0
++#define DIAG_STAGE_TAG(n) do { } while (0)
+ #endif
+ 
+ #define DIAG_SCREEN_INIT diag_screen_init()
+-#define DIAG_EL_REPORT diag_el_report()
+-#define DIAG_INITCALL_NAME(fn) \\
+-\tdo { if (DIAG_SCREEN) diag_show_initcall((void *)(fn)); } while (0)
+-#define DIAG_SCR_READY diag_state.ready
+ 
+ /*
+  * printk mirror entry point, defined exactly once, in
+@@ -676,6 +677,35 @@ def main():
+         else:
+             s = s.replace(anchor, anchor + "\tDIAG_INITCALL_NAME(fn);\n", 1)
+             print("inserted DIAG_INITCALL_NAME(fn) into do_one_initcall")
++    # Keep initcall identification independent of the framebuffer.  A single
++    # high-priority printk immediately before each call is enough to leave the
++    # last attempted initcall in ramoops' circular console buffer, even if the
++    # function never returns (and without initcall_debug's doubled chatter).
++    call_anchor = "\tDIAG_INITCALL_NAME(fn);\n"
++    call_log = "\tpr_emerg(\"DIAG: initcall %pF\\n\", fn);\n"
++    if call_log not in s:
++        if s.count(call_anchor) == 1:
++            s = s.replace(call_anchor, call_anchor + call_log, 1)
++            print("inserted ramoops initcall breadcrumb")
++        else:
++            print("WARN: initcall breadcrumb anchor occurs %d times"
++                  % s.count(call_anchor))
++
++    # A tag-27 hang is still before do_initcalls() if it stalls in one of
++    # do_basic_setup()'s setup calls. Breadcrumb each call site as well.
++    for fn in ("cpuset_init_smp", "shmem_init", "driver_init",
++               "init_irq_proc", "do_ctors", "usermodehelper_enable",
++               "do_initcalls"):
++        anchor = "\t" + fn + "();\n"
++        log = "\tpr_emerg(\"DIAG: setup " + fn + "\\n\");\n"
++        if log in s:
++            continue
++        if s.count(anchor) == 1:
++            s = s.replace(anchor, log + anchor, 1)
++            print("inserted setup breadcrumb: %s" % fn)
++        else:
++            print("WARN: setup breadcrumb anchor %s occurs %d times"
++                  % (fn, s.count(anchor)))
+ 
+     # The SMC hooks go in separately: main.c already carries the arm hooks
+     # from earlier builds, so the EDITS loop above would skip these anchors.
+diff --git a/diag/stage_build.sh b/diag/stage_build.sh
+index 169d22386159..f019904cfd3d 100755
+--- a/diag/stage_build.sh
++++ b/diag/stage_build.sh
+@@ -18,8 +18,8 @@
+ #                no ramoops, no console.  Combine with --entry-paint in
+ #                pack_and_sign_boot.py, which paints band 0 from an entry
+ #                stub that runs with the MMU off.
+-# Reuses the object tree (same KCFLAGS as the v4 build), so only init/main.c
+-# recompiles: seconds, not a full build.
++# Reuses the object tree (same KCFLAGS as the v4 build); source changes to
++# other translation units still trigger their own rebuilds.
+ set -eo pipefail
+ panic_stage="${1:-0}"
+ arm_stage="${2:-0}"
+@@ -38,10 +38,10 @@ grep -n 'DIAG_PAINT_HOOK' init/main.c | head -9
+ cp .config.diagwdt .config
+ make -j2 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+     CC="clang --target=aarch64-linux-gnu-" LD=ld.lld LLVM_AR=llvm-ar LLVM_NM=llvm-nm \
+-    KCFLAGS="-DDIAG_WDT_ARM -DDIAG_PANIC_AFTER_INIT -DDIAG_KVM_LATE_INIT -DDIAG_EARLY_PAINT" \
++    KCFLAGS="-DDIAG_WDT_ARM -DDIAG_WDT_EARLY_INIT -DDIAG_PANIC_AFTER_INIT -DDIAG_KVM_LATE_INIT -DDIAG_EARLY_PAINT" \
+     Image 2>&1 | tail -12
+ 
+ cp arch/arm64/boot/Image "Image.$tag"
+ echo "--- Image.$tag ---"
+ ls -l "Image.$tag"
+-sha256sum "Image.$tag"
+\ No newline at end of file
++sha256sum "Image.$tag"
+diff --git a/drivers/watchdog/sprd_wdt_fiq.c b/drivers/watchdog/sprd_wdt_fiq.c
+index ba23b7c35e36..f99df74e3789 100644
+--- a/drivers/watchdog/sprd_wdt_fiq.c
++++ b/drivers/watchdog/sprd_wdt_fiq.c
+@@ -500,7 +500,18 @@ static struct platform_driver sprd_watchdog_fiq_driver = {
+ 		.pm = &sprd_wdt_fiq_pm_ops,
+ 	},
+ };
++#ifdef DIAG_WDT_EARLY_INIT
++/* Diagnostic build only: arm the hardware before device_initcalls, where
++ * the suspected stall (notably KVM init) may occur.  Subsys init is late
++ * enough for OF clock providers but still precedes device_initcall(). */
++static int __init sprd_watchdog_fiq_diag_init(void)
++{
++	return platform_driver_register(&sprd_watchdog_fiq_driver);
++}
++subsys_initcall(sprd_watchdog_fiq_diag_init);
++#else
+ module_platform_driver(sprd_watchdog_fiq_driver);
++#endif
+ 
+ MODULE_AUTHOR("Ling Xu <ling_ling.xu@unisoc.com>");
+ MODULE_DESCRIPTION("Spreadtrum Watchdog Timer Controller Driver");
+diff --git a/include/linux/diag_stage.h b/include/linux/diag_stage.h
+index 8efacd6b8178..3e49b5afa33e 100644
+--- a/include/linux/diag_stage.h
++++ b/include/linux/diag_stage.h
+@@ -24,7 +24,7 @@
+ #include <asm/early_ioremap.h>
+ #include <asm/fixmap.h>
+ #include <asm/virt.h>
+-#define DIAG_SCREEN 1
++#define DIAG_SCREEN 0
+ 
+ /*
+  * Framebuffer text console.
+@@ -296,19 +296,20 @@ static inline void diag_screen_init(void)
+ 	diag_screen_clear();
+ 	diag_screen_tag(15);	/* paging_init() just returned */
+ }
++#define DIAG_EL_REPORT diag_el_report()
++#define DIAG_INITCALL_NAME(fn) \
++	do { if (DIAG_SCREEN) diag_show_initcall((void *)(fn)); } while (0)
++#define DIAG_SCR_READY diag_state.ready
+ #else
+ static inline void diag_screen_init(void) { }
+ #define DIAG_TAG(n) do { } while (0)
+ #define DIAG_EL_REPORT do { } while (0)
+ #define DIAG_INITCALL_NAME(fn) do { } while (0)
+ #define DIAG_SCR_READY 0
++#define DIAG_STAGE_TAG(n) do { } while (0)
+ #endif
+ 
+ #define DIAG_SCREEN_INIT diag_screen_init()
+-#define DIAG_EL_REPORT diag_el_report()
+-#define DIAG_INITCALL_NAME(fn) \
+-	do { if (DIAG_SCREEN) diag_show_initcall((void *)(fn)); } while (0)
+-#define DIAG_SCR_READY diag_state.ready
+ 
+ /*
+  * printk mirror entry point, defined exactly once, in
+@@ -347,7 +348,7 @@ static inline void diag_psci_reset(void)
+ #define DIAG_SMC_HOOK(n) \
+ 	do { if (DIAG_SMC_STAGE == (n)) diag_psci_reset(); } while (0)
+ 
+-#define DIAG_PAINT 2
++#define DIAG_PAINT 0
+ 
+ /*
+  * Visual stage trace: paint white bands at the bootloader's framebuffer.
+diff --git a/init/main.c b/init/main.c
+index aaa82cbc7d3d..2270a6db241d 100644
+--- a/init/main.c
++++ b/init/main.c
+@@ -891,6 +891,7 @@ int __init_or_module do_one_initcall(initcall_t fn)
+ 	if (initcall_blacklisted(fn))
+ 		return -EPERM;
+ 	DIAG_INITCALL_NAME(fn);
++	pr_emerg("DIAG: initcall %pF\n", fn);
+ 
+ 	if (initcall_debug)
+ 		ret = do_one_initcall_debug(fn);
+@@ -981,12 +982,19 @@ static void __init do_initcalls(void)
+  */
+ static void __init do_basic_setup(void)
+ {
++	pr_emerg("DIAG: setup cpuset_init_smp\n");
+ 	cpuset_init_smp();
++	pr_emerg("DIAG: setup shmem_init\n");
+ 	shmem_init();
++	pr_emerg("DIAG: setup driver_init\n");
+ 	driver_init();
++	pr_emerg("DIAG: setup init_irq_proc\n");
+ 	init_irq_proc();
++	pr_emerg("DIAG: setup do_ctors\n");
+ 	do_ctors();
++	pr_emerg("DIAG: setup usermodehelper_enable\n");
+ 	usermodehelper_enable();
++	pr_emerg("DIAG: setup do_initcalls\n");
+ 	do_initcalls();
+ }
+ 
+diff --git a/kernel/printk/printk.c b/kernel/printk/printk.c
+index 12e91954be53..ac1a83bc3330 100644
+--- a/kernel/printk/printk.c
++++ b/kernel/printk/printk.c
+@@ -16,7 +16,6 @@
+  *	01Mar01 Andrew Morton
+  */
+ 
+-#include <linux/diag_stage.h>
+ #include <linux/kernel.h>
+ #include <linux/mm.h>
+ #include <linux/tty.h>
+@@ -2020,9 +2019,6 @@ int vprintk_store(int facility, int level,
+ 	if (dict)
+ 		lflags |= LOG_PREFIX|LOG_NEWLINE;
+ 
+-	#if DIAG_SCREEN
+-	diag_stage_mirror(text, text_len);
+-	#endif
+ 	return log_output(facility, level, lflags,
+ 			  dict, dictlen, text, text_len);
+ }
+-- 
+2.47.3
+

@@ -10,18 +10,31 @@ The exploit turns the Mali `kbase` UAF into kernel physical read/write, then
 patches its own `cred` (uid/gid/capabilities) and `selinux_state.enforcing`.
 Root survives until reboot and is inherited by the parent adb shell.
 
-> **Status (2026-10-31): two root paths are live on this unit.**
+> **Status (2026-11-02): two root paths are live on this unit, and the
+> custom kernel boots Android fully.**
 >
 > 1. **Runtime root (the exploit)** - working and hardened. Final build
 >    verified **5/5 fresh boots and 3/3 same-boot reruns**, first attempt,
 >    2-5 s per run, no panic. It needs no unlock and no pre-existing root and
 >    it writes nothing to flash, but the elevation is **lost on reboot**.
+>    Note: it only works on the **stock** kernel (it needs the vendor Mali
+>    module's memory layout); on the custom kernel Magisk `su` is the only
+>    root path.
 > 2. **Persistent root (Magisk 31.1)** - the device's current state. A
 >    Magisk-patched `boot_b` (stock kernel, patched ramdisk) is flashed, so
 >    root survives reboots and Zygisk modules can run. The bootloader is
 >    unlocked (software `VerifiedBoot-UNLOCK` marker in `miscdata`).
 >    Module stack and Play Integrity results: `docs/15-play-integrity.md`;
 >    how the image was flashed: `docs/12-slot-b-testing-channel.md`.
+> 3. **Custom kernel (in-tree Mali)** - the kernel built from source now
+>    boots the phone all the way: `sys.boot_completed=1`, SurfaceFlinger
+>    running, GPU probed (`Probed as mali0`) by a Magisk module that loads
+>    the in-tree `mali_kbase.ko` at post-fs-data, Magisk `su` Enforcing.
+>    Kernel history: [motorola-moto-e32-kernel](https://github.com/CreitinGameplays/motorola-moto-e32-kernel);
+>    bring-up evidence: `docs/evidence/2026-11-02-mali-autoload-success.txt`.
+>    Known gaps on the custom kernel: WiFi and camera are not working yet
+>    (their vendor modules refuse to load against it); that is the current
+>    work, after which KVM enablement is next.
 >
 > **Careful:** the runtime exploit clears `selinux_state.enforcing`, leaving
 > SELinux **Permissive** until the next reboot. That is a tamper signal and it
@@ -43,9 +56,9 @@ Root survives until reboot and is inherited by the parent adb shell.
 | Device | Motorola Moto E32, XT2227-1, codename `hawaii` |
 | SoC / GPU | Unisoc UMS9230 / T606, ARM64, Mali-G57 (Valhall, JM), kbase DDK r28p0 |
 | OS | Android 11, build `RORS31.335-58-1`, security patch 2024-02-05 |
-| Kernel | Linux 4.14.199+ (`#1 SMP PREEMPT`), KASLR effectively disabled |
+| Kernel | stock `4.14.199+-ab612c2` (`#1 SMP PREEMPT`); our custom build (same source, non-LTO) also boots fully - see status #3 |
 | Bootloader | unlocked in software (`ro.boot.flash.locked=0`, `verifiedbootstate=orange`) |
-| Current root | Magisk 31.1 (patched `boot_b`, slot `_b`), Zygisk Next 1.5.2 + modules; the exploit is kept as an independent path |
+| Current root | Magisk 31.1 (Magisk-patched `boot_b`, slot `_b`; on the custom kernel `boot_b` holds the custom kernel + Magisk ramdisk), Zygisk Next 1.5.2 + modules; the exploit is kept as an independent path (stock kernel only) |
 | Access needed | USB debugging, `adb` shell (uid 2000); the exploit needs **no** unlock and **no** pre-existing root |
 
 Kernel addresses and struct offsets in the exploit are hardcoded for this
@@ -96,14 +109,21 @@ docs/
   evidence/                 captured successful-run logs
 patches/
   kernel-sprd/              the measured header delta (git patch) + the
-                            reconstructed production config fragment
+                            reconstructed production config fragment +
+                            branch-hawaii-diag/ (the whole kernel branch as
+                            an applicable 17-patch series)
 scripts/
   mali/                     target-side C: exploit + primitive probes
   host/                     host-side Python/PowerShell helpers
-  device/                   on-device helper scripts (unlock, DT dump, ...)
+                            (kernel build/pack/flash, Mali module probe,
+                            boot_b test flow, BootROM recovery, ...)
+  device/                   on-device helper scripts (unlock, DT dump,
+                            slot helpers, flash crumb writer, ...)
   build.ps1 / build.sh      build the exploit with the NDK
   run_matrix.ps1            reliability matrix (N boot + run cycles)
-artifacts/                  local build output and dumps (gitignored)
+artifacts/                  local build output, dumps, the Mali Magisk-module
+                            skeleton (mali-module/) and research scraps
+                            (research-scraps/); all gitignored
 tools/, apks/, ...          local working data (gitignored)
 ```
 
@@ -308,7 +328,8 @@ hardening and measured reliability are in `docs/04-reliability-hardening.md`.
   stack, Play Integrity verdicts (BASIC passes, DEVICE still open)
 - `docs/16-magisk-root-how-to.md` - step-by-step persistent Magisk root on
   this device (patch, AVB re-sign, `dd` to `boot_b`, verify)
-- `docs/evidence/` - captured successful-run logs and fastboot recon
+- `docs/evidence/` - captured successful-run logs, fastboot recon and the
+  kernel bring-up evidence (Mali abort root-cause, fix, autoload success)
 
 ## Kernel source
 
@@ -326,13 +347,16 @@ measured and is closed: `patches/kernel-sprd/` holds the 7-header backport and
 the reconstructed production config fragment. Full write-up:
 `docs/10-kernel-source.md`.
 
-On the build VM the working tree is a git branch, `hawaii-diag` (7 commits on
-`c4e610cd`), with the diag instrumentation and the build/ABI fixes; it is
+On the build VM the working tree is a git branch, `hawaii-diag` (17 commits on
+`c4e610cd`): the build/ABI fixes, the non-LTO boot fix, the diag
+instrumentation, and the in-tree Mali Bifrost r28p0 driver (DDK import +
+qogirl6 glue + the `power_control_init` abort fix that made custom kernels
+bootable). It is
 exported as `patches/kernel-sprd/branch-hawaii-diag/` so it can be re-applied
-to a pristine checkout (`git am 0001..0007` reproduces the branch tree
+to a pristine checkout (`git am 0001..0017` reproduces the branch tree
 exactly). The same history is published as
 [motorola-moto-e32-kernel](https://github.com/CreitinGameplays/motorola-moto-e32-kernel):
-an import commit holding the vendor tree verbatim, followed by the 7 real
+an import commit holding the vendor tree verbatim, followed by the 17 real
 commits, so every change is reviewable as a normal diff (the 738k-commit
 vendor history itself cannot be pushed).
 

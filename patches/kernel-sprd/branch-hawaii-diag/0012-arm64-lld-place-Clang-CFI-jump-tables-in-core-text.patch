@@ -1,0 +1,41 @@
+From 1c88ceb5d557239d2b9a6cd717fdd9f5056c908a Mon Sep 17 00:00:00 2001
+From: Creitin Gameplays <clton999@outlook.com>
+Date: Sun, 1 Nov 2026 23:42:03 +0000
+Subject: [PATCH 12/17] arm64: lld: place Clang CFI jump tables in core text
+
+With CONFIG_LTO_CLANG, Clang 11 emits CFI jump tables in input sections
+named .text..L.cfi.jumptable and .text..L.cfi.jumptable.*.  The existing
+TEXT_MAIN and TEXT_CFI_MAIN patterns do not match the double-dot suffix,
+so LLD leaves 26,362 jump-table sections as orphans before the output
+.text, i.e. before _stext.  CONFIG_DEBUG_NOTIFIERS then rejects notifier
+callbacks pointing at those entries (func_ptr_is_kernel_text() only
+accepts _stext.._etext), skipping cpu_pm and other callbacks on every
+idle transition.
+
+Collect the jump-table sections explicitly into .text, the same
+collection rule upstream uses in TEXT_CFI_JT (cf. commit 13b056696291
+"vmlinux.lds.h: CFI: Reduce alignment of jump-table to function
+alignment").  CFI stays enabled.
+
+Verified on the built Image: all 26,362 CFI jump-table symbols are
+inside _stext.._etext and the notifier-block relocations resolve to
+in-range tables.
+---
+ include/asm-generic/vmlinux.lds.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/include/asm-generic/vmlinux.lds.h b/include/asm-generic/vmlinux.lds.h
+index 86351bae90f3..842289188461 100644
+--- a/include/asm-generic/vmlinux.lds.h
++++ b/include/asm-generic/vmlinux.lds.h
+@@ -465,6 +465,7 @@
+ 		*(.text..refcount)					\
+ 		*(.text..ftrace)					\
+ 		*(TEXT_CFI_MAIN) 					\
++		*(.text..L.cfi.jumptable .text..L.cfi.jumptable.*) \
+ 		*(.ref.text)						\
+ 	MEM_KEEP(init.text)						\
+ 	MEM_KEEP(exit.text)						\
+-- 
+2.47.3
+

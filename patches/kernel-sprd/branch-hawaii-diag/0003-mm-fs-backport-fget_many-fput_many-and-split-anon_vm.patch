@@ -1,7 +1,7 @@
 From b4c3685f2a5c39a2c58ccecdd4bda69d41b87f2a Mon Sep 17 00:00:00 2001
 From: Creitin Gameplays <clton999@outlook.com>
 Date: Sun, 1 Nov 2026 14:31:15 +0000
-Subject: [PATCH 3/7] mm/fs: backport fget_many/fput_many and split anon_vma
+Subject: [PATCH 03/17] mm/fs: backport fget_many/fput_many and split anon_vma
  counters
 
 Matches the RORS userspace ABI expectations: fget_many()/fput_many() for batched file references, and the upstream anon_vma num_children/num_active_vmas split that replaces the single degree counter.

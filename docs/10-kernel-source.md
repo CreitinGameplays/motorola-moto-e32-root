@@ -476,5 +476,5 @@ phone.
 | `artifacts/kernel-src/dt_vs_tree.md` | device tree vs DTS report |
 | `artifacts/kernel-src/*.defconfig`, `*_diff_config` | the exact build inputs fetched from the public tree |
 
-| `patches/kernel-sprd/branch-hawaii-diag/` | the whole working branch (`hawaii-diag`) as an applyable series on top of `c4e610cd`, incl. the diag instrumentation, `phone.config` and the flat diff |
-| `https://github.com/CreitinGameplays/motorola-moto-e32-kernel` | public history of that branch: a root import commit with the vendor tree verbatim + the 7 real commits (visible diffs, tree hash identical); refresh with `~/kernel-diag/scripts/export_to_github.sh` on the build VM |
+| `patches/kernel-sprd/branch-hawaii-diag/` | the whole working branch (`hawaii-diag`) as an applyable series on top of `c4e610cd`, incl. the diag instrumentation, the in-tree Mali driver (r28p0 DDK + qogirl6 glue + the `power_control_init` abort fix), `phone.config` and the flat diff |
+| `https://github.com/CreitinGameplays/motorola-moto-e32-kernel` | public history of that branch: a root import commit with the vendor tree verbatim + the 17 real commits (visible diffs, tree hash identical); refresh with `~/kernel-diag/scripts/export_to_github.sh` on the build VM |

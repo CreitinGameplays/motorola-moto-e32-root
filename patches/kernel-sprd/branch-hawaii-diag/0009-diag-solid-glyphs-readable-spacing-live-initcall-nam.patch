@@ -1,0 +1,414 @@
+From 5db166d108d887d31d8f6626eb8eb947923947e0 Mon Sep 17 00:00:00 2001
+From: Creitin Gameplays <clton999@outlook.com>
+Date: Sun, 1 Nov 2026 17:55:30 +0000
+Subject: [PATCH 09/17] diag: solid glyphs, readable spacing, live initcall
+ name on the panel
+
+The 2026-11-01 panel photo showed that the console state is now shared
+correctly (the EL2 rows and the log mirror appeared), but the text itself
+was unreadable: the glyph renderer never advanced the row pointer in its
+vertical-scale loop, so every font pixel was drawn as a 3x1 dash instead of
+a 3x3 block and the letters looked like a mesh of overlapping strokes.
+Fixed, and the cell now carries a 2 px column gap and an 8 px line gap
+(DIAG_CW 26, DIAG_CH 56, 61 columns x 12 rows).
+
+The same photo pinned the hang down: the milestone line ended at tag 27, so
+do_basic_setup() never returned and the kernel is stuck inside
+do_initcalls().  Two generator bugs hid that:
+
+* stages 5 and 6 were inserted AFTER rest_init() and kernel_init_freeable(),
+  which never return - the markers were dead code, so tags 25 and 26 could
+  never appear.  They now sit before the calls.
+* the generator accumulated markers across runs (the branch carries the
+  previous snapshot as a commit), so every run inserted a second copy.  It
+  now strips all of its markers before inserting them again.
+
+New: do_one_initcall() writes the name of the initcall it is about to run
+to the permanent header row ("IC: <name>"), so a hung initcall names itself
+on the panel.  The KVM verdict moved up into the EL row to make room.
+---
+ diag/prepare_stage_panics.py | 98 +++++++++++++++++++++++++++++-------
+ include/linux/diag_stage.h   | 50 +++++++++++++-----
+ init/main.c                  | 14 ++----
+ 3 files changed, 122 insertions(+), 40 deletions(-)
+
+diff --git a/diag/prepare_stage_panics.py b/diag/prepare_stage_panics.py
+index bda1d8fffbb7..5ac4e4fd4dc1 100755
+--- a/diag/prepare_stage_panics.py
++++ b/diag/prepare_stage_panics.py
+@@ -76,9 +76,10 @@ HEADER = """#ifndef _LINUX_DIAG_STAGE_H
+ #define DIAG_FB_ROWS\t720U
+ #define DIAG_GLYPH_W\t8U
+ #define DIAG_GLYPH_H\t16U
+-#define DIAG_SCALE\t3U\t/* 24x48 glyphs */
+-#define DIAG_CW\t(DIAG_GLYPH_W * DIAG_SCALE)
+-#define DIAG_CH\t(DIAG_GLYPH_H * DIAG_SCALE)
++#define DIAG_SX\t\t3U\t/* 24 px wide glyphs */
++#define DIAG_SY\t\t3U\t/* 48 px tall glyphs */
++#define DIAG_CW\t\t(DIAG_GLYPH_W * DIAG_SX + 2U)\t/* 2 px column gap */
++#define DIAG_CH\t\t(DIAG_GLYPH_H * DIAG_SY + 8U)\t/* 8 px line gap */
+ #define DIAG_TOP\t48U
+ #define DIAG_COLS\t(DIAG_FB_STRIDE / 3UL / DIAG_CW)
+ #define DIAG_ROWS\t((DIAG_FB_ROWS - DIAG_TOP) / DIAG_CH)
+@@ -126,15 +127,16 @@ static inline void diag_scr_glyph(u8 *base, unsigned char ch)
+ 	unsigned int y, x, i, j;
+ 
+ 	for (y = 0; y < DIAG_GLYPH_H; y++) {
+-		u8 *line = base + (unsigned long)y * DIAG_SCALE * DIAG_FB_STRIDE;
++		u8 *line = base + (unsigned long)y * DIAG_SY * DIAG_FB_STRIDE;
+ 
+ 		for (x = 0; x < DIAG_GLYPH_W; x++) {
+ 			u32 rgb = (g[y] & (0x80U >> x)) ? 0xffffffU : DIAG_BG;
+ 
+-			for (i = 0; i < DIAG_SCALE; i++)
+-				for (j = 0; j < DIAG_SCALE; j++)
++			for (i = 0; i < DIAG_SY; i++)
++				for (j = 0; j < DIAG_SX; j++)
+ 					diag_scr_pixel(line +
+-						(x * DIAG_SCALE + j) * 3U, rgb);
++						i * DIAG_FB_STRIDE +
++						(x * DIAG_SX + j) * 3U, rgb);
+ 		}
+ 	}
+ }
+@@ -257,7 +259,6 @@ static inline char *diag_hex(char *p, unsigned long long v, unsigned int digits)
+ static inline void diag_el_report(void)
+ {
+ 	char line[DIAG_COLS + 1];
+-	const char *verdict;
+ 	char *p;
+ 	u64 pfr0;
+ 
+@@ -270,6 +271,15 @@ static inline void diag_el_report(void)
+ 	memcpy(p, " hyp=", 5);
+ 	p += 5;
+ 	*p++ = is_hyp_mode_available() ? '1' : '0';
++	memcpy(p, " KVM:", 5);
++	p += 5;
++	if (is_hyp_mode_available()) {
++		memcpy(p, "possible", 8);
++		p += 8;
++	} else {
++		memcpy(p, "impossible", 10);
++		p += 10;
++	}
+ 	*p = '\\0';
+ 	diag_screen_head(0, line, p - line);
+ 
+@@ -280,14 +290,25 @@ static inline void diag_el_report(void)
+ 	*p = '\\0';
+ 	diag_screen_head(1, line, p - line);
+ 
+-	verdict = is_hyp_mode_available() ?
+-		"EL2: KVM can work on this device" :
+-		"no EL2 -> KVM impossible here";
+-	diag_screen_head(2, verdict, strlen(verdict));
+-
+ 	diag_state.row = DIAG_HEAD;
+ }
+ 
++/*
++ * The initcall that is about to run.  do_one_initcall() calls this before
++ * every initcall; if one of them never returns, its name is still on the
++ * permanent row and the photo names the culprit.  %pF resolves through
++ * kallsyms, which is a static table and is usable long before do_initcalls().
++ */
++static inline void diag_show_initcall(void *fn)
++{
++	char line[DIAG_COLS + 1];
++	int n;
++
++	n = scnprintf(line, sizeof(line), "IC: %pF", fn);
++	if (n > 0)
++		diag_screen_head(2, line, (unsigned int)n);
++}
++
+ #define DIAG_TAG(n) diag_screen_tag(n)
+ 
+ /*
+@@ -307,11 +328,14 @@ static inline void diag_screen_init(void)
+ static inline void diag_screen_init(void) { }
+ #define DIAG_TAG(n) do { } while (0)
+ #define DIAG_EL_REPORT do { } while (0)
++#define DIAG_INITCALL_NAME(fn) do { } while (0)
+ #define DIAG_SCR_READY 0
+ #endif
+ 
+ #define DIAG_SCREEN_INIT diag_screen_init()
+ #define DIAG_EL_REPORT diag_el_report()
++#define DIAG_INITCALL_NAME(fn) \\
++\tdo { if (DIAG_SCREEN) diag_show_initcall((void *)(fn)); } while (0)
+ #define DIAG_SCR_READY diag_state.ready
+ 
+ /*
+@@ -505,16 +529,20 @@ EDITS = [
+      "\tDIAG_STAGE_3;\n\tDIAG_ARM_HOOK(3);\n", "DIAG_ARM_HOOK(3);"),
+     ("\tcheck_bugs();\n",
+      "\tDIAG_STAGE_4;\n\tDIAG_ARM_HOOK(4);\n", "DIAG_ARM_HOOK(4);"),
+-    ("\t/* Do the rest non-__init'ed, we're now alive */\n\trest_init();\n",
+-     "\tDIAG_STAGE_5;\n\tDIAG_ARM_HOOK(5);\n", "DIAG_ARM_HOOK(5);"),
+-    ("static int __ref kernel_init(void *unused)\n{\n\tint ret;\n\n\tkernel_init_freeable();\n",
+-     "\tDIAG_STAGE_6;\n\tDIAG_ARM_HOOK(6);\n", "DIAG_ARM_HOOK(6);"),
+     ("\tdo_pre_smp_initcalls();\n\tlockup_detector_init();\n",
+      "\tDIAG_STAGE_7;\n\tDIAG_ARM_HOOK(7);\n", "DIAG_ARM_HOOK(7);"),
+     ("\tdo_basic_setup();\n",
+      "\tDIAG_STAGE_8;\n\tDIAG_ARM_HOOK(8);\n", "DIAG_ARM_HOOK(8);"),
+ ]
+ 
++# Inserted BEFORE the anchor text (the EDITS list above inserts after).
++EDITS_BEFORE = [
++    ("\t/* Do the rest non-__init'ed, we're now alive */\n\trest_init();\n",
++     "\tDIAG_STAGE_5;\n\tDIAG_ARM_HOOK(5);\n", "DIAG_ARM_HOOK(5);"),
++    ("\tkernel_init_freeable();\n",
++     "\tDIAG_STAGE_6;\n\tDIAG_ARM_HOOK(6);\n", "DIAG_ARM_HOOK(6);"),
++]
++
+ # setup_arch() milestones for paint mode 2, in execution order.  Bands 1..4
+ # use early_ioremap() (before paging_init()), bands 5..9 phys_to_virt().
+ # setup_arch() milestones for paint mode 2, in execution order.  Bands 11..14
+@@ -603,6 +631,19 @@ def main():
+         s = s.replace(anchor, '#include <linux/diag_stage.h>\n\n' + anchor)
+         print("added #include <linux/diag_stage.h>")
+ 
++    # Strip every marker this generator may have inserted in an earlier run
++    # (possibly with different anchors), then insert everything fresh.  The
++    # branch carries the previous snapshot as a commit, so without this the
++    # markers accumulate and end up in dead positions.
++    stripped = re.sub(r"[ \t]*DIAG_(?:STAGE_\d+|ARM_HOOK\(\d+\)|SMC_HOOK\(\d+\)|"
++                      r"PAINT_HOOK\(\d+\)|STAGE_TAG\(\d+\)|EARLY_HOOK\(\d+\)|"
++                      r"INITCALL_NAME\(fn\));\n",
++                      "", s)
++    if stripped != s:
++        print("stripped %d stale DIAG markers from init/main.c"
++              % (s.count("DIAG_") - stripped.count("DIAG_")))
++        s = stripped
++
+     for anchor, ins, marker in EDITS:
+         if marker in s:
+             continue
+@@ -613,6 +654,29 @@ def main():
+         s = s.replace(anchor, anchor + ins)
+         print("inserted %s" % marker)
+ 
++    # Markers that must run before the statement they belong to.
++    for anchor, ins, marker in EDITS_BEFORE:
++        if marker in s:
++            continue
++        n = s.count(anchor)
++        if n != 1:
++            print("WARN: anchor for %s occurs %d times, skipped" % (marker, n))
++            continue
++        s = s.replace(anchor, ins + anchor)
++        print("inserted %s (before anchor)" % marker)
++
++    # Live "which initcall is running" line: do_one_initcall() names the
++    # initcall on the permanent header row before calling it, so a hung
++    # initcall identifies itself on the panel.
++    anchor = "\tif (initcall_blacklisted(fn))\n\t\treturn -EPERM;\n"
++    if "DIAG_INITCALL_NAME(fn);" not in s:
++        n = s.count(anchor)
++        if n != 1:
++            print("WARN: do_one_initcall anchor occurs %d times, skipped" % n)
++        else:
++            s = s.replace(anchor, anchor + "\tDIAG_INITCALL_NAME(fn);\n", 1)
++            print("inserted DIAG_INITCALL_NAME(fn) into do_one_initcall")
++
+     # The SMC hooks go in separately: main.c already carries the arm hooks
+     # from earlier builds, so the EDITS loop above would skip these anchors.
+     for n in range(1, 9):
+diff --git a/include/linux/diag_stage.h b/include/linux/diag_stage.h
+index f4b4f0711237..8efacd6b8178 100644
+--- a/include/linux/diag_stage.h
++++ b/include/linux/diag_stage.h
+@@ -48,9 +48,10 @@
+ #define DIAG_FB_ROWS	720U
+ #define DIAG_GLYPH_W	8U
+ #define DIAG_GLYPH_H	16U
+-#define DIAG_SCALE	3U	/* 24x48 glyphs */
+-#define DIAG_CW	(DIAG_GLYPH_W * DIAG_SCALE)
+-#define DIAG_CH	(DIAG_GLYPH_H * DIAG_SCALE)
++#define DIAG_SX		3U	/* 24 px wide glyphs */
++#define DIAG_SY		3U	/* 48 px tall glyphs */
++#define DIAG_CW		(DIAG_GLYPH_W * DIAG_SX + 2U)	/* 2 px column gap */
++#define DIAG_CH		(DIAG_GLYPH_H * DIAG_SY + 8U)	/* 8 px line gap */
+ #define DIAG_TOP	48U
+ #define DIAG_COLS	(DIAG_FB_STRIDE / 3UL / DIAG_CW)
+ #define DIAG_ROWS	((DIAG_FB_ROWS - DIAG_TOP) / DIAG_CH)
+@@ -98,15 +99,16 @@ static inline void diag_scr_glyph(u8 *base, unsigned char ch)
+ 	unsigned int y, x, i, j;
+ 
+ 	for (y = 0; y < DIAG_GLYPH_H; y++) {
+-		u8 *line = base + (unsigned long)y * DIAG_SCALE * DIAG_FB_STRIDE;
++		u8 *line = base + (unsigned long)y * DIAG_SY * DIAG_FB_STRIDE;
+ 
+ 		for (x = 0; x < DIAG_GLYPH_W; x++) {
+ 			u32 rgb = (g[y] & (0x80U >> x)) ? 0xffffffU : DIAG_BG;
+ 
+-			for (i = 0; i < DIAG_SCALE; i++)
+-				for (j = 0; j < DIAG_SCALE; j++)
++			for (i = 0; i < DIAG_SY; i++)
++				for (j = 0; j < DIAG_SX; j++)
+ 					diag_scr_pixel(line +
+-						(x * DIAG_SCALE + j) * 3U, rgb);
++						i * DIAG_FB_STRIDE +
++						(x * DIAG_SX + j) * 3U, rgb);
+ 		}
+ 	}
+ }
+@@ -229,7 +231,6 @@ static inline char *diag_hex(char *p, unsigned long long v, unsigned int digits)
+ static inline void diag_el_report(void)
+ {
+ 	char line[DIAG_COLS + 1];
+-	const char *verdict;
+ 	char *p;
+ 	u64 pfr0;
+ 
+@@ -242,6 +243,15 @@ static inline void diag_el_report(void)
+ 	memcpy(p, " hyp=", 5);
+ 	p += 5;
+ 	*p++ = is_hyp_mode_available() ? '1' : '0';
++	memcpy(p, " KVM:", 5);
++	p += 5;
++	if (is_hyp_mode_available()) {
++		memcpy(p, "possible", 8);
++		p += 8;
++	} else {
++		memcpy(p, "impossible", 10);
++		p += 10;
++	}
+ 	*p = '\0';
+ 	diag_screen_head(0, line, p - line);
+ 
+@@ -252,14 +262,25 @@ static inline void diag_el_report(void)
+ 	*p = '\0';
+ 	diag_screen_head(1, line, p - line);
+ 
+-	verdict = is_hyp_mode_available() ?
+-		"EL2: KVM can work on this device" :
+-		"no EL2 -> KVM impossible here";
+-	diag_screen_head(2, verdict, strlen(verdict));
+-
+ 	diag_state.row = DIAG_HEAD;
+ }
+ 
++/*
++ * The initcall that is about to run.  do_one_initcall() calls this before
++ * every initcall; if one of them never returns, its name is still on the
++ * permanent row and the photo names the culprit.  %pF resolves through
++ * kallsyms, which is a static table and is usable long before do_initcalls().
++ */
++static inline void diag_show_initcall(void *fn)
++{
++	char line[DIAG_COLS + 1];
++	int n;
++
++	n = scnprintf(line, sizeof(line), "IC: %pF", fn);
++	if (n > 0)
++		diag_screen_head(2, line, (unsigned int)n);
++}
++
+ #define DIAG_TAG(n) diag_screen_tag(n)
+ 
+ /*
+@@ -279,11 +300,14 @@ static inline void diag_screen_init(void)
+ static inline void diag_screen_init(void) { }
+ #define DIAG_TAG(n) do { } while (0)
+ #define DIAG_EL_REPORT do { } while (0)
++#define DIAG_INITCALL_NAME(fn) do { } while (0)
+ #define DIAG_SCR_READY 0
+ #endif
+ 
+ #define DIAG_SCREEN_INIT diag_screen_init()
+ #define DIAG_EL_REPORT diag_el_report()
++#define DIAG_INITCALL_NAME(fn) \
++	do { if (DIAG_SCREEN) diag_show_initcall((void *)(fn)); } while (0)
+ #define DIAG_SCR_READY diag_state.ready
+ 
+ /*
+diff --git a/init/main.c b/init/main.c
+index 16027db7a9d4..aaa82cbc7d3d 100644
+--- a/init/main.c
++++ b/init/main.c
+@@ -580,7 +580,6 @@ asmlinkage __visible void __init start_kernel(void)
+ 	DIAG_SMC_HOOK(2);
+ 	DIAG_PAINT_HOOK(2);
+ 	DIAG_STAGE_TAG(22);
+-	DIAG_STAGE_2;
+ 	/*
+ 	 * Set up the the initial canary and entropy after arch
+ 	 * and after adding latent and command line entropy.
+@@ -605,7 +604,6 @@ asmlinkage __visible void __init start_kernel(void)
+ 	DIAG_SMC_HOOK(3);
+ 	DIAG_PAINT_HOOK(3);
+ 	DIAG_STAGE_TAG(23);
+-	DIAG_STAGE_3;
+ 
+ 	pr_notice("Kernel command line: %s\n", boot_command_line);
+ 	/* parameters may set static keys */
+@@ -763,7 +761,6 @@ asmlinkage __visible void __init start_kernel(void)
+ 	DIAG_SMC_HOOK(4);
+ 	DIAG_PAINT_HOOK(4);
+ 	DIAG_STAGE_TAG(24);
+-	DIAG_STAGE_4;
+ 
+ 	acpi_subsystem_init();
+ 	arch_post_acpi_subsys_init();
+@@ -773,14 +770,13 @@ asmlinkage __visible void __init start_kernel(void)
+ 		efi_free_boot_services();
+ 	}
+ 
+-	/* Do the rest non-__init'ed, we're now alive */
+-	rest_init();
+ 	DIAG_STAGE_5;
+ 	DIAG_ARM_HOOK(5);
+ 	DIAG_SMC_HOOK(5);
+ 	DIAG_PAINT_HOOK(5);
+ 	DIAG_STAGE_TAG(25);
+-	DIAG_STAGE_5;
++	/* Do the rest non-__init'ed, we're now alive */
++	rest_init();
+ 
+ 	prevent_tail_call_optimization();
+ }
+@@ -894,6 +890,7 @@ int __init_or_module do_one_initcall(initcall_t fn)
+ 
+ 	if (initcall_blacklisted(fn))
+ 		return -EPERM;
++	DIAG_INITCALL_NAME(fn);
+ 
+ 	if (initcall_debug)
+ 		ret = do_one_initcall_debug(fn);
+@@ -1072,13 +1069,12 @@ static int __ref kernel_init(void *unused)
+ {
+ 	int ret;
+ 
+-	kernel_init_freeable();
+ 	DIAG_STAGE_6;
+ 	DIAG_ARM_HOOK(6);
+ 	DIAG_SMC_HOOK(6);
+ 	DIAG_PAINT_HOOK(6);
+ 	DIAG_STAGE_TAG(26);
+-	DIAG_STAGE_6;
++	kernel_init_freeable();
+ 	/* need to finish all async __init code before freeing the memory */
+ 	async_synchronize_full();
+ 	ftrace_free_init_mem();
+@@ -1159,7 +1155,6 @@ static noinline void __init kernel_init_freeable(void)
+ 	DIAG_SMC_HOOK(7);
+ 	DIAG_PAINT_HOOK(7);
+ 	DIAG_STAGE_TAG(27);
+-	DIAG_STAGE_7;
+ 
+ 	smp_init();
+ 	sched_init_smp();
+@@ -1174,7 +1169,6 @@ static noinline void __init kernel_init_freeable(void)
+ 	DIAG_SMC_HOOK(8);
+ 	DIAG_PAINT_HOOK(8);
+ 	DIAG_STAGE_TAG(28);
+-	DIAG_STAGE_8;
+ 
+ 	test_executor_init();
+ 
+-- 
+2.47.3
+

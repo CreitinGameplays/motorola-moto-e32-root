@@ -1,0 +1,579 @@
+From 0e470180c9a1d59980dd64797b9d5888300f130a Mon Sep 17 00:00:00 2001
+From: Creitin Gameplays <clton999@outlook.com>
+Date: Mon, 2 Nov 2026 14:41:35 +0000
+Subject: [PATCH 17/17] mali: fix Synchronous External Abort in
+ power_control_init; add MDBG probe instrumentation
+
+The pristine DDK power_control_init() enables the DT clocks itself
+(of_clk_get + clk_prepare_enable). On UMS9230 the first clock is
+aonapb-gate#9 and clk_enable -> sprd_gate_enable -> regmap_read on the
+AON APB bank raises a Synchronous External Abort (0x96000010), killing
+the CPU - this was the cause of every custom-kernel boot hang (built-in
+device_initcall and insmod alike). The vendor fork never runs this path:
+the qogirl6 platform glue owns clocks and regulators via
+mali_platform_init -> mali_power_on/mali_clock_on.
+
+Skip the DDK clock/regulator handling when CONFIG_MALI_PLATFORM_NAME
+contains qogirl6 and let the glue do the work. Verified on hardware:
+insmod mali_kbase.ko -> Probed as mali0, Android completes boot with
+surfaceflinger running (evidence in the analysis repo,
+docs/evidence/2026-11-02-mali-abort-rootcause.txt / -fix-success.txt).
+
+Also add optional probe instrumentation behind CONFIG_MALI_MDBG_CRUMB
+(default n):
+- mdbg_crumb.c: flash-persistent crumb recorder (miscdata+0xA0000,
+  one byte per probe step, fsynced; survives any hang/reset) used to
+  localize the abort when nothing else (console, pstore, page cache)
+  survived the CPU stall.
+- MDBG dev_info breadcrumbs + mdbg_crumb() calls at each dev_init[]
+  step and every qogirl6 glue boundary (syscon lookups, nvmem, clock
+  gets/enables, top-force write, pwr-state check, DVFS/QoS writes).
+  Harmless dev_info-only output; keep for future bring-up work.
+---
+ drivers/gpu/arm/midgard/Kbuild                |  3 +
+ drivers/gpu/arm/midgard/Kconfig               | 10 ++
+ .../device/backend/mali_kbase_device_jm.c     |  8 ++
+ .../gpu/arm/midgard/mali_kbase_core_linux.c   | 63 +++++++++++-
+ drivers/gpu/arm/midgard/mdbg_crumb.c          | 98 +++++++++++++++++++
+ drivers/gpu/arm/midgard/mdbg_crumb.mk         |  2 +
+ .../qogirl6/mali_kbase_config_qogirl6.c       | 86 +++++++++++++++-
+ 7 files changed, 266 insertions(+), 4 deletions(-)
+ create mode 100644 drivers/gpu/arm/midgard/mdbg_crumb.c
+ create mode 100644 drivers/gpu/arm/midgard/mdbg_crumb.mk
+
+diff --git a/drivers/gpu/arm/midgard/Kbuild b/drivers/gpu/arm/midgard/Kbuild
+index 5b495c975cf4..96c07d3d9bf0 100644
+--- a/drivers/gpu/arm/midgard/Kbuild
++++ b/drivers/gpu/arm/midgard/Kbuild
+@@ -173,6 +173,9 @@ ccflags-y += -I$(KBASE_PATH) -I$(KBASE_PATH)/debug \
+ # Tell the Linux build system from which .o file to create the kernel module
+ obj-$(CONFIG_MALI_MIDGARD) += mali_kbase.o
+ 
++# MDBG: flash crumb recorder (probe instrumentation, miscdata+0xA0000)
++obj-$(CONFIG_MALI_MDBG_CRUMB) += mdbg_crumb.o
++
+ # Tell the Linux build system to enable building of our .c files
+ mali_kbase-y := $(SRC:.c=.o)
+ 
+diff --git a/drivers/gpu/arm/midgard/Kconfig b/drivers/gpu/arm/midgard/Kconfig
+index 06f428f9272b..c80ec9101e05 100644
+--- a/drivers/gpu/arm/midgard/Kconfig
++++ b/drivers/gpu/arm/midgard/Kconfig
+@@ -20,6 +20,16 @@
+ #
+ 
+ 
++config MALI_MDBG_CRUMB
++	tristate "MDBG flash crumb recorder (hang probe instrumentation)"
++	depends on MALI_MIDGARD
++	default n
++	help
++	  Flash-persistent breadcrumb recorder for GPU bring-up probes.
++	  When loaded before mali_kbase, it appends one byte per probe step
++	  to the miscdata partition at +0xA0000, surviving any hang or reset.
++	  Say N for production builds.
++
+ menuconfig MALI_MIDGARD
+ 	tristate "Mali Midgard series support"
+ 	select GPU_TRACEPOINTS if ANDROID
+diff --git a/drivers/gpu/arm/midgard/device/backend/mali_kbase_device_jm.c b/drivers/gpu/arm/midgard/device/backend/mali_kbase_device_jm.c
+index 2a45a33c52c9..ab1035fe3d31 100644
+--- a/drivers/gpu/arm/midgard/device/backend/mali_kbase_device_jm.c
++++ b/drivers/gpu/arm/midgard/device/backend/mali_kbase_device_jm.c
+@@ -38,6 +38,7 @@
+ #endif
+ 
+ #include <mali_kbase.h>
++extern void mdbg_crumb(int step);
+ #include <backend/gpu/mali_kbase_irq_internal.h>
+ #include <backend/gpu/mali_kbase_jm_internal.h>
+ #include <backend/gpu/mali_kbase_js_internal.h>
+@@ -55,18 +56,22 @@ static int kbase_backend_late_init(struct kbase_device *kbdev)
+ {
+ 	int err;
+ 
++	dev_info(kbdev->dev, "MDBG: late_init: hwaccess_pm_init enter\n");
+ 	err = kbase_hwaccess_pm_init(kbdev);
+ 	if (err)
+ 		return err;
+ 
++	dev_info(kbdev->dev, "MDBG: late_init: reset_gpu_init enter\n");
+ 	err = kbase_reset_gpu_init(kbdev);
+ 	if (err)
+ 		goto fail_reset_gpu_init;
+ 
++	dev_info(kbdev->dev, "MDBG: late_init: hwaccess_pm_powerup enter\n");
+ 	err = kbase_hwaccess_pm_powerup(kbdev, PM_HW_ISSUES_DETECT);
+ 	if (err)
+ 		goto fail_pm_powerup;
+ 
++	dev_info(kbdev->dev, "MDBG: late_init: backend_timer_init enter\n");
+ 	err = kbase_backend_timer_init(kbdev);
+ 	if (err)
+ 		goto fail_timer;
+@@ -251,6 +256,9 @@ int kbase_device_init(struct kbase_device *kbdev)
+ 	kbase_disjoint_init(kbdev);
+ 
+ 	for (i = 0; i < ARRAY_SIZE(dev_init); i++) {
++		dev_info(kbdev->dev, "MDBG: dev_init[%u] %pS enter\n",
++			 i, dev_init[i].init);
++		mdbg_crumb(70 + i); /* dev_init[i] entered */
+ 		err = dev_init[i].init(kbdev);
+ 		if (err) {
+ 			dev_err(kbdev->dev, "%s error = %d\n",
+diff --git a/drivers/gpu/arm/midgard/mali_kbase_core_linux.c b/drivers/gpu/arm/midgard/mali_kbase_core_linux.c
+index 7e3c00d47412..bb9925be74ca 100644
+--- a/drivers/gpu/arm/midgard/mali_kbase_core_linux.c
++++ b/drivers/gpu/arm/midgard/mali_kbase_core_linux.c
+@@ -21,6 +21,7 @@
+  */
+ 
+ #include <mali_kbase.h>
++extern void mdbg_crumb(int step);
+ #include <mali_kbase_config_defaults.h>
+ #include <gpu/mali_kbase_gpu_regmap.h>
+ #include <mali_kbase_gator.h>
+@@ -85,6 +86,12 @@
+ #include <linux/poll.h>
+ #include <linux/kernel.h>
+ #include <linux/errno.h>
++#include <linux/string.h>
++
++#ifndef STRINGIFY
++#define STRINGIFY_(x) #x
++#define STRINGIFY(x) STRINGIFY_(x)
++#endif
+ #include <linux/of.h>
+ #include <linux/platform_device.h>
+ #include <linux/of_platform.h>
+@@ -4421,8 +4428,37 @@ int power_control_init(struct kbase_device *kbdev)
+ 	if (!kbdev)
+ 		return -ENODEV;
+ 
++	dev_info(kbdev->dev, "MDBG: power_control_init enter\n");
++	mdbg_crumb(63); /* power_control_init entered */
++
+ 	pdev = to_platform_device(kbdev->dev);
+ 
++	/*
++	 * MDBG root-cause fix (2026-11-02, evidence
++	 * docs/evidence/2026-11-02-mali-abort-rootcause.txt):
++	 * the pristine DDK enables the DT clocks itself; on this board the
++	 * first clock is aonapb-gate#9 and clk_enable -> sprd_gate_enable
++	 * -> regmap_read on the AON APB bank raises a Synchronous External
++	 * Abort (0x96000010), killing the CPU. The vendor fork never runs
++	 * this path: the Unisoc platform glue (mali_platform_init ->
++	 * mali_power_on/mali_clock_on) owns the clocks and regulators.
++	 * Skip the stock clock/regulator handling for this platform and
++	 * let the glue do the work (it runs later, from
++	 * kbase_device_early_init -> kbasep_platform_device_init).
++	 */
++	{
++		static const char plat_from_kconfig[] =
++			STRINGIFY(CONFIG_MALI_PLATFORM_NAME);
++
++		if (strstr(plat_from_kconfig, "qogirl6")) {
++			dev_info(kbdev->dev,
++				 "clocks/regulators handled by platform glue, skipping DDK power_control_init\n");
++			kbdev->nr_clocks = 0;
++			kbdev->nr_regulators = 0;
++			return 0;
++		}
++	}
++
+ #if defined(CONFIG_REGULATOR)
+ 	/* Since the error code EPROBE_DEFER causes the entire probing
+ 	 * procedure to be restarted from scratch at a later time,
+@@ -5079,6 +5115,9 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
+ 	struct kbase_device *kbdev;
+ 	int err = 0;
+ 
++	dev_info(&pdev->dev, "MDBG: kbase_platform_device_probe enter\n");
++	mdbg_crumb(62); /* probe callback entered */
++
+ 	mali_kbase_print_cs_experimental();
+ 
+ 	kbdev = kbase_device_alloc();
+@@ -5319,7 +5358,29 @@ static struct platform_driver kbase_platform_driver = {
+  * anymore when using Device Tree.
+  */
+ #ifdef CONFIG_OF
+-module_platform_driver(kbase_platform_driver);
++/*
++ * MDBG: replace module_platform_driver() with an explicit init so the
++ * flash crumb trail starts before the platform bus registration (which is
++ * where the CPU may die: driver_register -> probe on this board).
++ */
++
++static int __init kbase_driver_init_mdbg(void)
++{
++	int ret;
++
++	mdbg_crumb(60); /* module init entered */
++	ret = platform_driver_register(&kbase_platform_driver);
++	mdbg_crumb(61); /* platform_driver_register returned (may not be reached if the probe hangs inside it) */
++	return ret;
++}
++
++static void __exit kbase_driver_exit_mdbg(void)
++{
++	platform_driver_unregister(&kbase_platform_driver);
++}
++
++module_init(kbase_driver_init_mdbg);
++module_exit(kbase_driver_exit_mdbg);
+ #else
+ 
+ static int __init kbase_driver_init(void)
+diff --git a/drivers/gpu/arm/midgard/mdbg_crumb.c b/drivers/gpu/arm/midgard/mdbg_crumb.c
+new file mode 100644
+index 000000000000..659ecd394e41
+--- /dev/null
++++ b/drivers/gpu/arm/midgard/mdbg_crumb.c
+@@ -0,0 +1,98 @@
++// mdbg_crumb.c - flash-persistent breadcrumb recorder for the Mali probe.
++//
++// The module probe dies with the CPU: no console tail, no pstore, page
++// cache gone on the cold reset. This driver-side writer puts each
++// breadcrumb DIRECTLY on flash at miscdata+0xA0000 (a verified zero
++// scratch area of the production-data partition, see
++// scripts/device/write_crumb.sh), so the trail survives any reset.
++//
++// Layout: "CRUMB01" then one byte per step in order:
++//   0x00 magic[7]  ("CRUMB01")   written at registration
++//   0x07..        step bytes, one per mdbg_crumb(n) call, in call order
++//
++// It uses kernel_write() on the block device - the same path adb's dd
++// uses - so writes hit flash even when everything else is dead, and it
++// fsyncs the file each time. UFS: zeroing later erases.
++//
++// Why a separate module and not inside mali_kbase: the breadcrumbs must
++// exist from the very first instruction of mali's module init; a tiny
++// module with zero dependencies loads first, and mali_kbase calls into it
++// via mdbg_crumb() exported below. If THIS module fails to load, the
++// flash trail says so (magic missing entirely).
++
++#include <linux/module.h>
++#include <linux/fs.h>
++#include <linux/slab.h>
++#include <linux/uaccess.h>
++
++#define CRUMB_MAGIC "CRUMB01"
++#define CRUMB_MAGIC_LEN 7
++#define CRUMB_MAX 64
++
++static struct file *crumb_filp;
++static u8 crumb_buf[CRUMB_MAGIC_LEN + CRUMB_MAX];
++static int crumb_idx;
++
++static long crumb_off = 0xA0000;
++module_param(crumb_off, long, 0444);
++MODULE_PARM_DESC(crumb_off, "miscdata byte offset for the crumb area");
++
++static int __init mdbg_crumb_init(void)
++{
++	ssize_t n;
++	loff_t pos = crumb_off;
++
++	crumb_filp = filp_open("/dev/block/by-name/miscdata",
++			      O_RDWR | O_LARGEFILE, 0);
++	if (IS_ERR(crumb_filp)) {
++		pr_err("MDBG crumb: cannot open miscdata: %ld\n",
++		       PTR_ERR(crumb_filp));
++		crumb_filp = NULL;
++		return 0; /* not fatal for the experiment */
++	}
++
++	memset(crumb_buf, 0, sizeof(crumb_buf));
++	memcpy(crumb_buf, CRUMB_MAGIC, CRUMB_MAGIC_LEN);
++	crumb_idx = 0;
++
++	n = kernel_write(crumb_filp, crumb_buf, sizeof(crumb_buf), &pos);
++	vfs_fsync(crumb_filp, 0);
++	pr_info("MDBG crumb: armed at miscdata+%#llx (%zd bytes)\n",
++		(unsigned long long)crumb_off, n);
++	return 0;
++}
++
++static void __exit mdbg_crumb_exit(void)
++{
++	if (crumb_filp)
++		filp_close(crumb_filp, NULL);
++}
++
++/**
++ * mdbg_crumb - record breadcrumb step @step on flash.
++ * Called by the instrumented mali_kbase at every glue/DDK boundary.
++ * Safe against everything except a CPU stall *during* the write itself;
++ * each call writes just one byte, so the window is tiny.
++ */
++void mdbg_crumb(int step)
++{
++	ssize_t n;
++	loff_t off;
++	if (!crumb_filp || crumb_idx >= CRUMB_MAX)
++		return;
++
++	crumb_buf[CRUMB_MAGIC_LEN + crumb_idx] = (u8)step;
++	crumb_idx++;
++	off = crumb_off + CRUMB_MAGIC_LEN + crumb_idx - 1;
++	n = kernel_write(crumb_filp,
++			 crumb_buf + CRUMB_MAGIC_LEN + crumb_idx - 1, 1, &off);
++	vfs_fsync(crumb_filp, 0);
++	pr_info("MDBG crumb: step %d written (%zd)\n", step, n);
++}
++EXPORT_SYMBOL_GPL(mdbg_crumb);
++
++module_init(mdbg_crumb_init);
++module_exit(mdbg_crumb_exit);
++
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("flash-persistent breadcrumb recorder for hang probes");
+diff --git a/drivers/gpu/arm/midgard/mdbg_crumb.mk b/drivers/gpu/arm/midgard/mdbg_crumb.mk
+new file mode 100644
+index 000000000000..cdb2e1579830
+--- /dev/null
++++ b/drivers/gpu/arm/midgard/mdbg_crumb.mk
+@@ -0,0 +1,2 @@
++# mdbg_crumb: flash-persistent breadcrumb recorder for hang probes
++obj-m += mdbg_crumb.o
+diff --git a/drivers/gpu/arm/midgard/platform/qogirl6/mali_kbase_config_qogirl6.c b/drivers/gpu/arm/midgard/platform/qogirl6/mali_kbase_config_qogirl6.c
+index ddc954b09354..f18267ca10a2 100755
+--- a/drivers/gpu/arm/midgard/platform/qogirl6/mali_kbase_config_qogirl6.c
++++ b/drivers/gpu/arm/midgard/platform/qogirl6/mali_kbase_config_qogirl6.c
+@@ -43,6 +43,7 @@
+ #include <linux/of.h>
+ #include <linux/of_address.h>
+ #include <linux/regulator/consumer.h>
++extern void mdbg_crumb(int step);
+ #include <linux/nvmem-consumer.h>
+ #include <mali_kbase.h>
+ #include <mali_kbase_defs.h>
+@@ -126,6 +127,8 @@ struct gpu_dvfs_context {
+ 	struct regmap *gpu_apb_base_ptr;
+ 	struct regmap *gpu_dvfs_apb_base_ptr;
+ 
++	struct device *dev;
++
+ 	u32 gpu_binning;
+ };
+ 
+@@ -203,17 +206,29 @@ static inline void mali_freq_init(struct device *dev)
+ 	const char *auto_efuse = NULL;
+ 	struct regmap *topdvfs_controller_base_ptr;
+ 
++	dev_info(dev, "MDBG: freq_init: top-force-shutdown lookup\n");
++	mdbg_crumb(10);
+ 	gpu_dvfs_ctx.top_force_reg.regmap_ptr =
+ 		qogirl6_syscon_by_name(dev->of_node, "top-force-shutdown",
+ 				       gpu_dvfs_ctx.top_force_reg.args);
+ 	if (!gpu_dvfs_ctx.top_force_reg.regmap_ptr)
+ 		dev_err(dev, "mali: top-force-shutdown syscon is required\n");
++	dev_info(dev, "MDBG: freq_init: top-force regmap=%p args=%#x/%#x\n",
++		 gpu_dvfs_ctx.top_force_reg.regmap_ptr,
++		 gpu_dvfs_ctx.top_force_reg.args[0],
++		 gpu_dvfs_ctx.top_force_reg.args[1]);
+ 
+ 	/* Optional: GPU top power state monitor (absent on this board) */
++	dev_info(dev, "MDBG: freq_init: gpu_top_state lookup\n");
++	mdbg_crumb(11);
+ 	gpu_dvfs_ctx.gpu_top_state_reg.regmap_ptr =
+ 		qogirl6_syscon_by_name(dev->of_node, "gpu_top_state",
+ 				       gpu_dvfs_ctx.gpu_top_state_reg.args);
++	dev_info(dev, "MDBG: freq_init: gpu_top_state regmap=%p\n",
++		 gpu_dvfs_ctx.gpu_top_state_reg.regmap_ptr);
+ 
++	dev_info(dev, "MDBG: freq_init: topdvfs-controller lookup\n");
++	mdbg_crumb(12);
+ 	topdvfs_controller_base_ptr =
+ 		syscon_regmap_lookup_by_phandle(dev->of_node,
+ 						"topdvfs-controller");
+@@ -221,7 +236,11 @@ static inline void mali_freq_init(struct device *dev)
+ 		dev_err(dev, "mali: topdvfs-controller missing\n");
+ 		topdvfs_controller_base_ptr = NULL;
+ 	}
++	dev_info(dev, "MDBG: freq_init: topdvfs regmap=%p\n",
++		 topdvfs_controller_base_ptr);
+ 
++	dev_info(dev, "MDBG: freq_init: gpu-apb-syscon lookup\n");
++	mdbg_crumb(13);
+ 	gpu_dvfs_ctx.gpu_apb_base_ptr =
+ 		syscon_regmap_lookup_by_phandle(dev->of_node,
+ 						"sprd,gpu-apb-syscon");
+@@ -229,7 +248,11 @@ static inline void mali_freq_init(struct device *dev)
+ 		dev_err(dev, "mali: sprd,gpu-apb-syscon missing\n");
+ 		gpu_dvfs_ctx.gpu_apb_base_ptr = NULL;
+ 	}
++	dev_info(dev, "MDBG: freq_init: gpu_apb regmap=%p\n",
++		 gpu_dvfs_ctx.gpu_apb_base_ptr);
+ 
++	dev_info(dev, "MDBG: freq_init: gpu-dvfs-apb-syscon lookup\n");
++	mdbg_crumb(14);
+ 	gpu_dvfs_ctx.gpu_dvfs_apb_base_ptr =
+ 		syscon_regmap_lookup_by_phandle(dev->of_node,
+ 						"sprd,gpu-dvfs-apb-syscon");
+@@ -237,6 +260,8 @@ static inline void mali_freq_init(struct device *dev)
+ 		dev_err(dev, "mali: sprd,gpu-dvfs-apb-syscon missing\n");
+ 		gpu_dvfs_ctx.gpu_dvfs_apb_base_ptr = NULL;
+ 	}
++	dev_info(dev, "MDBG: freq_init: gpu_dvfs_apb regmap=%p\n",
++		 gpu_dvfs_ctx.gpu_dvfs_apb_base_ptr);
+ 
+ 	/* DCDC_MM_DVFS_VOLTAGE_VALUE1 */
+ 	gpu_dvfs_ctx.dvfs_voltage_value1.regmap_ptr = topdvfs_controller_base_ptr;
+@@ -347,18 +372,29 @@ static inline void mali_freq_init(struct device *dev)
+ 		MASK_GPU_DVFS_APB_RF_GPU_CORE_VOL_INDEX7;
+ 
+ 	/* Speed bin (optional) */
++	dev_info(dev, "MDBG: freq_init: gpu_bin nvmem read\n");
++	mdbg_crumb(15);
+ 	ret = sprd_gpu_cal_read(dev->of_node, "gpu_bin",
+ 				&gpu_dvfs_ctx.gpu_binning);
+ 	if (ret)
+ 		dev_warn(dev, "mali: gpu_bin nvmem cell read failed: %d\n", ret);
++	dev_info(dev, "MDBG: freq_init: gpu_binning=%u\n",
++		 gpu_dvfs_ctx.gpu_binning);
+ 
++	dev_info(dev, "MDBG: freq_init: of_clk_get 0..3\n");
++	mdbg_crumb(16);
+ 	gpu_dvfs_ctx.clk_gpu_i = of_clk_get(dev->of_node, 0);
+ 	gpu_dvfs_ctx.clk_gpu_core_eb = of_clk_get(dev->of_node, 1);
+ 	gpu_dvfs_ctx.clk_gpu_mem_eb = of_clk_get(dev->of_node, 2);
+ 	gpu_dvfs_ctx.clk_gpu_sys_eb = of_clk_get(dev->of_node, 3);
++	dev_info(dev, "MDBG: freq_init: clks i=%pd core=%pd mem=%pd sys=%pd\n",
++		 gpu_dvfs_ctx.clk_gpu_i, gpu_dvfs_ctx.clk_gpu_core_eb,
++		 gpu_dvfs_ctx.clk_gpu_mem_eb, gpu_dvfs_ctx.clk_gpu_sys_eb);
+ 
+ 	clk_cnt = of_clk_get_parent_count(dev->of_node);
+ 	gpu_dvfs_ctx.gpu_clk_num = clk_cnt - DTS_CLK_OFFSET;
++	dev_info(dev, "MDBG: freq_init: clk_cnt=%d src=%d\n",
++		 clk_cnt, gpu_dvfs_ctx.gpu_clk_num);
+ 	if (gpu_dvfs_ctx.gpu_clk_num <= 0) {
+ 		dev_err(dev, "mali: malformed clocks property (%d)\n", clk_cnt);
+ 		gpu_dvfs_ctx.gpu_clk_num = 0;
+@@ -375,6 +411,9 @@ static inline void mali_freq_init(struct device *dev)
+ 	for (i = 0; i < gpu_dvfs_ctx.gpu_clk_num; i++)
+ 		gpu_dvfs_ctx.gpu_clk_src[i] =
+ 			of_clk_get(dev->of_node, i + DTS_CLK_OFFSET);
++	dev_info(dev, "MDBG: freq_init: %u src clocks fetched\n",
++		 gpu_dvfs_ctx.gpu_clk_num);
++	mdbg_crumb(17);
+ 
+ 	gpu_dvfs_ctx.freq_list_len = of_property_count_elems_of_size(
+ 		dev->of_node, "sprd,dvfs-lists", 4 * sizeof(u32));
+@@ -494,20 +533,30 @@ static bool mali_top_pwr_state_check(void)
+ 
+ static inline void mali_power_on(void)
+ {
+-	if (!gpu_dvfs_ctx.top_force_reg.regmap_ptr)
++	if (!gpu_dvfs_ctx.top_force_reg.regmap_ptr) {
++		dev_info(gpu_dvfs_ctx.dev, "MDBG: power_on: no top_force regmap, skip\n");
+ 		return;
++	}
+ 
++	dev_info(gpu_dvfs_ctx.dev, "MDBG: power_on: top_force write enter\n");
++	mdbg_crumb(22);
+ 	regmap_update_bits(gpu_dvfs_ctx.top_force_reg.regmap_ptr,
+ 			   gpu_dvfs_ctx.top_force_reg.args[0],
+ 			   gpu_dvfs_ctx.top_force_reg.args[1],
+ 			   ~gpu_dvfs_ctx.top_force_reg.args[1]);
++	dev_info(gpu_dvfs_ctx.dev, "MDBG: power_on: top_force write done\n");
++	mdbg_crumb(23);
+ 
+ 	udelay(100);
+ 
++	dev_info(gpu_dvfs_ctx.dev, "MDBG: power_on: top_pwr_state_check enter\n");
++	mdbg_crumb(24);
+ 	if (!mali_top_pwr_state_check()) {
+ 		pr_err("mali: gpu top not power on\n");
+ 		WARN_ON(1);
+ 	}
++	dev_info(gpu_dvfs_ctx.dev, "MDBG: power_on: top_pwr_state_check done\n");
++	mdbg_crumb(25);
+ 
+ 	gpu_dvfs_ctx.gpu_power_on = 1;
+ }
+@@ -563,17 +612,30 @@ static inline void mali_clock_on(void)
+ 	hwf = of_find_node_by_path("/hwfeature/auto");
+ 	if (hwf)
+ 		auto_efuse = (char *)of_get_property(hwf, "efuse", NULL);
++	mdbg_crumb(27);
++	dev_info(gpu_dvfs_ctx.dev, "MDBG: clock_on: efuse=%s\n",
++		 auto_efuse ? auto_efuse : "(none)");
+ 
+-	for (i = 0; i < gpu_dvfs_ctx.gpu_clk_num; i++)
++	for (i = 0; i < gpu_dvfs_ctx.gpu_clk_num; i++) {
++		dev_info(gpu_dvfs_ctx.dev, "MDBG: clock_on: src[%d] enable\n", i);
++		mdbg_crumb(28 + (i & 7));
+ 		qogirl6_clk_enable(gpu_dvfs_ctx.gpu_clk_src[i]);
+-
++	}
++	dev_info(gpu_dvfs_ctx.dev, "MDBG: clock_on: gate enables (i/core/mem/sys)\n");
++	mdbg_crumb(36);
+ 	qogirl6_clk_enable(gpu_dvfs_ctx.clk_gpu_i);
+ 	qogirl6_clk_enable(gpu_dvfs_ctx.clk_gpu_core_eb);
+ 	qogirl6_clk_enable(gpu_dvfs_ctx.clk_gpu_mem_eb);
+ 	qogirl6_clk_enable(gpu_dvfs_ctx.clk_gpu_sys_eb);
++	dev_info(gpu_dvfs_ctx.dev, "MDBG: clock_on: gate enables done\n");
++	mdbg_crumb(37);
+ 	udelay(200);
+ 
++	dev_info(gpu_dvfs_ctx.dev, "MDBG: clock_on: top_pwr_state_check\n");
++	mdbg_crumb(38);
+ 	mali_top_pwr_state_check();
++	dev_info(gpu_dvfs_ctx.dev, "MDBG: clock_on: top_pwr_state_check done\n");
++	mdbg_crumb(39);
+ 
+ 	/*
+ 	 * The max GPLL source needs to be trimmed on T606/T612 (650 MHz) and
+@@ -638,18 +700,26 @@ static inline void mali_clock_on(void)
+ 	}
+ 
+ 	/* program the DVFS update path and select the boot frequency */
++	dev_info(gpu_dvfs_ctx.dev, "MDBG: clock_on: freq_upd_cfg write\n");
++	mdbg_crumb(40);
+ 	if (gpu_dvfs_ctx.freq_upd_cfg.regmap_ptr)
+ 		regmap_update_bits(gpu_dvfs_ctx.freq_upd_cfg.regmap_ptr,
+ 				   gpu_dvfs_ctx.freq_upd_cfg.args[0],
+ 				   gpu_dvfs_ctx.freq_upd_cfg.args[1], 1);
+ 
++	dev_info(gpu_dvfs_ctx.dev, "MDBG: clock_on: dvfs_index_cfg write\n");
++	mdbg_crumb(41);
+ 	if (gpu_dvfs_ctx.dvfs_index_cfg.regmap_ptr && gpu_dvfs_ctx.freq_list_len)
+ 		regmap_update_bits(gpu_dvfs_ctx.dvfs_index_cfg.regmap_ptr,
+ 				   gpu_dvfs_ctx.dvfs_index_cfg.args[0],
+ 				   gpu_dvfs_ctx.dvfs_index_cfg.args[1],
+ 				   gpu_dvfs_ctx.freq_list[gpu_dvfs_ctx.cur_index].dvfs_index);
+ 
++	dev_info(gpu_dvfs_ctx.dev, "MDBG: clock_on: qos_config\n");
++	mdbg_crumb(42);
+ 	mali_qos_config();
++	dev_info(gpu_dvfs_ctx.dev, "MDBG: clock_on: done\n");
++	mdbg_crumb(43);
+ 
+ 	gpu_dvfs_ctx.gpu_clock_on = 1;
+ }
+@@ -671,10 +741,20 @@ static inline void mali_clock_off(void)
+ 
+ static int mali_platform_init(struct kbase_device *kbdev)
+ {
++	dev_info(kbdev->dev, "MDBG: platform_init enter\n");
++	mdbg_crumb(20);
++	gpu_dvfs_ctx.dev = kbdev->dev;
++
+ 	mali_freq_init(kbdev->dev);
++	dev_info(kbdev->dev, "MDBG: platform_init: freq_init done\n");
++	mdbg_crumb(21);
+ 
+ 	mali_power_on();
++	dev_info(kbdev->dev, "MDBG: platform_init: power_on done\n");
++	mdbg_crumb(26);
++
+ 	mali_clock_on();
++	dev_info(kbdev->dev, "MDBG: platform_init: clock_on done\n");
+ 
+ 	return 0;
+ }
+-- 
+2.47.3
+

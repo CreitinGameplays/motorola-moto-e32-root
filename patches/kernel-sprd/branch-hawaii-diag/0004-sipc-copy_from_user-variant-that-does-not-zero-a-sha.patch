@@ -1,7 +1,7 @@
 From b937d31a80398c4a0c9919713a2973444913a7c2 Mon Sep 17 00:00:00 2001
 From: Creitin Gameplays <clton999@outlook.com>
 Date: Sun, 1 Nov 2026 14:31:17 +0000
-Subject: [PATCH 4/7] sipc: copy_from_user() variant that does not zero a
+Subject: [PATCH 04/17] sipc: copy_from_user() variant that does not zero a
  shared-memory tail
 
 The generic copy_from_user() zero-fills the remainder of a partially copied buffer, which corrupts the SIPC shared memory block; sbuf_copy_from_user() only copies and returns the residual count.

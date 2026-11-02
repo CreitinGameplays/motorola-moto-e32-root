@@ -1,7 +1,7 @@
 From 270faf94f53ec2701ed0e791e661069520b85234 Mon Sep 17 00:00:00 2001
 From: Creitin Gameplays <clton999@outlook.com>
 Date: Sun, 1 Nov 2026 14:31:14 +0000
-Subject: [PATCH 2/7] sprd: build fixes for the OSS drop
+Subject: [PATCH 02/17] sprd: build fixes for the OSS drop
 
 devfreq/sprd and staging/sprd/sfp need -I$(src) because their trace/header includes are directory-relative; vhost_vring_ioctl() takes an unsigned int cmd, as the forwarded ioctl() prototype does in this tree.
 ---

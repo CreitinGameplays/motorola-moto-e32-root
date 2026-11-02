@@ -1,0 +1,26 @@
+From 5d41451d7d10e3dedbba5e1fda23f875ec520f44 Mon Sep 17 00:00:00 2001
+From: Creitin Gameplays <clton999@outlook.com>
+Date: Sun, 1 Nov 2026 23:42:04 +0000
+Subject: [PATCH 13/17] gitignore: local AVB tooling and packaged boot images
+
+---
+ .gitignore | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/.gitignore b/.gitignore
+index 5cda3c7fbb23..0374c0f300cc 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -140,3 +140,9 @@ kernel/configs/android-*.cfg
+ /phone.config
+ /reconstructed_release.config
+ /reconstructed_release_diff_config
++
++# Local AVB tooling and packaged boot images (never publish keys).
++/avb-test-key.pem
++/avbtool.py
++/boot_*.img
++/qemu*.log
+-- 
+2.47.3
+
