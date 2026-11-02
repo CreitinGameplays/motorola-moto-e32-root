@@ -20,10 +20,12 @@
 param(
     [Parameter(Mandatory = $true)][string]$Ko,
     [string]$Adb = 'D:\AndroidSDKTools\adb\adb.exe',
-    [string]$Src = "$PSScriptRoot\..\..\artifacts\mali-module"
+    [string]$Src = "artifacts\mali-module"
 )
 
 $ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$Src = Join-Path $repoRoot $Src
 if (-not (Test-Path $Ko)) { throw "module not found: $Ko" }
 $modDir = '/data/adb/modules/mali-kbase-custom'
 $koHash = (Get-FileHash $Ko -Algorithm SHA256).Hash.ToLower()
@@ -50,7 +52,7 @@ foreach ($f in @('module.prop', 'post-fs-data.sh')) {
 (& $Adb push $Ko '/data/local/tmp/mali_mod.ko' | Out-Null)
 Sh "su -c 'cp /data/local/tmp/mali_mod.ko $modDir/mali_kbase.ko && chmod 644 $modDir/mali_kbase.ko && rm /data/local/tmp/mali_mod.ko'" | Out-Null
 
-$devHash = (Sh "su -c 'sha256sum $modDir/mali_kbase.ko'" -split '\s+')[0].ToLower()
+$devHash = (Sh "su -c 'sha256sum $modDir/mali_kbase.ko'").Split(" ")[0].ToLower()
 if ($devHash -ne $koHash) { throw "staged .ko hash mismatch: $devHash" }
 
 Sh "su -c 'touch $modDir/update; rm -f $modDir/disable $modDir/remove'" | Out-Null
