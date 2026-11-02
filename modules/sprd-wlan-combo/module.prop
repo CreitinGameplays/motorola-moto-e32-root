@@ -1,0 +1,6 @@
+id=sprd-wlan-combo
+name=Unisoc SC2355 WLAN (in-tree sprd_wlan_combo)
+version=1.0
+versionCode=1
+author=moto-e32-kernel
+description=Loads the in-tree SC2355 combo WLAN driver at post-fs-data, right after the Mali module. The vendor sprdwl_ng.ko cannot load against this kernel (module_layout CRC mismatch); this is the same sprdwl driver family ported in-tree (sources from the Unisoc 2021-2022 GPL drop, as maintained by mu300-linux), binding to the in-tree WCN bus (marlin/sdiohal). Requires the matching custom kernel build (sprd_wlan_power_status_sync export).

@@ -102,7 +102,7 @@ For the rest the options are:
    - Kbuild: SC2355 + SDIO **and** PCIE objects are linked (the calls
      are guarded by runtime `hw_type == SPRD_HW_SC2355_PCIE` checks;
      dropping pcie.o left 29 undefined symbols)
-   - Magisk module skeleton: `artifacts/wlan-module/` (loads at
+   - Magisk module skeleton: `modules/sprd-wlan-combo/` (loads at
      post-fs-data after the Mali module; logs to
      `/data/local/tmp/wlan_module_load.log`), installer
      `scripts/host/install_wlan_magisk_module.ps1`

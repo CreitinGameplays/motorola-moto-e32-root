@@ -1,0 +1,45 @@
+# WiFi WORKING (2026-11-02 16:19): in-tree SC2355 driver, HAL gates solved
+
+End state on the phone (custom kernel #57, wlan netdev **connected**):
+
+    21: wlan0: <BROADCAST,MULTICAST,UP,LOWER_UP> ... state UP
+    SSID: Familia Santos, supplicant COMPLETED, Wi-Fi 4,
+    link 150 Mbps, RSSI -49
+    wlan.driver.status = ok
+    /proc/modules: sprdwl_ng 708608 0 - Live
+
+## What the WiFi bring-up took (three gates)
+
+1. **Kernel module** - the SC2355 combo WLAN driver ported in-tree
+   (`drivers/net/wireless/sprd_wlan/`, from the mu300-linux-maintained
+   Unisoc 2021-2022 GPL drop, ~25 compile fixes for 4.14; full list in
+   docs/17). Builds as `sprdwl_ng.ko` (see gate 3).
+2. **DT compatible** - the phone's DT advertises `sprd,sc2355-wifi`
+   (generic), mu300's table only had `-pcie/-sdio/-sipc` variants; added
+   the generic compatible mapping to the SDIO variant and routed
+   `SPRD_HW_SC2355_SDIO` through `sc2355_sdio_probe()` in
+   `sprd_wlan_probe` (mu300 only ever routed PCIe).
+3. **The vendor HAL contract** (libwifi-hal.so, reversed with capstone):
+   `is_wifi_driver_loaded()` requires BOTH
+   - `property_get("wlan.driver.status") == "ok"` - set by our
+     post-fs-data after insmod, AND
+   - a `/proc/modules` line starting with `sprdwl_ng` - satisfied by
+     naming the module `sprdwl_ng` (Kbuild `obj-m := sprdwl_ng.o`),
+     exactly like the vendor's module.
+   Otherwise the HAL runs `finit_module("/mnt/vendor/socko/sprdwl_ng.ko")`
+   (fails, Exec format error) and sets the property to "unloaded".
+
+## Modules on the phone now
+
+- `/data/adb/modules/mali-kbase-custom/` - mali_kbase_prod.ko (GPU)
+- `/data/adb/modules/sprd-wlan-combo/` - sprdwl_ng.ko
+  (`e7f5c376...9ba6`), post-fs-data.sh with the setprop
+
+The Magisk module skeletons are TRACKED in the analysis repo under
+`modules/` (they were previously under gitignored artifacts/ - fixed).
+
+## Remaining from the module-failure list
+
+- camera stack, BT/FM, SAR sensor - same route (mu300 keeps `sprdbt_tty`
+  for BT; camera sources still unlocated)
+- `incrementalfs` - in-tree, needs a Magisk module

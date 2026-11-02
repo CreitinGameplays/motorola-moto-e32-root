@@ -3,8 +3,8 @@
     Install the SC2355 WLAN combo Magisk module on the connected device.
 
 .DESCRIPTION
-    Packages artifacts/wlan-module (module.prop + post-fs-data.sh) plus the
-    proven sprd_wlan_combo.ko into /data/adb/modules/sprd-wlan-combo via adb
+    Packages modules/sprd-wlan-combo (module.prop + post-fs-data.sh) plus the
+    proven sprdwl_ng.ko into /data/adb/modules/sprd-wlan-combo via adb
     root (no zip round-trip needed). The module insmods the GPU driver at
     post-fs-data on every boot of the custom kernel.
 
@@ -14,13 +14,13 @@
     useless on the stock kernel (vendor sprdwl_ng is already loaded).
 
 .EXAMPLE
-    .\scripts\host\install_wlan_magisk_module.ps1 -Ko artifacts\kernel-build\sprd_wlan_combo.ko
+    .\scripts\host\install_wlan_magisk_module.ps1 -Ko artifacts\kernel-build\sprdwl_ng.ko
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$Ko,
     [string]$Adb = 'D:\AndroidSDKTools\adb\adb.exe',
-    [string]$Src = "artifacts\wlan-module"
+    [string]$Src = "modules\sprd-wlan-combo"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,9 +51,9 @@ foreach ($f in @('module.prop', 'post-fs-data.sh')) {
     Sh "su -c 'cp /data/local/tmp/wlan_mod_$f $modDir/$f && chmod 755 $modDir/$f && rm /data/local/tmp/wlan_mod_$f'" | Out-Null
 }
 (& $Adb push $Ko '/data/local/tmp/wlan_mod.ko' | Out-Null)
-Sh "su -c 'cp /data/local/tmp/wlan_mod.ko $modDir/sprd_wlan_combo.ko && chmod 644 $modDir/sprd_wlan_combo.ko && rm /data/local/tmp/wlan_mod.ko'" | Out-Null
+Sh "su -c 'cp /data/local/tmp/wlan_mod.ko $modDir/sprdwl_ng.ko && chmod 644 $modDir/sprdwl_ng.ko && rm /data/local/tmp/wlan_mod.ko'" | Out-Null
 
-$devHash = (Sh "su -c 'sha256sum $modDir/sprd_wlan_combo.ko'").Split(" ")[0].ToLower()
+$devHash = (Sh "su -c 'sha256sum $modDir/sprdwl_ng.ko'").Split(" ")[0].ToLower()
 if ($devHash -ne $koHash) { throw "staged .ko hash mismatch: $devHash" }
 
 Sh "su -c 'touch $modDir/update; rm -f $modDir/disable $modDir/remove'" | Out-Null

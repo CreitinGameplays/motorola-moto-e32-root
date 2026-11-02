@@ -1,0 +1,44 @@
+# WiFi first boot + probe-routing fix (2026-11-02 15:36)
+
+## First custom-kernel + wlan boot: success at the kernel level
+
+`boot_wifi_magisk.img` (`f9726265...eaee`, kernel `Image.wifi`
+`85708ea8...65ad`, #57): dd'd, read-back verified, one attempt armed,
+rebooted. **Android completed boot on the new kernel** (t+60 s,
+`boot_completed=1`), pstore captured (32756 bytes), and:
+
+- `mali_kbase` loaded (417792 B) - GPU stack unaffected
+- **`sprd_wlan_combo` loaded** (708608 B, Live, insmod rc=0) - the module
+  links, resolves the built-in WCN export, and loads cleanly
+- marlin/SDIO bus came up and **powered the SC2355**:
+  `chipid=2355b001`, firmware `sc2355_marlin3_lite MARLIN3_20A_W22.01.5`
+  downloaded from `wcnmodem` and ran (`marlin download finished and run ok`),
+  then auto-powered-off (`WCN_AUTO power 0`) waiting for a client.
+
+## But wlan0 was not registered
+
+`ip link show wlan0`: "Device does not exist", and the only wlan dmesg lines
+are the vendor's failing `sprdwl_ng` insmods. The module insmods, but its
+platform driver never probes. Cause (found on the live device):
+
+    /proc/device-tree/sprd-wlan/compatible = "sprd,sc2355-wifi"
+
+The phone's DT uses the **generic** `sprd,sc2355-wifi` compatible; the
+mu300 driver only lists `sprd,sc2355-{pcie,sdio,sipc}-wifi`. So
+`platform_driver_register` found the node but no match -> no probe.
+
+## Fixes (built, staged)
+
+1. `wlan_global_match_table` now includes
+   `{ .compatible = "sprd,sc2355-wifi", .data = &g_sc2355_sdio_data }`
+   (kept the `-sdio-wifi` variant too).
+2. `sprd_wlan_probe` only routed PCIe (mu300 builds are PCIe); now it
+   also routes `SPRD_HW_SC2355_SDIO` to `sc2355_sdio_probe()` - the
+   variant this board needs - with `pcie_probe` kept for the mu300 case.
+3. The sc2355/sdio.c sub-driver keeps its own match table
+   (`sprd,sc2355-sdio-wifi`); our probe at the sprd_wlan level calls it
+   directly, so the compatible difference does not matter for the second
+   level.
+
+Kernel Image is unchanged (all fixes are module-side), so no re-flash of
+boot_b is needed - only the new .ko restaged into the Magisk module.

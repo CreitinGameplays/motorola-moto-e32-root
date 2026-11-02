@@ -1,0 +1,46 @@
+﻿
+========================================================================
+boot_b test, 2026-11-02 15:36:53
+image : artifacts/kernel-build/boot_wifi_magisk.img
+        67108864 bytes, sha256 F9726265127EDD0620CE69829FE7CBDB0E867A5C8E06F66E692F4C56E4FAEAEE
+========================================================================
+--- pre-flight ---
+slot            : _b
+running kernel  : Linux version 4.14.199+ (debian@vm) (clang version 11.0.1 (https://github.com/llvm/llvm-project.git 76c0092665867a6defcd328ba0d0d976eb65d991), LLD 11.0.1 (https://github.com/llvm/llvm-project.git 76c0092665867a6defcd328ba0d0d976eb65d991)) #56 SMP PREEMPT Mon Nov 2 02:09:40 UTC 2026
+root uid        : 0
+SELinux         : Enforcing
+boot_a rescue   : fc3ca0efd6414d4f5d24c478b1592ea1ba9386f1476883a0bd8a1b8b1a3844c0
+--- stage one-attempt helper ---
+adb.exe : C:\Users\Creitin\moto-root-test\scripts\device\set_slot_b_tries1.sh: 1 file pushed, 0 skipped. 0.8 MB/s 
+(1981 bytes in 0.002s)
+At C:\Users\Creitin\moto-root-test\scripts\host\run_boot_b_test.ps1:120 char:16
++ ... lperPush = (& $Adb push $helperPath '/data/local/tmp/set_slot_b_tries ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\Creiti...ytes in 0.002s):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+helper sha256   : 547d157a7f4641c68b76fe093c13a2c2c25a5a6d199bc742f82a947c438a5450
+--- push ---
+pushed sha256   : f9726265127edd0620ce69829fe7cbdb0e867a5c8e06f66e692f4c56e4faeaee
+--- flash boot_b (root) ---
+attempt 1 : adb.exe : 64+0 records in | At C:\Users\Creitin\moto-root-test\scripts\host\run_boot_b_test.ps1:69 char:30 | + function Sh([string]$cmd) { (& $Adb shell $cmd 2>&1 | Out-String).Tri ... | +                              ~~~~~~~~~~~~~~~~~~~~~~ |     + CategoryInfo          : NotSpecified: (64+0 records in:String) [], RemoteException |     + FullyQualifiedErrorId : NativeCommandError |   | 64+0 records out | 67108864 bytes (64 M) copied, 0.575102 s, 111 M/s | f9726265127edd0620ce69829fe7cbdb0e867a5c8e06f66e692f4c56e4faeaee
+read-back match : YES
+--- one-attempt slot b ---
+attempt 1 : uid=0 | before: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 9f 00 |  00 00 00 00 00 00 00 00 00 00 00 00 53 6d d6 a3 | block 32 bytes | after: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 1f 00 |  00 00 00 00 00 00 00 00 00 00 00 00 b1 82 a5 20 | AB_TRIES1_OK
+--- reboot ---
+reboot issued at 15:36:56
+t+   4s  absent
+t+  50s  device
+t+  50s  _b 36.65 239.32
+t+  54s  _b 39.87 254.98
+t+  57s  _b 43.03 271.06
+t+  60s  1 _b 46.20 283.01
+
+VERDICT: RESET  (adb back after 60s)
+  => the device reset and Android returned
+pstore capture  : console-ramoops-0 (32756 bytes) -> C:\Users\Creitin\moto-root-test\artifacts\kernel-build\pstore-20261102-153756\console-ramoops-0
+pstore capture  : dmesg-ramoops-0 (0 bytes) -> C:\Users\Creitin\moto-root-test\artifacts\kernel-build\pstore-20261102-153756\dmesg-ramoops-0
+pstore capture  : pmsg-ramoops-0 (1917 bytes) -> C:\Users\Creitin\moto-root-test\artifacts\kernel-build\pstore-20261102-153756\pmsg-ramoops-0
+nonempty pstore record captured: YES
+post-reset state:
+5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 9f 00
+ 00 00 00 00 00 00 00 00 00 00 00 00 53 6d d6 a3

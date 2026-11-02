@@ -169,7 +169,8 @@ Stage the modules once (they survive reboots):
 .\scripts\host\install_wlan_magisk_module.ps1 -Ko artifacts\kernel-build\sprd_wlan_combo.ko
 ```
 
-Each installs `module.prop` + `post-fs-data.sh` + the `.ko` under
+Each installs `module.prop` + `post-fs-data.sh` (from the tracked
+`modules/<id>/` skeletons) + the `.ko` under
 `/data/adb/modules/<id>/`; on the next boot init runs them at
 post-fs-data, `insmod`s the module, and logs to
 `/data/local/tmp/<id>_module_load.log`.

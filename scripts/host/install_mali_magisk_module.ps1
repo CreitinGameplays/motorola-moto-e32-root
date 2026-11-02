@@ -3,7 +3,7 @@
     Install the Mali kbase Magisk module on the connected device.
 
 .DESCRIPTION
-    Packages artifacts/mali-module (module.prop + post-fs-data.sh) plus the
+    Packages modules/mali-kbase-custom (module.prop + post-fs-data.sh) plus the
     proven mali_kbase.ko into /data/adb/modules/mali-kbase-custom via adb
     root (no zip round-trip needed). The module insmods the GPU driver at
     post-fs-data on every boot of the custom kernel.
@@ -20,7 +20,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$Ko,
     [string]$Adb = 'D:\AndroidSDKTools\adb\adb.exe',
-    [string]$Src = "artifacts\mali-module"
+    [string]$Src = "modules\mali-kbase-custom"
 )
 
 $ErrorActionPreference = 'Stop'

@@ -1,0 +1,6 @@
+id=mali-kbase-custom
+name=Mali kbase (in-tree r28p0-01eac0, qogirl6 glue)
+version=1.0
+versionCode=1
+author=moto-e32-kernel
+description=Loads the in-tree built mali_kbase.ko at post-fs-data. The vendor module cannot load against this kernel (__crc_module_layout mismatch). The DDK's own power_control_init is skipped (qogirl6) because enabling aonapb-gate#9 aborts; the platform glue owns clocks/regulators, like the vendor module. Proven on hardware: Probed as mali0, Android completes boot with surfaceflinger running.
