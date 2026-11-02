@@ -106,6 +106,9 @@ docs/
   14-brom-recovery-runbook.md  bootROM recovery runbook
   15-play-integrity.md      Magisk root + Play Integrity work log (BASIC pass)
   16-magisk-root-how-to.md step-by-step persistent Magisk root on this device
+  17-vendor-module-rebuilds.md  WiFi/camera/incrementalfs on the custom
+                            kernel: which vendor modules fail, source
+                            availability, and the rebuild plan
   evidence/                 captured successful-run logs
 patches/
   kernel-sprd/              the measured header delta (git patch) + the
@@ -328,6 +331,9 @@ hardening and measured reliability are in `docs/04-reliability-hardening.md`.
   stack, Play Integrity verdicts (BASIC passes, DEVICE still open)
 - `docs/16-magisk-root-how-to.md` - step-by-step persistent Magisk root on
   this device (patch, AVB re-sign, `dd` to `boot_b`, verify)
+- `docs/17-vendor-module-rebuilds.md` - WiFi/camera on the custom kernel:
+  which vendor modules fail to load (`module_layout` CRC mismatch), where
+  their sources might come from, and the rebuild order
 - `docs/evidence/` - captured successful-run logs, fastboot recon and the
   kernel bring-up evidence (Mali abort root-cause, fix, autoload success)
 
