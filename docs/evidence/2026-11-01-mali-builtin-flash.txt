@@ -1,0 +1,66 @@
+﻿flash boot_b, 2026-11-01 22:43:25
+image   : artifacts/kernel-build/boot_mali_magisk.img
+          67108864 bytes, sha256 BC2B79982C6C8D9B3EFFA49EDA7E42728CDDF2F25D77C7645E86AE4F19824D65
+device  : ZF523X9NXW
+
+===== 1. pre-flight (stock state) =====
+    /proc/version: Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020) (Android (6443078 based on r383902) clang version 11.0.1 (https://android.googlesource.com/toolchain/llvm-project b397f81060ce6d701042b782172ed13bee898b79), LLD 11.0.1 (/buildbot/tmp/tmp6_m7QH b397f81060ce6d701042b782172ed13bee898b79)) #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024
+    slot: _b
+    flash.locked: 1
+    verifiedbootstate: green
+
+===== 2. reboot into the real bootloader =====
+    fastboot.exe : is-userspace: no At C:\Users\Creitin\moto-root-test\scripts\host\flash_boot_b.ps1:75 char:9 + $us = ((& $Fastboot getvar is-userspace 2>&1 | Out-String) -replace ' ... + ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ + CategoryInfo : NotSpecified: (is-userspace: no:String) [], RemoteException + FullyQualifiedErrorId : NativeCommandError Finished. Total time: 0.011s
+    fastboot.exe : current-slot: b At C:\Users\Creitin\moto-root-test\scripts\host\flash_boot_b.ps1:76 char:11 + $slot = ((& $Fastboot getvar current-slot 2>&1 | Out-String) -replace ... + ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ + CategoryInfo : NotSpecified: (current-slot: b:String) [], RemoteException + FullyQualifiedErrorId : NativeCommandError Finished. Total time: 0.014s
+    fastboot.exe : partition-size:boot_b: 0x4000000 At C:\Users\Creitin\moto-root-test\scripts\host\flash_boot_b.ps1:77 char:12 + $psize = ((& $Fastboot getvar partition-size:boot_b 2>&1 | Out-String ... + ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ + CategoryInfo : NotSpecified: (partition-size:boot_b: 0x4000000:String) [], RemoteException + FullyQualifiedErrorId : NativeCommandError Finished. Total time: 0.013s
+    partition size: 67108864 bytes, image: 67108864 bytes
+
+===== 3. fastboot flash boot_b =====
+    Sending 'boot_b' (65536 KB)                        OKAY [  1.568s]
+    Writing 'boot_b'                                   (bootloader) Please verify the signature!
+    FAILED (remote: 'Please verify the signature!')
+    fastboot: error: Command failed
+    (flash took 1.7 s)
+
+===== 4. re-read the partition and compare the hash =====
+    sending the device back to Android...
+    Rebooting                                          OKAY [  0.012s]
+    Finished. Total time: 0.012s
+    adb is up
+    read-back: ccd0faff51ab24d921b2671c562f0fe08e7a1ba2b7f19bb93a5f2650eb4f7b18  /data/local/tmp/bootb_check.img
+    [!] read-back hash CCD0FAFF51AB24D921B2671C562F0FE08E7A1BA2B7F19BB93A5F2650EB4F7B18 differs from BC2B79982C6C8D9B3EFFA49EDA7E42728CDDF2F25D77C7645E86AE4F19824D65
+
+===== 5. running kernel =====
+    /proc/version : Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020) (Android (6443078 based on r383902) clang version 11.0.1 (https://android.googlesource.com/toolchain/llvm-project b397f81060ce6d701042b782172ed13bee898b79), LLD 11.0.1 (/buildbot/tmp/tmp6_m7QH b397f81060ce6d701042b782172ed13bee898b79)) #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024
+    /proc/uptime  : 26.65 114.30
+    slot          : _b
+    boot.git      : 
+
+===== 6. KVM / modules / dmesg =====
+    /dev/kvm      : ls: /dev/kvm: No such file or directory
+    /proc/modules :
+sprdwl_ng 409600 0 - Live 0x0000000000000000 (O)
+flash_ic_ocp8135b 24576 0 - Live 0x0000000000000000 (O)
+sprd_sdio_fm 81920 0 - Live 0x0000000000000000 (O)
+sprdbt_sdio_tty 53248 0 - Live 0x0000000000000000 (O)
+mali_kbase 757760 19 - Live 0x0000000000000000 (O)
+aw9610x_sar 61440 0 - Live 0x0000000000000000 (O)
+sprd_fd 45056 0 - Live 0x0000000000000000 (O)
+mmdvfs 176128 0 - Live 0x0000000000000000 (O)
+sprd_cpp 94208 0 - Live 0x0000000000000000 (O)
+sprd_camera 1683456 1 sprd_fd, Live 0x0000000000000000 (O)
+sprd_flash_drv 20480 2 flash_ic_ocp8135b,sprd_camera, Live 0x0000000000000000 (O)
+sprd_sensor 118784 1 sprd_camera, Live 0x0000000000000000 (O)
+incrementalfs 69632 0 - Live 0x0000000000000000
+    dmesg errors  :
+adb.exe : /system/bin/sh: fail: inaccessible or not found
+At C:\Users\Creitin\moto-root-test\scripts\host\flash_boot_b.ps1:151 char:7
++ Log ((& $Adb shell 'dmesg 2>/dev/null | grep -iE "error|fail|panic|un ...
++       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (/system/bin/sh:...le or not found:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+/system/bin/sh: panic: inaccessible or not found
+/system/bin/sh: unable: inaccessible or not found
+/system/bin/sh: invalid: inaccessible or not found
+/system/bin/sh: disagrees: inaccessible or not found

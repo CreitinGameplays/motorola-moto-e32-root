@@ -1702,21 +1702,24 @@ rotated and read, shows:
 
 Three conclusions, none of them "the kernel hangs in setup_arch":
 
- 1. The kernel reached the **idle loop**: do_idle() <- cpu_startup_entry()
-    <- start_kernel().  setup_arch() finished long ago; the last thing that
-    happened was a CPU entering cpuidle.  So the custom kernel boots, and
-    the problem is that **userspace never comes up** (no adb, the display
-    never leaves our console, so SurfaceFlinger never ran).
+ 1. The photographed stack contains the **idle path**: do_idle() <-
+    cpu_startup_entry() <- start_kernel().  If read correctly, that CPU had
+    finished setup_arch() and was entering cpuidle.  This does not prove init
+    or userspace completed, and it does not locate the eventual boot stall;
+    the original userspace-only conclusion was provisional and is superseded
+    by the limitations noted in section 57.
  2. The trace is the stock `WARN(1, "Invalid notifier called!")` from
     kernel/notifier.c, under `#ifdef CONFIG_DEBUG_NOTIFIERS`.  That option
     is in the *shipping* config (phone.config, read off the phone), so it
     is not something we added.  The check is
     `func_ptr_is_kernel_text(nb->notifier_call)`, and
-    `core_kernel_text()` stops accepting .init.text once
-    `system_state == SYSTEM_RUNNING` (init/main.c:1082).  Something on the
-    **CPU_PM chain** is registered from freed init text, so the notifier is
-    *skipped* at every cpuidle exit - and because it is a WARN, it fires
-    again at every single idle entry.  That is why the panel showed only
+     `core_kernel_text()` stops accepting .init.text once
+     `system_state == SYSTEM_RUNNING` (init/main.c:1082).  At the time, the
+     invalid callback's origin was not known; the suggestion that it pointed
+     into freed init text was a hypothesis, later disproved by the offline
+     linker/relocation audit in section 57.  The callback is nevertheless
+     *skipped* at each cpuidle exit, and the WARN repeats at each idle entry.
+     That is why the panel showed only
     this backtrace: the flood overwrote the real log tail, and the first
     line of it ("CPU: ... PID: ... Comm: ...") was wiped by the next
     identical WARN.
@@ -1907,12 +1910,311 @@ A much easier capture channel is available than the display:
   `dmesg-ramoops-0`, and `pmsg-ramoops-0` to `artifacts/kernel-build/` as
   soon as adb returns after a reset, before further reboots.
 
+The persistent function-tracing route is not immediately available in this
+tree/config: `.config.diagwdt` has `CONFIG_FTRACE=y` but
+`CONFIG_FUNCTION_TRACER` is disabled, and `PSTORE_FTRACE` depends on that
+option plus `DEBUG_FS`. The live ramoops DT allocation also has no
+`ftrace-size` region. It remains a useful follow-up: enable function tracing
+and reserve a small ftrace area, then record a filtered function trace to
+persistent ramoops. An unfiltered trace can overflow the 32 KiB console region
+quickly. Boot-time tracing and `initcall_debug` are also candidates, but their
+output still needs a working serial/pstore capture path. References:
+`https://www.kernel.org/doc/html/latest/trace/boottime-trace.html` and
+`https://www.kernel.org/doc/html/v4.19/admin-guide/ramoops.html`.
+
 Kernel-side commit `45f975a7eae7` was published to GitHub (`main` =
 `0200d7b116ec`). Build verified: Image sha256
 `1b466089aa21e505084a2563b0fa8acbbd94e9d577f938c92d80f9f38a8e780b`, packed
 `boot_ramlog.img` sha256
 `8004b9cf4b9a070fee1c19271a07986d79e70dbada5e438c40c48cd35807451f`.
-The warm-watchdog/pstore behavior has not yet been tested. The next action is
-a one-attempt boot_b test of `boot_ramlog.img`;
-if the early watchdog fails to reset, use the already-proven slot-a rescue
-recovery, and do not cold-cycle until pstore has had a chance to be copied.
+The warm-watchdog/pstore behavior was subsequently tested and failed to
+produce a reset or capture; see section 56.
+
+------------------------------------------------------------------------
+56. SECOND STATUS-PANEL IMAGE ALSO HANGS; PIVOT TO HARDWARE UART / CORESIGHT
+------------------------------------------------------------------------
+The polished status-only image `boot_paneldiag.img` was tested once in
+`boot_b` with the one-attempt slot gate. The phone hung; the operator recovered
+it and reports Android is back. The supplied photo shows the milestone/status
+text is still severely rasterized and not readable enough to identify the
+current step. Retire the framebuffer as a diagnostic channel rather than
+iterating on font size again. The test image SHA-256 is
+`3eea82797cd03883530efc9ee10a9540cf6c85711a711c78f1a96a01d4890340` (kernel
+Image `09f330ad093694211bc940b7240461eed399c8f31f241dabad97ed961f636ebf`).
+After recovery, ADB verified slot `_b`, Android boot complete, Magisk root,
+known-good `boot_b` SHA-256 `90416c09…cad3c`, and rescue `boot_a` SHA-256
+`fc3ca0ef…844c0`. Do not flash another image until the capture route changes.
+
+The strongest different approach is **real serial output**, followed by
+hardware instruction tracing if UART access is impractical. This is grounded
+in the live phone and its source tree:
+
+1. The live kernel command line contains `console=null`, which explains why
+   printk/initcall diagnostics disappear. The live DT `chosen/stdout-path` is
+   `serial1:115200n8`. The UMS9230 DTS sets `earlycon console=ttyS1,115200n8`,
+   and the Unisoc serial driver registers an OF earlycon handler for
+   `sprd,sc9836-uart`. The exact config used has `CONFIG_SERIAL_EARLYCON=y`,
+   `CONFIG_SERIAL_SPRD=y`, and `CONFIG_SERIAL_SPRD_CONSOLE=y`. This makes
+   serial materially more promising than adding a new logger: try a boot image
+   with `earlycon keep_bootcon console=ttyS1,115200n8 initcall_debug
+   ignore_loglevel loglevel=8`, and capture from the board's UART1 TX using a
+   **1.8-V-safe, receive-only USB-UART adapter** (common ground; do not drive
+   the phone's RX or apply 3.3/5 V). First identify the actual TX test pad and
+   logic level from board documentation/measurement; do not guess pins.
+   Preserve the Android-supplied `console=null` ordering in the analysis: the
+   image header's original `console=ttyS1` was overridden in the running
+   command line, so verify whether appended options appear in `/proc/cmdline`
+   on any successful boot. Linux supports multiple `console=` instances, but
+   the last valid console is used for `/dev/console`; `keep_bootcon` is useful
+   to retain early output. The kernel's serial-console and parameter docs:
+   `https://www.kernel.org/doc/html/v4.14/admin-guide/serial-console.html`,
+   `https://www.kernel.org/doc/html/v4.14/admin-guide/kernel-parameters.html`.
+   Stock dmesg currently lists ttyS0 at `0x200a0000` and ttyS2 at
+   `0x200c0000`, but not ttyS1, so the UART1 DT status/pin routing and physical
+   pad must be checked before relying on this path.
+
+2. **CoreSight ETM is already present and active as a platform in stock
+   Android.** A live read-only inventory found eight ETM nodes; stock dmesg
+   reports all eight as ETM v4.2 initialized, plus the two per-cluster ETF
+   sinks, the `0x7c003000` system ETB, funnels, and the Spreadtrum `ap-etb`
+   helper. The source DTS wires all eight ETMs through funnels/ETFs to the
+   system ETB. `apetb` exposes `enable_apetb`, whose implementation enables
+   the sink and all eight sources. This is a real hardware instruction trace,
+   not printk, and the trace buffers can reveal the last executed PC/branch
+   path. However, the normal CoreSight driver probe happens around 1.62 s in
+   the stock boot, while the known hang is only bounded to
+   `do_basic_setup()` and may precede ordinary device/initcall setup. So this
+   is not yet a drop-in fix: first prove the sink retains/readbacks data across
+   a controlled reset, then determine whether sources/sink can be armed before
+   the suspect setup call. Live read attempts on APETB/ETB/ETM sysfs attributes
+   as uid 0 were denied with SELinux Enforcing (the `su` shell transitions back
+   to `u:r:shell:s0` for the command). Do not change enforcement or policy to
+   bypass this; the unmodified interface is not presently usable from Android.
+   The exact diagnostic config has
+   `CONFIG_CORESIGHT=y` and `CONFIG_CORESIGHT_APETB=y`, even though the
+   Motorola release config removes the separate SPRD debug-driver framework.
+   The internal ETF/ETB SRAM may be more promising
+   than ramoops for a hang, but preservation through the BROM recovery reset
+   is unproven. CoreSight references:
+   `https://docs.kernel.org/trace/coresight/coresight.html`,
+   `https://docs.kernel.org/trace/coresight/panic.html`.
+
+3. The SoC also exposes `/soc/aon/djtag@64740000/aon-busmonitor@8`. Its seven
+   AP/WTLCP/AUDCP/PUBCP/USBOTG/CM4/WCN AXI monitor channels are disabled in
+   the source DT. The kernel's SPRD bus-monitor driver can log a matched
+   transaction and optionally panic, but Motorola's release config explicitly
+   removes `SPRD_DEBUG`/`SPRD_DJTAG`/`SPRD_BUSMONITOR`; the public defconfig
+   turns them on. The AXI monitor is range/match based, not a general last-PC
+   recorder. Treat it as a targeted follow-up if serial/CoreSight points to a
+   particular bus/peripheral. Do not assume the separate APB bus-monitor
+   driver's hang detector is wired on this UMS9230 DT; the live tree search
+   found the AON DJTAG/AXI monitor node, not an APB-monitor node.
+
+4. `PSTORE_FTRACE` is a weaker next move here. The shipping config disables
+   `FUNCTION_TRACER`, `DEBUG_FS`, and the SPRD debug options; the ramoops DT
+   has no ftrace region; and two watchdog-backed tests did not produce the
+   required warm reset. Likewise, `initcall_blacklist=` is only useful if
+   serial evidence first proves the hang is inside an initcall: the current
+   bound includes the pre-initcall `cpuset_init_smp()`, `shmem_init()`,
+   `driver_init()`, `init_irq_proc()`, `do_ctors()`, and
+   `usermodehelper_enable()` calls.
+
+An additional no-display fallback is a positive-controlled PSCI boundary
+probe: direct `arm_smccc_smc(PSCI_SYSTEM_RESET)` at one known-reached checkpoint,
+then move the checkpoint across the early setup calls. Stock PSCI reset is
+confirmed, but this exact early SMC probe has not been shown to work on this
+phone, so validate it first at the known-reached stage 27; if it fails there,
+do not use it to infer a hang location. This yields only a one-bit boundary
+per test, not the instruction detail UART/CoreSight could provide.
+
+Research references include the ARM64 no-console reset-bisection/early-UART
+case study, which uses the same PSCI `SYSTEM_RESET` mechanism:
+`https://blogs.igalia.com/gpiccoli/2023/02/debugging-early-boot-issues-on-arm64-without-console/`.
+The no-display UART candidate is now packed as
+`artifacts/kernel-build/boot_serialdiag.img` (sha256
+`b7278fbd8292fedcfba11899bbc8eb01cfc1e69a741a41da17a3cfc2723e2a15`). Its
+header has a single `console=ttyS1,115200n8` token, followed by
+`earlycon keep_bootcon initcall_debug ignore_loglevel loglevel=8`; the earlier
+duplicate-console draft was replaced. The 64-MiB image has an AVB 1.0 footer
+(`SHA256_RSA4096`, rollback index 2) and a valid ARM64 Image header. The
+kernel binary contains no framebuffer renderer/paint strings. It is **not**
+flashed. Next, identify the UART1 TX pad/voltage (or explicitly choose not to
+open the device), then capture from power-on. Android remains on the known-good
+Magisk boot.
+
+Post-BROM artifacts from this second test confirm the capture failure:
+`artifacts/kernel-build/console-ramoops-after-panel-brom.txt` is a 988-byte
+Android/recovery log ending in the rescue's `sysrq: Kill All Tasks` and
+`reboot: Restarting system with command 'shell'`; it contains no custom-kernel
+breadcrumb. `artifacts/kernel-build/sysdumpdb-after-panel-brom.img` is 10 MiB
+and still contains the October `sysrq triggered crash` record (offset 4420),
+with no `DIAG: setup` or `DIAG: initcall` strings. These confirm BROM recovery
+did not leave a usable record of this boot.
+
+------------------------------------------------------------------------
+57. OFFLINE REVERSE ENGINEERING: CFI JUMP TABLES PRECEDE _stext
+------------------------------------------------------------------------
+Status: the CFI/notifier mismatch is confirmed and explains the repeated
+`Invalid notifier called!` warning and skipped callbacks. It is a strong
+runtime-failure candidate, but the complete boot stall is still unproven.
+Nothing in this section was tested by flashing; the phone remains on the
+known-good Magisk boot.
+
+Ground truth and layout:
+
+* `artifacts/kernel-build/Image.vendor` and `Image.stock` are byte-identical
+  (SHA-256 `577c92b5f19f2dfcec8ce1ca125dd34e2f8e288579391c0f9e726d504988b15a`).
+  Their `System.map` has `_stext.._etext` at
+  `0xffffff8008081000..0xffffff8008e60000`; live stock dmesg has no
+  `Invalid notifier called!` warning.
+* The pre-fix custom `Image.serialdiag` has `_stext.._etext` at
+  `0xffffff800809f000..0xffffff8008eb0000`.  Its ELF section table shows
+  thousands of executable orphan sections named
+  `.text..L.cfi.jumptable` / `.text..L.cfi.jumptable.<n>` between `_text`
+  (`0xffffff8008080000`) and `_stext`.  The affected CFI jump-table symbols
+  are therefore outside the range accepted by `core_kernel_text()`.
+* In `include/asm-generic/vmlinux.lds.h`, the LTO `TEXT_MAIN` and
+  `TEXT_CFI_MAIN` patterns do not match the double-dot `.text..L...` names:
+  after `.text.`, the existing patterns only accept alphanumeric/underscore
+  suffixes.  LLD consequently leaves the CFI jump-table input sections as
+  orphans before the output `.text` section, where `_stext` is assigned.
+  This is a section-placement mismatch, not a callback in freed `.init.text`.
+
+The relocation audit matched the CFI jump-table addends in the raw Images to
+the `R_AARCH64_RELATIVE` writes into notifier data.  Representative CPU-PM
+objects in the stock image point to CFI jump tables inside core text; the same
+objects in the custom image point below `_stext`:
+
+| callback | stock CFI-JT address | custom pre-fix CFI-JT address | custom notifier object |
+|---|---:|---:|---:|
+| `fpsimd_cpu_pm_notifier` | `0xffffff8008e4a2c4` | `0xffffff8008095a6c` | `fpsimd_cpu_pm_notifier_block` |
+| `gic_cpu_pm_notifier` | `0xffffff8008e4a39c` | `0xffffff8008095b4c` | `gic_cpu_pm_notifier_block` |
+| `arch_timer_cpu_pm_notify` | `0xffffff8008e4a2cc` | `0xffffff8008095a74` | `arch_timer_cpu_pm_notifier` |
+| `sleep_notifier` | `0xffffff8008e4a2b8` | `0xffffff8008095a60` | `sleep_notifier_block` |
+| `source_notifier` | `0xffffff8008e4a2d4` | `0xffffff8008095a7c` | `source_notifier_block` |
+| `etm4_cpu_pm_notify` | `0xffffff8008e4a344` | `0xffffff8008095af0` | `etm4_cpu_pm_nb` |
+| `mbox_pm_notifier` | `0xffffff8008e4a430` | `0xffffff8008095be8` | `mbox_pm_notifier_block` |
+| `cpu_pm_pmu_notify` | `0xffffff8008e4a43c` | `0xffffff8008095bf4` | `cpu_pmu->cpu_pm_nb` (runtime-initialized) |
+
+These are real `cpu_pm_register_notifier()` call sites in the source.  The
+ARM PMU callback is assigned at runtime, so it has no static data relocation;
+the source assignment and its out-of-range CFI-JT address were audited
+separately.  The trace through
+`atomic_notifier_call_chain -> cpu_pm_exit` is therefore consistent with
+callbacks being rejected on every idle exit.  It does not
+identify which callback produced the photographed WARN, nor does it prove
+that these skipped callbacks alone cause the full boot stall.
+
+Offline fix and validation:
+
+* `patches/kernel-sprd/0006-arm64-place-clang-cfi-jump-tables-in-core-text.patch`
+  explicitly collects `.text..L.cfi.jumptable` and its suffixed sections in
+  `TEXT_TEXT`; CFI remains enabled.
+* The offline corrected raw Image is
+  `artifacts/kernel-build/Image.cfi_fixed` (SHA-256
+  `742587fb416a614c3a17119dc84f1d2f1e26eb6b08ce15c7d1b5b8a3d66c2bfc`),
+  with matching `System.map.cfi_fixed`.  `_stext` returns to
+  `0xffffff8008081000`; all **26,362** CFI-JT symbols are inside
+  `_stext.._etext`, and the audit resolves **85,324** relative relocations,
+  including all inspected notifier-block callback pointers.
+* The reusable checker is
+  `scripts/host/check_cfi_notifier_layout.py`.  The stock Image passes; the
+  pre-fix custom Image reports all 26,362 jump tables outside core text; the
+  corrected Image reports zero outside.  Its relocation report also confirms
+  notifier-like static callback pointers target the relocated CFI tables.
+
+This corrected Image is an offline candidate only: it was not packaged into a
+boot image and was not flashed.  Keep the framebuffer path retired.  Runtime
+confirmation must wait until the UART/CoreSight capture path is safe and
+verified.  Even if the notifier warning disappears, the independent full-boot
+stall remains unresolved.  A later panel image was interpreted as tags 27/28,
+which would place the stall in `do_basic_setup()`, but the framebuffer output
+is retired and that bound is not independently captured; treat it as
+provisional.  The section-51 inference that the photo meant userspace was the
+hang point was superseded by section 53: the photographed idle stack proves
+where that WARN was emitted, not where the boot stopped.
+
+------------------------------------------------------------------------
+58. CHECKPOINT GENERATOR, QEMU CONDUIT TESTS, AND CFI-FIXED CANDIDATE
+------------------------------------------------------------------------
+Status (2026-11-01): checkpoint instrumentation and capture workflow are
+implemented and QEMU-tested. Device validation is still blocked on safe UART
+capture/recovery. No phone write, flash, or reboot occurred in this work.
+
+Checkpoint interface and behavior:
+
+* `scripts/host/prepare_stage_panics.py` accepts an optional selector after
+  the existing stage arguments:
+  `setup:<name>` or `initcall:<level>:<name|ordinal>`. Supported setup steps
+  are `cpuset_init_smp`, `shmem_init`, `driver_init`, `init_irq_proc`,
+  `do_ctors`, `usermodehelper_enable`, and `do_initcalls`. Initcall ordinals
+  are 1-based within one level. Name selection resolves both normal and CFI
+  jump-table symbols. A selected hook logs `DIAG: CHECKPOINT reached: ...`
+  immediately before requesting PSCI `SYSTEM_RESET`.
+* `stage_build.sh [panic] [arm] [smc] [checkpoint] [conduit]` defaults to
+  `smc`; `hvc` is an explicit QEMU-virt-only option. Framebuffer diagnostics
+  remain forced off. The host device runner requires Android boot-image magic
+  `ANDROID!` and rejects raw kernel Images before accessing the device.
+* The host generator/build scripts and their remote `~/kernel-sprd/diag/`
+  mirrors are synchronized (generator SHA-256
+  `6694c77f81bc90bbc31df89da42aa65a7a6813d463c5981deb93969c9ebc6802`, build
+  script SHA-256
+  `184a13d7b98aacac473eca466fb44adaf6a9b39b349a4608d4c2a3db9e326fdd`).
+  Re-running the generator with `setup:cpuset_init_smp smc` left the hashes of
+  `init/main.c`, `arch/arm64/kernel/setup.c`, and `kernel/printk/printk.c`
+  unchanged.
+
+QEMU used `qemu-system-aarch64 -M virt -cpu cortex-a57 -smp 1 -m 2048
+-nographic -no-reboot -monitor none`, with PL011 early console arguments.
+For each HVC run, QEMU exited with status 0 after PSCI reset and the serial log
+contained the expected marker:
+
+| purpose | raw Image | SHA-256 | QEMU result |
+|---|---|---|---|
+| stage-7 positive control, HVC | `Image.checkpoint-control-hvc-final` | `7e1b880e75679f81738f931b982ed2f3d51b681bdc9ddaf237438846c08dba5e` | `stage:7`; QEMU exit 0 |
+| `setup:cpuset_init_smp`, HVC | `Image.checkpoint-target-hvc-final` | `bc691c680b2fb9d1500f168eebaaf6543cc626e12b800e4b0b6834b02874703b` | target marker; QEMU exit 0 |
+| `initcall:postcore:ramoops_init`, HVC | `Image.checkpoint-initcall-name-hvc` | `63ef34cc6a1cde811182bb45d62e9aee65dc75dbaff1a91b2fe93ff505ce9878` | target marker at postcore ordinal 7; QEMU exit 0 |
+| `initcall:postcore:7`, HVC | `Image.checkpoint-initcall-ordinal-hvc-final` | `f439ea5689e7bfed535e73a0041e65e8b98d6533c9900a4c9c02560689670edb` | target marker at ordinal 7; QEMU exit 0 |
+
+The final SMC-default pair was also attempted under ordinary QEMU `virt`:
+`Image.checkpoint-control-smc-final` (`4a238770ff20851522e7f0c91f6b78f6c1b71f3f1738fb3f992281f97d8531a4`)
+and `Image.checkpoint-target-smc-final`
+(`b2f6dfdd633a1bea337a6e270b088a1433fd5e7e67dccbb4d15eeb78038afecb`).
+Both logged their markers, then QEMU raised an undefined-instruction exception
+at `__arm_smccc_smc`; the kernel panicked and QEMU was stopped by the 15-second
+timeout (exit 124). This is a QEMU conduit limitation, not evidence about the
+phone's SMC firmware. The successful HVC results validate hook selection and
+QEMU reset only; they do not validate device SMC behavior.
+
+Capture interpretation: hooks execute before the selected setup function or
+initcall. `setup:cpuset_init_smp` is well before ramoops. The named
+`postcore:ramoops_init` hook is immediately before `ramoops_init()` itself, so
+ramoops has not yet initialized there either. Those early device checkpoints
+may reset without a pstore breadcrumb; reset/recovery is the primary result,
+and a missing pstore marker must not be called a missed checkpoint. QEMU's
+PL011 logs capture the markers, but that is not a substitute for the required
+phone UART capture path. Logs are retained under
+`artifacts/kernel-build/qemu-checkpoint-*.log` (gitignored).
+
+Fresh offline CFI-fixed target candidate:
+
+* Applied `patches/kernel-sprd/0006-arm64-place-clang-cfi-jump-tables-in-core-text.patch`
+  to the remote source tree and built with `.config.diagwdt`, the SMC default,
+  and `setup:cpuset_init_smp`. The raw ARM64 Image is
+  `artifacts/kernel-build/Image.checkpoint-target-smc-cfi` (25,909,264 bytes,
+  SHA-256
+  `0a5ad72e67c619c38dbdadc2618a249323b2ed3d43bc0e887fd8ec1de20380cd`);
+  matching map SHA-256 is
+  `acd9fe01af78b62a867b5f1c41aaee6c1b0aa0162639f21445a56d628d6945ea`.
+  Its ARM64 Image header reports text offset `0x80000`, image size `0x1bb1000`.
+* `check_cfi_notifier_layout.py` passes on that exact Image/map pair:
+  26,362 CFI jump-table symbols, zero outside `_stext.._etext`, 85,324
+  `R_AARCH64_RELATIVE` relocations inspected, and 31 notifier-like data
+  relocations to CFI jump tables. This is static layout validation only; the
+  candidate was not booted, packaged, or flashed.
+
+The device remains offline until UART TX pad/voltage and receive-only capture
+are verified, and recovery is confirmed. A device run must use an Android boot
+image, an independently confirmed one-attempt rescue path, and the SMC-default
+positive control before its target. Neither QEMU HVC nor this static CFI check
+authorizes a phone test.

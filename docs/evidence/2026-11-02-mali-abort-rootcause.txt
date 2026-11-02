@@ -1,0 +1,102 @@
+# Mali probe #3 (2026-11-02 14:5x): SOLVED - the hang is a clock-gate MMIO abort
+
+Probe #3 used the flash-crumb recorder (`mdbg_crumb.ko`) + a fully
+instrumented `mali_kbase_crumb.ko`. The module was loaded at t+38.6 s on
+the running custom kernel (#56, Mali-free build).
+
+## Flash crumbs (read after recovery, survives everything)
+
+    43 52 55 4d 42 30 31 3c 3e 46 47 48 49 3f
+    "CRUMB01" 60 62 70 71 72 73 63
+
+All breadcrumbs up to `power_control_init` (63) were written to flash and
+the stream confirms the same order with timestamps - so the glue
+(qogirl6, steps 10..43) was NEVER reached. The fault is in the **DDK core's
+own clock enabling**, before any glue code runs.
+
+## The fault (full backtrace captured by the host dmesg stream)
+
+    [38.646272] Synchronous External Abort: (0x96000010) at 0xffffff8009d74004
+    [38.646357] pc : regmap_mmio_read32le+0x8/0x20
+    [38.646364] lr : regmap_mmio_read+0x40/0x68
+    ...
+    [38.648699] Call trace:
+    regmap_mmio_read32le+0x8/0x20
+    _regmap_bus_reg_read+0x14/0x1c
+    _regmap_read+0x150/0x21c
+    regmap_read+0x50/0x74
+    sprd_gate_enable+0x38/0x90          <- reading the gate regmap
+    clk_core_enable+0x100/0x1f4
+    clk_enable+0x88/0x118
+    power_control_init+0x228/0x280 [mali_kbase]
+    kbase_device_pm_init+0xc/0x14
+    kbase_device_init+0xa0/0x160
+    kbase_platform_device_probe+0x50/0x100
+
+X0 dump (the regmap bus context): map base `0xffffff8009d74000`, i.e.
+physical **0x9d74000 + 0x4** = the AON APB gate register bank (`aonapb`
+regmap, `aon-gate` at 0x...? note x0+0x08 shows 0x9d78000 as the second
+region). `sprd_gate_enable` does `regmap_read(gate->regmap, ...)` on the
+aonapb syscon and the read raises a **Synchronous External Abort** -
+the AON APB bus is not answerable from the context/state the kernel is in
+at that moment (or the gate regmap's mapping is wrong for this SoC
+variant).
+
+## Why this explains every previous symptom
+
+* Built-in (=y): same `power_control_init` runs at device_initcall; the
+  abort takes the CPU down before any printk flush -> logo hang, no adb,
+  no pstore.
+* Module insmod: identical abort inside `power_control_init`, now visible
+  because the panic/oops stream had time to flow to the host.
+* Vendor module never hits it because it never calls `of_clk_get` +
+  `clk_enable` on the DT clocks - the vendor fork's
+  `power_control_init` is the Unisoc glue (`mali_power_on`/
+  `mali_clock_on`), not the stock DDK one.
+
+## Root cause
+
+The pristine r28p0 `power_control_init` assumes it owns the GPU's clocks
+and enables them with `clk_prepare_enable()` on `of_clk_get(np, i)`.
+On this DT the clocks list is:
+
+    clocks = <&aonapb_gates 9>, <&gpu_clk 0>, <&gpu_clk 2>,
+             <&gpu_clk 4>, <&gpu_clk 2 8>, <&gpu_clk 16>,
+             <&gpu_clk 0 0>, <&gpu_clk 29 0>
+
+Index 0 = `aonapb-gate#9` (the GPU's AON enable gate). Enabling it goes
+through `sprd_gate_enable` -> regmap read on the AON APB bank, which
+aborts.
+
+The stock vendor driver does not use index 0 from the DDK core at all; the
+Unisoc glue enables the SAME gates through its own path (and the
+stock boot leaves them on anyway).
+
+## Fix (next build)
+
+Keep the vendor behavior: make `power_control_init` a no-op for clocks/
+regulators on this platform (the qogirl6 glue already does the real
+power/clock work in `mali_platform_init`, which runs later via
+`kbase_device_early_init` -> `kbasep_platform_device_init`). That is
+exactly how the vendor module avoids this path. Concretely, guard the
+clock/regulator loops in `power_control_init` (mali_kbase_core_linux.c)
+with `#ifdef CONFIG_MALI_PWR_SUPPLY_DT` or return 0 early for
+`CONFIG_MALI_PLATFORM_NAME=qogirl6`, and rely on the glue.
+
+Note `assign_irqs` (step 70) and `registers_map` (71) completed fine -
+IRQs and the GPU register map are OK. Only the clock enable path is
+fatal.
+
+## Fix build notes (2026-11-02 15:2x)
+
+The guard uses `STRINGIFY(CONFIG_MALI_PLATFORM_NAME)` compared with
+`strstr(..., "qogirl6")` - strcmp initially failed because the kconfig
+string value expands WITH its quotes (`"\"qogirl6\""`), so the first
+build compiled but would never take the branch. strstr matches the
+substring regardless of quoting. Verified by the
+"clocks/regulators handled by platform glue" dev_info string landing in
+the .ko.
+
+Probe #4 = same crumb flow with the fixed module. Expected: crumbs now
+reach 74 (dev_init[4] = kbase_device_early_init) and then the glue steps
+10..43 - the first real exercise of the Unisoc glue on hardware.

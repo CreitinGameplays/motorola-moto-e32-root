@@ -1,0 +1,96 @@
+# Mali kbase built-in vs module: test results (2026-11-01 / 02)
+
+Kernel under test: in-tree r28p0-01eac0 DDK + qogirl6 glue, non-LTO,
+`#56 SMP PREEMPT Mon Nov 2 02:09:40 UTC 2026` (module build,
+`8fb719e5...4da0`) and its `=y` twin (`3663c53d...03d2`).
+
+## 1. `CONFIG_MALI_MIDGARD=y` (built-in): boot hang, no adb
+
+`boot_mali_magisk.img` (`bc2b7998...4d65`) written by dd at 22:50:38
+(read-back OK, slot b one attempt). The kernel never brought adb up; the
+phone sat on the logo until a manual power cycle, and the rescue restored
+stock boot_b. No pstore record survived (the recovery path clears DRAM).
+
+Interpretation: the probe runs at device_initcall time, far earlier than
+stock ever probes this hardware (see
+[the vendor probe reference](2026-11-01-mali-vendor-probe-reference.txt)):
+GPU clocks / syscons / regulators are not all up yet, and something in the
+glue (power-on wait, clock enable, QoS regmap write) deadlocks the CPU with
+interrupts off. No printk - consistent with a spin/udelay loop inside
+`mali_platform_init` before `kbase_probe` prints its first line.
+
+## 2. `CONFIG_MALI_MIDGARD=m` (Mali-free kernel): boots to adb in ~40 s
+
+`boot_mali_mod_magisk.img` (`405b221a...d47b`) written by dd at 23:14:55
+(read-back OK, slot b one attempt). adb answered at ~40 s uptime:
+
+    Linux version 4.14.199+ (debian@vm) (clang 11.0.1, LLD 11.0.1)
+    #56 SMP PREEMPT Mon Nov 2 02:09:40 UTC 2026
+    slot _b, su uid 0 (Magisk), SELinux Enforcing, /dev/mali0 absent
+
+So the custom kernel core is healthy; the hang in (1) is the Mali probe.
+
+Note: on this boot `su -c 'cat /proc/monitor_enable'` failed with EACCES -
+on a Magisk-booted custom kernel, reading /proc/monitor_enable as root was
+denied (SELinux context?), while the same write succeeded earlier in the
+evening. The SPRD hang monitor was left running this time.
+
+## 3. `insmod mali_kbase.ko` on the live kernel: instant hard hang
+
+Probe log: [2026-11-01-mali-module-probe.txt](2026-11-01-mali-module-probe.txt)
+(+ `.dmesg-stream.txt`).
+
+Module pushed and hash-verified (`21a1be40...c114`, 13,685,336 B,
+vermagic `4.14.199+ SMP preempt mod_unload modversions aarch64`,
+`module_layout` CRC `0x22ad1303` matching the running kernel, no unknown
+symbols at modpost). `dmesg -w` was streaming to the host *before* insmod.
+
+Observed:
+
+* **not one line** from the driver: no "Kernel DDK version r28p0-01eac0",
+  no "GPU identified", no glue error - the printk buffer died with the CPU,
+  the stream kept flowing for the remaining buffered lines (charger/vsp
+  chatter) and then stopped.
+* adb vanished within the 60 s window; the device did not come back.
+
+Post-mortem evidence is gone (the phone was power-cycled by hand - "phone
+auto shutdown"; pstore is empty on the recovered stock boot), but the
+absence of the very first DDK printk pins the hang to the earliest part of
+`kbase_probe` -> `kbase_parse_dvfs()` ... `kbase_platform_init()` ->
+our glue: `mali_freq_init` (syscon lookups), `mali_power_on`
+(top-force-shutdown write + `mali_top_pwr_state_check` 10 ms busy-wait),
+`mali_clock_on` (9 clock enables, GPLL trim, QoS regmap writes) - all before
+`Kernel DDK version` prints.
+
+## What this tells us
+
+The vendor module loads this exact hardware in 9 ms at post-fs; ours hangs
+in single-CPU-deadlock fashion at the same init path. Prime suspects, in
+order:
+
+1. **`syscon_regmap_lookup_by_name` behavior**: our glue reads
+   `top-force-shutdown` from the *generic* `syscons`/`syscon-names` lists.
+   The stock tree's syscon.c may pair the lookup differently (e.g. register
+   the regmap lazily); a bad `args[]` (offset/mask) makes `regmap_update_bits`
+   write to a wrong/unmapped register and stall the bus.
+2. **Wrong AON syscon offset/mask for top-force-shutdown** (0x2c4 /
+   0x2000000 was derived from the DT): an MMIO write to an unmapped AP
+   address stalls the CPU irrecoverably on this SoC.
+3. **`of_clk_get` index mismatch**: 9 clocks = 4 enables + 5 sources;
+   enabling the wrong clock first (e.g. source before the APB gate) can
+   hang the clock tree. Stock logs `ums9230-clk` probing gpu-clk first.
+4. **`sprd_gpu_cal_read` / nvmem** - unlikely; it is guarded and warned.
+
+## Next step: make the hang visible instead of guessing
+
+Rebuild the module with per-step breadcrumbs in the glue
+(`dev_info(dev, "mali glue: step N")` at each mali_freq_init sub-step,
+before/after each syscon lookup, clock enable, and regmap write), reload the
+probe flow, and read the last breadcrumb from the streamed dmesg. That
+localizes the stall to one call with zero device risk beyond the same
+power-cycle cost we already paid.
+
+Alternative (cheaper but blind): add `earlycon keep_bootcon ignore_loglevel`
+to the kernel cmdline of the module build so kernel printk goes to the
+UART... no usable UART exists on this device (previous attempts), so the
+breadcrumb approach is the only instrumented path.

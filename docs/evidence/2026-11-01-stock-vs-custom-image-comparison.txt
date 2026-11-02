@@ -1,0 +1,145 @@
+# Stock vs custom kernel image: reverse-engineering comparison (2026-11-01)
+
+Offline comparison of the shipping kernel against the rebuilt custom kernel,
+looking for what could cause the boot stall. No device was touched.
+
+Inputs:
+
+* stock: `artifacts/kernel-build/Image.stock` (sha256
+  `577c92b5f19f2dfcec8ce1ca125dd34e2f8e288579391c0f9e726d504988b15a`) with the
+  shipping `artifacts/System.map`
+* custom: `artifacts/kernel-build/Image.p0a0s0koffmsmcq0c0` (sha256
+  `6725bb367badbffc2e4c3f7cf94163c70cf0cd43187cc77559e6ddec941596a8`) with
+  `artifacts/kernel-build/System.map.p0a0s0koffmsmcq0c0`
+* pre-fix custom build for layout comparison:
+  `artifacts/kernel-build/System.map.new`
+
+## 1. The initcall tables are identical in content and order
+
+With CONFIG_LTO_CLANG every initcall table entry carries a linker symbol
+`__initcall_<a>_<b>_<func><level>` placed at the entry's own address, so the
+address order of those symbols in a System.map is the boot-time execution
+order. `scripts/host/diff_initcalls.py` extracts and diffs that order.
+
+Result (stock 1048 entries, custom 1054):
+
+* per-level counts match everywhere: early 20/20, pure 4/4, core 40/40,
+  postcore 24/24, arch 12/12, subsys 145/146, fs 45/45, rootfs 2/2,
+  device 706/710, late 47/48.
+* the common entries are in **identical order** (longest-common-subsequence
+  check reports no divergence).
+* custom-only entries are exactly the expected additions: `arm_init` (KVM),
+  `vhost_init`, `vhost_net_init`, `vhost_vsock_init` (KVM config),
+  `sys_reg_genericv8_init` (KVM), `hung_task_init` (diag config, see §5).
+* the seven `dsi_glb_register4.N` / `dphy_glb_register4.N` one-side entries are
+  static-variable instance renumbering (same count, shifted `.N`), not real
+  differences.
+* the three entries after `__initcall_end` on both sides
+  (`sprd_serial_console_initcon`, `selinux_initsecurity`,
+  `integrity_iintcache_initsecurity`) are the console/security init tables,
+  present identically.
+
+Conclusion: LTO did not reorder initcalls and the initcall set matches the
+vendor build. A stall inside `do_initcalls()` would be inside a *shared*
+initcall, not a missing/reordered one.
+
+## 2. The global symbol surface is identical
+
+Diffing global symbols (uppercase nm types): only **2** shipped-only globals
+(`acc_ctrlrequest_composite`, `vsp_get_dmabuf` - the USB ACC gadget function
+and a VSP helper our config does not build) and 684 custom-only globals, all
+KVM/vhost/vgic code plus the softlockup/hung-task detector API from the diag
+config. The trees match at the API level; local-symbol diffs are LTO
+`$hash`-naming noise and were not used.
+
+## 3. The shipping kernel was linked with GNU ld, not ld.lld
+
+The shipping `System.map` contains six local symbols named
+`__CortexA53843419_FFFFFF80080C8000` ... `__CortexA53843419_FFFFFF8008DE9004`.
+That naming is produced by GNU ld (bfd) `--fix-cortex-a53-843419`; lld
+implements the same erratum fix (llvm D36749) but never emits such symbols.
+
+Disassembly of the stock Image confirms real bfd veneers. At the first site
+the ADRP stays at page offset 0xff8 (`0xffffff80080c7ff8: adrp x9, ...`), the
+erratum load that would sit at `0xffffff80080c8000` was replaced by
+`b 0xffffff8008e26fa0`, and the veneer at the end of core text performs the
+load (`ldr w9, [x9, #3460]`) and branches back (`b 0xffffff80080c8004`).
+Six such veneers sit contiguously at `0xffffff8008e26fa0..e26fc8`.
+
+Consequences:
+
+* The "LLD 11.0.1" in `linux_banner` is the clang driver's recorded linker
+  identity, not proof of the final link. The vendor's build pipeline linked
+  vmlinux with GNU ld.
+* `arch/arm64/Makefile` passes `--fix-cortex-a53-843419` whenever
+  `CONFIG_ARM64_ERRATUM_843419=y`; both `vendor.config` and our
+  `built_config.txt` have it `=y`, lld accepts the flag (verified on the VPS
+  toolchain), and the build log contains no "ld does not support" warning. So
+  **both** builds applied the erratum fix; only the marker symbols differ.
+  The T606 (Cortex-A55/A75) is not an A53, so the erratum does not apply to
+  this silicon either way.
+* The important part is *orphan placement*: bfd placed the CFI sections
+  inside core text, lld orphaned them before `_stext` (§4). The CFI jump-table
+  defect we fixed is an lld-link artifact the vendor never had.
+
+## 4. Pre-fix lld layout: 29,009 CFI symbols before `_stext`
+
+Scanning `[_text, _stext)` in each map:
+
+| build | symbols in [_text,_stext) | composition |
+|---|---:|---|
+| stock | 2 | `_head`, `_text` only |
+| custom pre-fix (`System.map.new`) | 29,009 | 26,335 `.cfi_jt` + 2,672 `__typeid__*` |
+| custom fixed (`p0a0s0koffmsmcq0c0`) | 2 | `_head`, `_text` only |
+
+The pre-fix lld link orphaned **both** CFI jump tables and the CFI type-id
+metadata (`__typeid__ZTS..._global_addr`, 2,672 symbols at
+`0xffffff80080800c8..0x809e3bc`) into the gap between `.head.text` and
+`.text`. Stock places the typeids at the end of core text
+(`0xffffff8008e35170..0x8e52a64`, inside `_stext.._etext`); the fixed build
+places them at `0xffffff8008e71ff8..0x8e90358`, the same pattern. The one-line
+linker fix therefore restores the vendor's actual layout for both CFI groups,
+not just the jump tables.
+
+Runtime relevance: `kernel/cfi.c` builds its shadow only for modules, so
+kernel-side CFI checks do not depend on these placements. The proven runtime
+effect of the misplacement is `CONFIG_DEBUG_NOTIFIERS`'s
+`func_ptr_is_kernel_text()` rejecting every notifier callback whose pointer
+targets an out-of-range `.cfi_jt` entry - the cpu_pm / GIC / arch_timer /
+mailbox callbacks photographed in the `cpu_pm_exit` WARN flood - plus any
+other `kernel_text_address()` consumer (stack traces, `%pS`).
+
+## 5. Config correction: `.config.diagwdt` is vendor + KVM + detectors
+
+Section 28 of `2026-10-30-custom-kernel-hang.txt` called `.config.diagwdt`
+"the vendor config plus KVM, nothing else". It also carries the diagnostic
+lockup detectors: `CONFIG_SOFTLOCKUP_DETECTOR=y`,
+`CONFIG_BOOTPARAM_SOFTLOCKUP_PANIC=y`, `CONFIG_DETECT_HUNG_TASK=y`,
+`CONFIG_BOOTPARAM_HUNG_TASK_PANIC=y`, `CONFIG_DEFAULT_HUNG_TASK_TIMEOUT=60`.
+These are additions, not drift from the vendor config, and they cannot explain
+the hang: the original hang (`boot_custom_avb.img`, built from `phone.config`)
+predates the detector config, and the KVM-off control hung identically.
+
+## 6. What stock does in the stall window
+
+Stock timeline (`artifacts/dmesg-boot.txt`): `smp: Bringing up secondary
+CPUs ...` at 0.040 s, CPUs 1-7 online by 0.236 s, `alternatives: patching
+kernel code` at 0.236 s, then the device-initcall probes (cpuidle governor,
+`sprd_sip` SVC detection, ramoops) at ~0.26 s. The panel-photo bound (tag 27
+reached, tag 28 missing) therefore covers `smp_init()`, `sched_init_smp()`,
+`page_alloc_init_late()`, `page_ext_init()` and `do_basic_setup()` - a window
+stock completes in ~0.3 s.
+
+## 7. Where this leaves the hang
+
+* Source content, initcall set and initcall order match the vendor build.
+* The one proven structural difference was the lld orphan placement of the CFI
+  jump tables and type-id metadata, with the observed runtime effect of
+  rejected cpu_pm-family notifier callbacks on every idle transition. The
+  baseline `Image.p0a0s0koffmsmcq0c0` removes that difference and its layout
+  now matches stock's shape.
+* Residual unknowns: LTO codegen differences of the same compiler on a
+  slightly different 4.14.199 tree (§38 of the hang evidence), and the KVM /
+  detector config additions (both already controlled for).
+* Device validation of the baseline remains gated as before: reliable capture
+  path plus a positive control that succeeds without manual intervention.

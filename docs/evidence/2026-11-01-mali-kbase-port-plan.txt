@@ -1,0 +1,106 @@
+# Mali kbase source hunt and port plan (2026-11-01)
+
+## Why
+
+The non-LTO kernel boots and runs (KVM works, `/dev/kvm` present) but
+Android cannot finish booting because the vendor `mali_kbase.ko` refuses to
+load (`disagrees about version of symbol module_layout`). The GPU driver
+must be built from source into our kernel.
+
+## What the vendor module is
+
+`artifacts/kernel-build/mali_kbase.ko`: `mali_kbase`, version
+**r28p0-01eac0 (UK version 11.29)**, GPL, vermagic of the shipping kernel.
+String/symbol analysis shows a **Unisoc fork** of the Arm DDK with:
+
+* custom compatible `sprd,mali-natt` (live DT GPU node
+  `/soc/mm/gpu@23100000`)
+* DVFS via syscon regmaps: `sprd,gpu-apb-syscon`,
+  `sprd,gpu-dvfs-apb-syscon`, `topdvfs-controller`; `gpu_dvfs_ctx` with
+  DT-provided `sprd,dvfs-lists` / `sprd,dvfs-default` / `sprd,qos`
+* platform functions `kbase_platform_set_freq_volt`,
+  `kbase_platform_set_boost`, `kbase_platform_modify_target_freq`
+* nvmem `gpu_bin` (speed bin), `gpu-supply` regulator, JOB/MMU/GPU IRQs
+
+## Where the source was found (and not found)
+
+Not found (source stripped from the module drops):
+
+* Motorola `kernel-sprd` R-11-release-* - no `drivers/gpu/arm`
+* generic `sprd-linux/kernel4.14` - no mali
+* `sprd-linux/android_kernel_hmd_arc` (T606-family) - no `drivers/gpu` at all
+* `Bocchi-The-Dev/kernel_transsion_ums9230` (full Transsion BSP) - no mali
+* Arm community page carries the exact package
+  `BX301A01B-SW-99002-r28p0-01eac0.tar` (MD5 `788298a1...`) but the download
+  is JS-gated and the guessed media URLs 404; the Wayback Machine was
+  offline during the search
+
+Found:
+
+* **Arm DDK core, exact version**: `batocera-linux/mali-bifrost` branch
+  `BX301A01B-SW-99002-r28p0-01eac0` - the pristine Arm Bifrost r28p0-01eac0
+  kernel driver (`MALI_RELEASE_NAME ?= "r28p0-01eac0"`), cloned to the VPS
+  as `~/mali-r28p0-ddk` (DDK tree at
+  `driver/product/kernel/drivers/gpu/arm/midgard/`)
+* **Unisoc fork with our platform glue**: `dikeckaan/mu300-linux`
+  (ZTE MU300/T760 project, already the vendor-family reference in the hang
+  evidence) carries `upstream/modules/mali/` - the Unisoc-forked DDK
+  (**r40p0-01eac0**, vendor 5.4 kernel) including
+  `platform/qogirl6/mali_kbase_config_qogirl6.c` - **qogirl6 is this
+  device's platform** (UMS9230/T606). The glue names T606/T616 PLLs
+  explicitly and implements the full DVFS/QoS/nvmem/syscon integration
+  matching the vendor module's strings. Cloned to `~/mu300-linux`.
+
+Version note: the mu300 fork is r40p0; the UK kernel-userspace interface
+must match the vendor `libmali` (r28p0, UK 11.29), so the port targets the
+**r28p0 core + the qogirl6 glue adapted to it**, not the r40p0 tree.
+
+## Port plan (organized layout)
+
+Kernel tree (`github.com/CreitinGameplays/motorola-moto-e32-kernel`,
+branch `hawaii-diag`):
+
+    drivers/gpu/arm/midgard/          Arm DDK r28p0-01eac0, pristine import
+      Kbuild Kconfig Makefile Mconfig
+      arbiter/ backend/ context/ device/ gpu/ jm/ linux/ ...
+      platform/
+        Kconfig devicetree/ vexpress*/        DDK stock platforms
+        qogirl6/                              Unisoc UMS9230/T606 glue
+          Kbuild
+          gpu,qogirl6-regs.h gpu,qogirl6-mask.h
+          mali_kbase_config_platform.h
+          mali_kbase_config_qogirl6.c         adapted from the r40p0 fork
+
+Wired via `drivers/gpu/Kconfig` + `drivers/gpu/Makefile`; built-in
+(`=y`) so no module load ordering applies and the vendor `insmod` failure
+becomes harmless. Commits: one pristine DDK import, one glue commit - the
+existing export flow publishes both.
+
+Analysis repo: provenance and this plan; the exported patch series gains
+the two mali commits.
+
+## Status
+
+- [x] DDK core located and cloned (r28p0-01eac0)
+- [x] Unisoc qogirl6 glue located (r40p0 fork, to be adapted)
+- [x] glue adaptation to r28p0 APIs and 4.14 kernel
+- [x] Kconfig/Kbuild wiring, built-in build
+- [x] offline validation (`Image.mali-builtin`, 21,798,928 B, sha256
+      `3663c53d...03d2`; CFI checker clean; `r28p0-01eac0` in strings)
+- [x] packed + signed `boot_mali_magisk.img` (64 MiB, sha256
+      `bc2b7998...4d65`; payload equal to `Image.mali-builtin`, stock dtb,
+      Magisk ramdisk)
+- [ ] device test (in progress, 2026-11-01 22:5x, `dd` channel only)
+
+## Flash-channel note (2026-11-01 22:43)
+
+`fastboot flash boot_b boot_mali_magisk.img` is refused by this bootloader:
+
+    Writing 'boot_b'   (bootloader) Please verify the signature!
+    FAILED (remote: 'Please verify the signature!')
+
+That is the known global signature gate ([11](../11-flash-gate.md)), not a
+problem with this image: nothing was written, `boot_b` still read back as
+stock `ccd0faff...7b18`. The working channel is `dd` to
+`/dev/block/by-name/boot_b` from a Magisk `su -c` shell (the
+`scripts/host/run_boot_b_test.ps1` flow).

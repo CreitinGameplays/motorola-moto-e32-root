@@ -1,0 +1,27 @@
+From: Moto E32 kernel analysis
+Subject: [PATCH] arm64: lld: place Clang CFI jump tables in core text
+
+With CONFIG_LTO_CLANG, Clang 11 emits CFI jump tables in input sections named
+.text..L.cfi.jumptable and .text..L.cfi.jumptable.*.  The existing TEXT_MAIN
+and TEXT_CFI_MAIN patterns do not match the double-dot suffix, so LLD places
+these executable orphan sections before the output .text section and before
+_stext.  CONFIG_DEBUG_NOTIFIERS then rejects notifier callback pointers to
+those tables because func_ptr_is_kernel_text() only accepts _stext.._etext.
+
+Collect the jump-table sections explicitly into .text.  This keeps the table
+entries inside core_kernel_text()'s accepted range without disabling CFI.
+
+---
+ include/asm-generic/vmlinux.lds.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/include/asm-generic/vmlinux.lds.h b/include/asm-generic/vmlinux.lds.h
+--- a/include/asm-generic/vmlinux.lds.h
++++ b/include/asm-generic/vmlinux.lds.h
+@@ -465,5 +465,6 @@
+ 		*(.text..refcount)					\
+ 		*(.text..ftrace)					\
+ 		*(TEXT_CFI_MAIN) 					\
++		*(.text..L.cfi.jumptable .text..L.cfi.jumptable.*) \
+ 		*(.ref.text)						\
+ 	MEM_KEEP(init.text)						\

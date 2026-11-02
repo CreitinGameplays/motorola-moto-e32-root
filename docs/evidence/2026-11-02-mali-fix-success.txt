@@ -1,0 +1,65 @@
+# Mali probe #4 (2026-11-02 16:2x): SUCCESS - GPU driver runs on the custom kernel
+
+The `power_control_init` skip fixed it completely. Same probe flow as #3
+(Mali-free custom kernel #56, mdbg_crumb.ko armed, then mali_kbase_fix.ko),
+but this time the phone BOOTED TO ANDROID with the GPU driver loaded.
+
+## Kernel-level result
+
+    mali 23100000.gpu: Kernel DDK version r28p0-01eac0
+    mali 23100000.gpu: GPU identified as 0x1 arch 9.0.9 r0p1 status 0
+    mali 23100000.gpu: Using coherency mode 31 set from dtb
+    mali 23100000.gpu: Probed as mali0
+
+Identical to the stock vendor module's messages. `/dev/mali0` exists
+(crw-rw-rw- system graphics 10, 19), module list shows
+`mali_kbase 421888 35` with `mdbg_crumb` beneath it (dependency as
+designed).
+
+## Crumb trail (flash, read back live)
+
+    43 52 55 4d 42 30 31 3c 3e 46 47 48 49 3f 4a 14 0a 0b 0c 0d 0e 0f 10 11
+    "CRUMB01" 60 62 70 71 72 73 63 74 20 10 11 12 13 14 15 16 17 ...
+
+60 module init -> 62 probe -> 70..73 dev_init[0..3] -> 63
+power_control_init (early-returned, the fix) -> **74 dev_init[4]
+kbase_device_early_init** -> **20 platform_init** -> glue steps 10..17
+(syscon lookups + nvmem + clock gets) -> 21 freq_init done -> 22..25
+power_on (top-force write + state check) -> 26/27 clock_on (efuse=T606)
+-> 28.. clock source enables -> ... -> `Probed as mali0`.
+
+Every glue step executed on hardware and returned. The qogirl6 port is
+functionally correct.
+
+## Android-level result
+
+    sys.boot_completed = 1
+    surfaceflinger: running (pid 1773)
+    zygote/zygote64/webview_zygote: alive
+    su (Magisk): uid=0(root) SELinux Enforcing
+    verifiedbootstate: green
+
+Android COMPLETED boot on the custom kernel with the GPU module loaded -
+SurfaceFlinger no longer SIGABRTs (it has a working /dev/mali0).
+
+Note: `verifiedbootstate green` here is the stock-state property - this
+boot used the Magisk ramdisk (boot_b = 405b221a... custom kernel +
+Magisk); the device is on the custom kernel `4.14.199+ #56`.
+
+## Artifacts
+
+* `mali_kbase_fix.ko` (sha256 `19c8d458...729c`): r28p0-01eac0 DDK +
+  qogirl6 glue + MDBG instrumentation + the `power_control_init` skip
+  (only for CONFIG_MALI_PLATFORM_NAME containing "qogirl6").
+* `mdbg_crumb.ko` (sha256 `7cbb217e...dea4`): flash crumb recorder
+  (miscdata+0xA0000); still loaded on the running system, harmless.
+
+## Remaining work
+
+1. Strip the MDBG instrumentation (or keep it: it is dev_info-only and
+   costs a few flash writes per probe; better to make a clean build).
+2. Load mali at the right time permanently: Magisk module with
+   post-fs-data.sh insmod (artifacts/mali-module/ prepared) so a plain
+   reboot brings up /dev/mali0 before surfaceflinger.
+3. Then: KVM enablement (the original goal), vendor module rebuilds
+   (sprd_sensor/sprd_camera/mmdvfs), devfreq/perf tuning.

@@ -1,0 +1,149 @@
+# Custom-kernel hang: static linker-fix route (2026-11-01)
+
+## Why change approaches
+
+The previous line of work added runtime checkpoints and relied on the kernel
+requesting a reset. That is not a dependable oracle on this build: the device's
+SMC checkpoint control hung and needed manual recovery, so its result is
+inconclusive and the target was correctly not run. More stage/reset probes
+would add risk without improving evidence.
+
+The replacement is a link-time correctness fix with offline, image-specific
+acceptance checks. This bypasses both the reset path and the retired framebuffer
+instrumentation. It is not a claim that the whole boot hang is fixed; a
+controlled board validation is still outstanding.
+
+## Research and applicability
+
+1. The ARM64 no-console case study by Guilherme Piccoli describes early PSCI
+   reset probes and code bisection:
+   <https://blogs.igalia.com/gpiccoli/2023/02/debugging-early-boot-issues-on-arm64-without-console/>.
+   It is useful only when the reset call gives a known result. The recent Moto
+   E32 stage-7 attempt did not, so that technique cannot currently distinguish
+   a missed checkpoint from a failed reset request on this device.
+
+2. Upstream Linux commit `13b0566962914e167cb3238fbe29ced618f07a27` explicitly
+   collects `.text..L.cfi.jumptable` and suffixed inputs in the CFI jump-table
+   linker section:
+   <https://github.com/torvalds/linux/commit/13b0566962914e167cb3238fbe29ced618f07a27>.
+   This supports fixing placement in the linker script rather than weakening
+   `CONFIG_DEBUG_NOTIFIERS` or suppressing the warning. The Moto patch
+   `patches/kernel-sprd/0006-arm64-place-clang-cfi-jump-tables-in-core-text.patch`
+   applies the same essential rule to this older vendor linker script.
+
+3. LLVM issue 138019 / ClangBuiltLinux issue 2082 report a different arm64
+   startup failure caused by an LLVM optimization exposing use of uninitialized
+   BSS state in `create_init_idmap()` on newer kernels:
+   <https://github.com/llvm/llvm-project/issues/138019>
+   <https://github.com/ClangBuiltLinux/linux/issues/2082>.
+   This is not a good lead for this phone: it concerns a newer kernel/compiler
+   path, while this device's earlier panel evidence reached the idle path and
+   bounded a later stall around `do_basic_setup()`. The Moto work also already
+   tested skipping the BSS clear and disabling KASLR without changing the
+   observed behavior.
+
+4. `CONFIG_ARM64_ERRATUM_834220` is a Cortex-A57 KVM Stage-2 fault workaround,
+   not a general T606 boot workaround:
+   <https://cateee.net/lkddb/web-lkddb/ARM64_ERRATUM_834220.html>.
+   It is ruled out as the common hang cause because the KVM-off custom image
+   hung identically; the SoC is T606, not an affected Cortex-A57 KVM host.
+
+## Offline validation performed
+
+Ran `scripts/host/check_cfi_notifier_layout.py` against matching Image/map
+pairs:
+
+* Stock `artifacts/kernel-build/Image.stock` + `artifacts/System.map`: all
+  25,725 discovered CFI jump-table symbols are within `_stext.._etext`.
+* Fixed `artifacts/kernel-build/Image.cfi_fixed` +
+  `artifacts/kernel-build/System.map.cfi_fixed`: 26,362/26,362 are within
+  `_stext.._etext`; the relocation scan finds 31 notifier-like objects pointing
+  at CFI jump tables.
+* Both SMC checkpoint Images (control and target) have the same passing CFI
+  placement and 85,324 relative relocations, but neither is evidence of a
+  successful device boot. The control hung; the target was not run.
+
+The initial invocation paired the stock Image with the custom map and produced
+a false failure; rerunning with the matching shipping `artifacts/System.map`
+passed. Always pair each raw Image with its own map. The stock map has no
+relocation-range symbols, so the checker can validate its jump-table bounds but
+cannot do the extra relocation audit for that pair.
+
+## Tooling defect found while rebuilding the baseline
+
+The 2026-11-01 sync of the instrumentation scripts to the VPS pushed the
+Windows working copies byte-for-byte, so `~/kernel-sprd/diag/stage_build.sh`
+arrived with CRLF line endings. Bash rejected `set -eo pipefail`
+(`pipefail\r` is not an option name) and the first baseline rebuild aborted
+immediately at line 20, before any compilation. `prepare_stage_panics.py`
+tolerates CRLF, so only the shell script failed visibly. Both local copies
+(`scripts/host/stage_build.sh`, `scripts/host/prepare_stage_panics.py`) and all
+three VPS copies (`~/kernel-sprd/diag/*`, `~/prepare_stage_panics.py`) are now
+LF-normalized and re-verified:
+
+* `stage_build.sh` SHA-256
+  `cc66d9b382cbcf646a60effdfa1326a71d40f92dc5334c236c33ec7ebb093954`
+* `prepare_stage_panics.py` SHA-256
+  `ef408bc04ffb70dbaab91717321fea0e1ce30535f29d7721c9c7f5c6abfec8b2`
+
+These supersede the hashes recorded in section 58 of
+`docs/evidence/2026-10-30-custom-kernel-hang.txt`, which were the CRLF versions.
+When syncing scripts from this Windows repository to Linux targets in the
+future, normalize to LF first (or run `dos2unix` on arrival); a CRLF shell
+script fails in a way that looks like a script bug.
+
+## Offline baseline rebuild
+
+After the line-ending fix, `diag/stage_build.sh 0 0 0 off smc` produced a fresh
+baseline with the CFI fix and every diagnostic knob off (panic=0 arm=0 smc=0
+checkpoint=off paint=0 screen=0; the remaining `pr_emerg` breadcrumbs are inert
+printk calls). The build was incremental (init/main.c regeneration + ThinLTO
+relink) and touched no device:
+
+* `Image.p0a0s0koffmsmcq0c0`: 25,909,264 bytes, SHA-256
+  `6725bb367badbffc2e4c3f7cf94163c70cf0cd43187cc77559e6ddec941596a8`
+* `System.map.p0a0s0koffmsmcq0c0`: 6,559,197 bytes, SHA-256
+  `1745ebca52592ecfe4ae33258e71efa804e60dce7ffcb917b872aeb2b0096125`
+* copies kept in `artifacts/kernel-build/`; the local checker rerun agrees with
+  the VPS run: 26,362 CFI jump-table symbols, **0 outside `_stext.._etext`**
+  (`0xffffff8008081000..0xffffff8008eb0000`), 85,324 `R_AARCH64_RELATIVE`
+  relocations, 31 notifier-like data relocations to in-range CFI jump tables.
+
+This raw Image is the candidate baseline for any future device test. It is
+**not packaged and not flashed**; packaging requires the user's explicit
+go-ahead, and device validation remains gated on a reliable capture path plus a
+positive control that succeeds without manual intervention.
+
+## Kernel repository publication
+
+The fix and the tooling updates are committed on the VPS branch `hawaii-diag`
+and published to `github.com/CreitinGameplays/motorola-moto-e32-kernel` `main`
+via `~/kernel-diag/scripts/export_to_github.sh` (orphan import + cherry-pick +
+tree-hash gate; the gate verified publish tree
+`2848578d34db0a9c8be6e0405928fd0771c5673f` against the branch):
+
+* `9c35150ee5ac` diag: setup/initcall checkpoint selectors, LF-normalized
+  scripts
+* `1c88ceb5d557` arm64: lld: place Clang CFI jump tables in core text
+* `5d41451d7d10` gitignore: local AVB tooling and packaged boot images
+
+Published `main` tip: `c88814b9c47c` (14 commits). The `.gitignore` additions
+keep the export gate usable despite the local `avb-test-key.pem`, `avbtool.py`
+and packaged `boot_*.img` files living in the tree.
+
+## Fix hypothesis and safe next step
+
+The CFI section-placement defect is a real independent defect: before the
+linker fix, CFI jump-table inputs were orphaned before `_stext`, and
+`CONFIG_DEBUG_NOTIFIERS` rejected callbacks. The observed `cpu_pm_exit()` WARN
+and skipped callbacks are consistent with that. Correct placement should stop
+those rejects while retaining CFI. It may also prevent later CPU power/idle
+failures, but current evidence does not prove that it explains the entire boot
+stall.
+
+The candidate baseline is built and its layout validated offline. Do not test
+it on the phone yet. Device validation remains gated on a reliable capture
+path and a positive control that succeeds without manual intervention; the SMC
+control failure does not authorize flashing the target. Do not use
+`CONFIG_DEBUG_NOTIFIERS=n` as a workaround: it hides the bad layout rather than
+fixing it and leaves CFI callback destinations unvalidated.

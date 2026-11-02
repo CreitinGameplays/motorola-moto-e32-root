@@ -1,0 +1,129 @@
+[   34.012500] AidlLazyServiceRegistrar: Process has 1 (of 1 available) client(s) in use after notification android.apex.IApexService has clients: 1
+[   34.012640] AidlLazyServiceRegistrar: Process has 0 (of 1 available) client(s) in use after notification android.apex.IApexService has clients: 0
+[   34.012651] AidlLazyServiceRegistrar: Shutdown prevented by forcePersist override flag.
+[   34.339005] sprd-spipe: spipe 6-41 not ready to open!
+[   34.389966] init: Untracked pid 1292 exited with status 0
+[   34.644387] init: Untracked pid 1349 exited with status 0
+[   35.153545] systemserver cmd , get para: ( 50)
+[   35.260370] type=1400 audit(1793625208.831:125): avc: denied { read } for comm="Binder:392_2" name="event_count" dev="sysfs" ino=29265 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.260489] type=1400 audit(1793625208.831:126): avc: denied { read } for comm="Binder:392_2" name="max_time_ms" dev="sysfs" ino=29270 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.260565] type=1400 audit(1793625208.831:127): avc: denied { read } for comm="Binder:392_2" name="wakeup_count" dev="sysfs" ino=29266 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.260658] type=1400 audit(1793625208.831:128): avc: denied { read } for comm="Binder:392_2" name="total_time_ms" dev="sysfs" ino=29269 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.260739] type=1400 audit(1793625208.831:129): avc: denied { read } for comm="Binder:392_2" name="expire_count" dev="sysfs" ino=29267 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.260847] type=1400 audit(1793625208.831:130): avc: denied { read } for comm="Binder:392_2" name="active_count" dev="sysfs" ino=29264 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.260932] type=1400 audit(1793625208.831:131): avc: denied { read } for comm="Binder:392_2" name="last_change_ms" dev="sysfs" ino=29271 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.261067] type=1400 audit(1793625208.831:132): avc: denied { read } for comm="Binder:392_2" name="prevent_suspend_time_ms" dev="sysfs" ino=29272 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.261155] type=1400 audit(1793625208.831:133): avc: denied { read } for comm="Binder:392_2" name="name" dev="sysfs" ino=29263 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.261266] type=1400 audit(1793625208.831:134): avc: denied { read } for comm="Binder:392_2" name="active_time_ms" dev="sysfs" ino=29268 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.261339] type=1400 audit(1793625208.831:135): avc: denied { read } for comm="Binder:392_2" name="event_count" dev="sysfs" ino=32813 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.261413] type=1400 audit(1793625208.831:136): avc: denied { read } for comm="Binder:392_2" name="max_time_ms" dev="sysfs" ino=32818 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.261520] type=1400 audit(1793625208.831:137): avc: denied { read } for comm="Binder:392_2" name="wakeup_count" dev="sysfs" ino=32814 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.261620] type=1400 audit(1793625208.831:138): avc: denied { read } for comm="Binder:392_2" name="total_time_ms" dev="sysfs" ino=32817 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.261787] type=1400 audit(1793625208.831:139): avc: denied { read } for comm="Binder:392_2" name="expire_count" dev="sysfs" ino=32815 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.261895] type=1400 audit(1793625208.831:140): avc: denied { read } for comm="Binder:392_2" name="active_count" dev="sysfs" ino=32812 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.261986] type=1400 audit(1793625208.831:141): avc: denied { read } for comm="Binder:392_2" name="last_change_ms" dev="sysfs" ino=32819 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.262071] type=1400 audit(1793625208.831:142): avc: denied { read } for comm="Binder:392_2" name="prevent_suspend_time_ms" dev="sysfs" ino=32820 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.262166] type=1400 audit(1793625208.831:143): avc: denied { read } for comm="Binder:392_2" name="name" dev="sysfs" ino=32811 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.262235] type=1400 audit(1793625208.831:144): avc: denied { read } for comm="Binder:392_2" name="active_time_ms" dev="sysfs" ino=32816 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.262342] type=1400 audit(1793625208.831:145): avc: denied { read } for comm="Binder:392_2" name="event_count" dev="sysfs" ino=24064 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.262422] type=1400 audit(1793625208.831:146): avc: denied { read } for comm="Binder:392_2" name="max_time_ms" dev="sysfs" ino=24069 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.262561] type=1400 audit(1793625208.831:147): avc: denied { read } for comm="Binder:392_2" name="wakeup_count" dev="sysfs" ino=24065 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.262636] type=1400 audit(1793625208.831:148): avc: denied { read } for comm="Binder:392_2" name="total_time_ms" dev="sysfs" ino=24068 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.262758] type=1400 audit(1793625208.831:149): avc: denied { read } for comm="Binder:392_2" name="expire_count" dev="sysfs" ino=24066 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.262929] type=1400 audit(1793625208.831:150): avc: denied { read } for comm="Binder:392_2" name="active_count" dev="sysfs" ino=24063 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.263069] type=1400 audit(1793625208.831:151): avc: denied { read } for comm="Binder:392_2" name="last_change_ms" dev="sysfs" ino=24070 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.263157] type=1400 audit(1793625208.831:152): avc: denied { read } for comm="Binder:392_2" name="prevent_suspend_time_ms" dev="sysfs" ino=24071 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.263260] type=1400 audit(1793625208.831:153): avc: denied { read } for comm="Binder:392_2" name="name" dev="sysfs" ino=24062 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.263368] type=1400 audit(1793625208.831:154): avc: denied { read } for comm="Binder:392_2" name="active_time_ms" dev="sysfs" ino=24067 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.263482] type=1400 audit(1793625208.831:155): avc: denied { read } for comm="Binder:392_2" name="event_count" dev="sysfs" ino=32189 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.263552] type=1400 audit(1793625208.831:156): avc: denied { read } for comm="Binder:392_2" name="max_time_ms" dev="sysfs" ino=32194 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.263632] type=1400 audit(1793625208.831:157): avc: denied { read } for comm="Binder:392_2" name="wakeup_count" dev="sysfs" ino=32190 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.263775] type=1400 audit(1793625208.831:158): avc: denied { read } for comm="Binder:392_2" name="total_time_ms" dev="sysfs" ino=32193 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.263875] type=1400 audit(1793625208.831:159): avc: denied { read } for comm="Binder:392_2" name="expire_count" dev="sysfs" ino=32191 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.264193] type=1400 audit(1793625208.831:160): avc: denied { read } for comm="Binder:392_2" name="active_count" dev="sysfs" ino=32188 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.264307] type=1400 audit(1793625208.831:161): avc: denied { read } for comm="Binder:392_2" name="last_change_ms" dev="sysfs" ino=32195 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.264396] type=1400 audit(1793625208.831:162): avc: denied { read } for comm="Binder:392_2" name="prevent_suspend_time_ms" dev="sysfs" ino=32196 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.264481] type=1400 audit(1793625208.831:163): avc: denied { read } for comm="Binder:392_2" name="name" dev="sysfs" ino=32187 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.264702] type=1400 audit(1793625208.831:164): avc: denied { read } for comm="Binder:392_2" name="active_time_ms" dev="sysfs" ino=32192 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.264808] type=1400 audit(1793625208.831:165): avc: denied { read } for comm="Binder:392_2" name="event_count" dev="sysfs" ino=32078 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.264897] type=1400 audit(1793625208.831:166): avc: denied { read } for comm="Binder:392_2" name="max_time_ms" dev="sysfs" ino=32083 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.264997] type=1400 audit(1793625208.831:167): avc: denied { read } for comm="Binder:392_2" name="wakeup_count" dev="sysfs" ino=32079 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.265102] type=1400 audit(1793625208.831:168): avc: denied { read } for comm="Binder:392_2" name="total_time_ms" dev="sysfs" ino=32082 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.265203] type=1400 audit(1793625208.831:169): avc: denied { read } for comm="Binder:392_2" name="expire_count" dev="sysfs" ino=32080 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.265299] type=1400 audit(1793625208.831:170): avc: denied { read } for comm="Binder:392_2" name="active_count" dev="sysfs" ino=32077 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.265383] type=1400 audit(1793625208.831:171): avc: denied { read } for comm="Binder:392_2" name="last_change_ms" dev="sysfs" ino=32084 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.265464] type=1400 audit(1793625208.831:172): avc: denied { read } for comm="Binder:392_2" name="prevent_suspend_time_ms" dev="sysfs" ino=32085 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.265542] type=1400 audit(1793625208.831:173): avc: denied { read } for comm="Binder:392_2" name="name" dev="sysfs" ino=32076 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.265613] type=1400 audit(1793625208.831:174): avc: denied { read } for comm="Binder:392_2" name="active_time_ms" dev="sysfs" ino=32081 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.265733] type=1400 audit(1793625208.831:175): avc: denied { read } for comm="Binder:392_2" name="event_count" dev="sysfs" ino=29612 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.265838] type=1400 audit(1793625208.831:176): avc: denied { read } for comm="Binder:392_2" name="max_time_ms" dev="sysfs" ino=29617 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.265931] type=1400 audit(1793625208.831:177): avc: denied { read } for comm="Binder:392_2" name="wakeup_count" dev="sysfs" ino=29613 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.266022] type=1400 audit(1793625208.831:178): avc: denied { read } for comm="Binder:392_2" name="total_time_ms" dev="sysfs" ino=29616 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.266139] type=1400 audit(1793625208.831:179): avc: denied { read } for comm="Binder:392_2" name="expire_count" dev="sysfs" ino=29614 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.266267] type=1400 audit(1793625208.831:180): avc: denied { read } for comm="Binder:392_2" name="active_count" dev="sysfs" ino=29611 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.266378] type=1400 audit(1793625208.831:181): avc: denied { read } for comm="Binder:392_2" name="last_change_ms" dev="sysfs" ino=29618 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.266488] type=1400 audit(1793625208.831:182): avc: denied { read } for comm="Binder:392_2" name="prevent_suspend_time_ms" dev="sysfs" ino=29619 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.266610] type=1400 audit(1793625208.831:183): avc: denied { read } for comm="Binder:392_2" name="name" dev="sysfs" ino=29610 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.266705] type=1400 audit(1793625208.831:184): avc: denied { read } for comm="Binder:392_2" name="active_time_ms" dev="sysfs" ino=29615 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.266806] type=1400 audit(1793625208.831:185): avc: denied { read } for comm="Binder:392_2" name="event_count" dev="sysfs" ino=32309 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.266899] type=1400 audit(1793625208.831:186): avc: denied { read } for comm="Binder:392_2" name="max_time_ms" dev="sysfs" ino=32314 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.266994] type=1400 audit(1793625208.831:187): avc: denied { read } for comm="Binder:392_2" name="wakeup_count" dev="sysfs" ino=32310 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.267091] type=1400 audit(1793625208.831:188): avc: denied { read } for comm="Binder:392_2" name="total_time_ms" dev="sysfs" ino=32313 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.267160] type=1400 audit(1793625208.831:189): avc: denied { read } for comm="Binder:392_2" name="expire_count" dev="sysfs" ino=32311 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.267264] type=1400 audit(1793625208.831:190): avc: denied { read } for comm="Binder:392_2" name="active_count" dev="sysfs" ino=32308 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.267371] type=1400 audit(1793625208.831:191): avc: denied { read } for comm="Binder:392_2" name="last_change_ms" dev="sysfs" ino=32315 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.267474] type=1400 audit(1793625208.831:192): avc: denied { read } for comm="Binder:392_2" name="prevent_suspend_time_ms" dev="sysfs" ino=32316 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.267581] type=1400 audit(1793625208.831:193): avc: denied { read } for comm="Binder:392_2" name="name" dev="sysfs" ino=32307 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.267702] type=1400 audit(1793625208.831:194): avc: denied { read } for comm="Binder:392_2" name="active_time_ms" dev="sysfs" ino=32312 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.267789] type=1400 audit(1793625208.831:195): avc: denied { read } for comm="Binder:392_2" name="event_count" dev="sysfs" ino=25662 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.267856] type=1400 audit(1793625208.831:196): avc: denied { read } for comm="Binder:392_2" name="max_time_ms" dev="sysfs" ino=25667 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.267967] type=1400 audit(1793625208.831:197): avc: denied { read } for comm="Binder:392_2" name="wakeup_count" dev="sysfs" ino=25663 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.268163] type=1400 audit(1793625208.831:198): avc: denied { read } for comm="Binder:392_2" name="total_time_ms" dev="sysfs" ino=25666 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.268239] type=1400 audit(1793625208.831:199): avc: denied { read } for comm="Binder:392_2" name="expire_count" dev="sysfs" ino=25664 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.268362] type=1400 audit(1793625208.831:200): avc: denied { read } for comm="Binder:392_2" name="active_count" dev="sysfs" ino=25661 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.268444] type=1400 audit(1793625208.831:201): avc: denied { read } for comm="Binder:392_2" name="last_change_ms" dev="sysfs" ino=25668 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.268547] type=1400 audit(1793625208.831:202): avc: denied { read } for comm="Binder:392_2" name="prevent_suspend_time_ms" dev="sysfs" ino=25669 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.268671] type=1400 audit(1793625208.831:203): avc: denied { read } for comm="Binder:392_2" name="name" dev="sysfs" ino=25660 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.268744] type=1400 audit(1793625208.831:204): avc: denied { read } for comm="Binder:392_2" name="active_time_ms" dev="sysfs" ino=25665 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.268844] type=1400 audit(1793625208.831:205): avc: denied { read } for comm="Binder:392_2" name="event_count" dev="sysfs" ino=32164 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.268940] type=1400 audit(1793625208.831:206): avc: denied { read } for comm="Binder:392_2" name="max_time_ms" dev="sysfs" ino=32169 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.269050] type=1400 audit(1793625208.831:207): avc: denied { read } for comm="Binder:392_2" name="wakeup_count" dev="sysfs" ino=32165 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.269168] type=1400 audit(1793625208.831:208): avc: denied { read } for comm="Binder:392_2" name="total_time_ms" dev="sysfs" ino=32168 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.269268] type=1400 audit(1793625208.831:209): avc: denied { read } for comm="Binder:392_2" name="expire_count" dev="sysfs" ino=32166 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.269383] type=1400 audit(1793625208.831:210): avc: denied { read } for comm="Binder:392_2" name="active_count" dev="sysfs" ino=32163 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.269481] type=1400 audit(1793625208.831:211): avc: denied { read } for comm="Binder:392_2" name="last_change_ms" dev="sysfs" ino=32170 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.269583] type=1400 audit(1793625208.831:212): avc: denied { read } for comm="Binder:392_2" name="prevent_suspend_time_ms" dev="sysfs" ino=32171 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.269688] type=1400 audit(1793625208.831:213): avc: denied { read } for comm="Binder:392_2" name="name" dev="sysfs" ino=32162 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.269822] type=1400 audit(1793625208.831:214): avc: denied { read } for comm="Binder:392_2" name="active_time_ms" dev="sysfs" ino=32167 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.269905] type=1400 audit(1793625208.831:215): avc: denied { read } for comm="Binder:392_2" name="event_count" dev="sysfs" ino=29760 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.270031] type=1400 audit(1793625208.831:216): avc: denied { read } for comm="Binder:392_2" name="max_time_ms" dev="sysfs" ino=29765 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.270117] type=1400 audit(1793625208.831:217): avc: denied { read } for comm="Binder:392_2" name="wakeup_count" dev="sysfs" ino=29761 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.270252] type=1400 audit(1793625208.831:218): avc: denied { read } for comm="Binder:392_2" name="total_time_ms" dev="sysfs" ino=29764 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.270366] type=1400 audit(1793625208.831:219): avc: denied { read } for comm="Binder:392_2" name="expire_count" dev="sysfs" ino=29762 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.270463] type=1400 audit(1793625208.831:220): avc: denied { read } for comm="Binder:392_2" name="active_count" dev="sysfs" ino=29759 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.270545] type=1400 audit(1793625208.831:221): avc: denied { read } for comm="Binder:392_2" name="last_change_ms" dev="sysfs" ino=29766 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.270676] type=1400 audit(1793625208.835:222): avc: denied { read } for comm="Binder:392_2" name="prevent_suspend_time_ms" dev="sysfs" ino=29767 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.270807] type=1400 audit(1793625208.835:223): avc: denied { read } for comm="Binder:392_2" name="name" dev="sysfs" ino=29758 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.270914] type=1400 audit(1793625208.835:224): avc: denied { read } for comm="Binder:392_2" name="active_time_ms" dev="sysfs" ino=29763 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.270983] type=1400 audit(1793625208.835:225): avc: denied { read } for comm="Binder:392_2" name="event_count" dev="sysfs" ino=32590 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.271054] type=1400 audit(1793625208.835:226): avc: denied { read } for comm="Binder:392_2" name="max_time_ms" dev="sysfs" ino=32595 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.271152] type=1400 audit(1793625208.835:227): avc: denied { read } for comm="Binder:392_2" name="wakeup_count" dev="sysfs" ino=32591 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.271254] type=1400 audit(1793625208.835:228): avc: denied { read } for comm="Binder:392_2" name="total_time_ms" dev="sysfs" ino=32594 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.271366] type=1400 audit(1793625208.835:229): avc: denied { read } for comm="Binder:392_2" name="expire_count" dev="sysfs" ino=32592 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.271459] type=1400 audit(1793625208.835:230): avc: denied { read } for comm="Binder:392_2" name="active_count" dev="sysfs" ino=32589 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.271586] type=1400 audit(1793625208.835:231): avc: denied { read } for comm="Binder:392_2" name="last_change_ms" dev="sysfs" ino=32596 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.271691] type=1400 audit(1793625208.835:232): avc: denied { read } for comm="Binder:392_2" name="prevent_suspend_time_ms" dev="sysfs" ino=32597 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.271800] type=1400 audit(1793625208.835:233): avc: denied { read } for comm="Binder:392_2" name="name" dev="sysfs" ino=32588 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.271886] type=1400 audit(1793625208.835:234): avc: denied { read } for comm="Binder:392_2" name="active_time_ms" dev="sysfs" ino=32593 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.339574] sprd-spipe: spipe 6-41 not ready to open!
+[   36.164783] sensor name Unknown.
+[   36.164821] sensor name Unknown.
+[   36.164846] sensor name Unknown.
+[   36.164870] sensor name Unknown.
+[   36.164895] sensor name Unknown.
+[   36.164926] sensor efuse Unknown.
+[   36.164976] sensor efuse Unknown.
+[   36.165000] sensor efuse Unknown.
+[   36.165025] sensor efuse Unknown.
+[   36.165049] sensor efuse Unknown.
+[   36.340285] sprd-spipe: spipe 6-41 not ready to open!

@@ -18,6 +18,8 @@
 #   0003  build fix: drivers/devfreq/sprd include path
 #   0004  build fix: drivers/staging/sprd/sfp include path
 #   0005  build fix: vhost_vring_ioctl() ioctl type (needed for CONFIG_VHOST)
+#   0006  keep Clang CFI jump tables inside core kernel text (checked first:
+#         if the rule is already in the linker script, nothing is applied)
 set -eu
 
 TREE="${1:-$HOME/kernel-sprd}"
@@ -34,6 +36,15 @@ cd "$TREE"
 if [ -d "$REPO/patches/kernel-sprd" ] && command -v python3 >/dev/null; then
     python3 "$REPO/scripts/host/apply_shipping_header_delta.py" --tree "$TREE"
     python3 "$REPO/scripts/host/apply_shipping_code_delta.py" --tree "$TREE"
+    CFI_JT_PATTERN='*(.text..L.cfi.jumptable .text..L.cfi.jumptable.*)'
+    LINKER_SCRIPT="$TREE/include/asm-generic/vmlinux.lds.h"
+    if grep -Fq "$CFI_JT_PATTERN" "$LINKER_SCRIPT"; then
+        echo "CFI jump-table linker fix already present"
+    else
+        CFI_PATCH="$REPO/patches/kernel-sprd/0006-arm64-place-clang-cfi-jump-tables-in-core-text.patch"
+        git -C "$TREE" apply --check "$CFI_PATCH"
+        git -C "$TREE" apply "$CFI_PATCH"
+    fi
 else
     echo "note: patches/ not reachable from $0 - assuming the tree is already patched"
 fi

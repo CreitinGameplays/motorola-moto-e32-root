@@ -1,0 +1,115 @@
+# Mali instrumented-module probe #2 (2026-11-02 10:12) - HANG AGAIN, but now with data
+
+Module: `mali_kbase_mdbg.ko` (13,700,312 B, sha256 `eb73b98e...197b`, 42
+`MDBG` breadcrumbs), same kernel as the first probe
+(`Image.mali-mod.txt`, `8fb719e5...`, #56).
+
+Probe flow: dd'd `boot_mali_mod_magisk.img` (`405b221a...`) at 10:11,
+kernel booted to adb (~40 s), module pushed + hash-verified, on-device
+`nohup dmesg -w >> /data/local/tmp/mali_probe.log` started, host
+`dmesg -w` stream started, then `insmod`.
+
+## Observed
+
+* The device died during the probe window again (adb vanished, no INS_OK).
+* The **host** stream (`...probe-mdbg.txt.dmesg-stream.txt`) ends at
+  **t+36.340 s** (`sprd-spipe: spipe 6-41 not ready to open!`) with
+  **zero MDBG lines** - nothing between the insmod and the freeze reached
+  the host console. Same as probe #1: no "Kernel DDK version", no
+  "kbase_platform_device_probe enter".
+* The **on-device** log (`/data/local/tmp/mali_probe.log`) is GONE: the
+  freeze was followed by a manual power cycle, the rescue restored stock
+  boot_b, and the cold boot wiped the unsynced page cache. `nohup` protects
+  against the adb link dying, not against losing DRAM.
+* pstore after recovery: `console-ramoops-0` holds only the *recovery*
+  boot's early log (sysdump init, `sysrq: Kill All Tasks`, reboot with
+  command 'shell' at t+115 s) - no trace of the hung boot. As suspected: the
+  hang monitor thread never got to run once the CPU stalled, so no panic,
+  no ramoops of the probe boot.
+
+## What this rules out
+
+* The hang happens **before the first breadcrumb in the probe path**
+  (`MDBG: kbase_platform_device_probe enter` at the very top of
+  `kbase_platform_device_probe`), i.e. before `kbase_device_alloc()` even.
+  Candidates that run before it: module load relocation/verification,
+  `mali_kbase_mod_init` -> `kbase_platform_register()` ->
+  `platform_driver_register` -> the core's probe dispatch, or the
+  platform device match itself.
+* Note: printk from a module .init on this kernel may not reach the
+  host console before the CPU stalls - the previous module printed
+  "Kernel DDK version" *after* insmod returned? (unknown - the first
+  probe never showed it either). So "no MDBG in the stream" does not yet
+  prove "no MDBG executed"; only the on-device log could tell, and it is
+  gone.
+
+## Recovery cost this time
+
+Power cycle + rescue (stock boot_b) + `mali_kroot` re-root + Magisk
+`boot_b` rewrite + reboot: ~15 min. (Recovery log: `mali_kroot.log`,
+Magisk restored by `restore_magisk_after_rescue.ps1`; su Enforcing, boot_b
+`90416c09...ad3c`.)
+
+## Probe #3 setup (built, staged, 2026-11-02 ~15:0x)
+
+* `mdbg_crumb.ko` (121,640 B, sha256 `7cbb217e...dea4`): opens
+  `miscdata` and arms `CRUMB01` at `+0xA0000`; exports `mdbg_crumb(step)`.
+* `mali_kbase_crumb.ko` (13,704,760 B, sha256 `d0d0dc52...e57`): mali_kbase
+  with 42 `MDBG` printks AND `mdbg_crumb()` calls at every boundary
+  (U mdbg_crumb in nm = resolved at insmod, as designed).
+* Probe script (`scripts/host/mali_module_probe.ps1`) now:
+  `-CrumbKo` pushes + insmods the recorder first, verifies the magic is
+  on flash (reads miscdata+0xA0000), refuses to load mali if not armed,
+  and after the probe window reads the crumbs back. If adb dies, the
+  post-recovery readout is ONE command:
+  `dd if=miscdata bs=1 skip=655360 count=64 | od -An -tx1`.
+* Crumb map: 60/61 module init enter/`platform_driver_register` returned,
+  62 probe callback, 63 `power_control_init`, 70+i `dev_init[i]`,
+  glue: 10..17 freq_init syscon/nvmem/clk steps, 20/21 platform_init,
+  22..25 power_on (top-force write + pwr-state check), 26 clock_on start,
+  27 efuse, 28+i per clock-source enable, 36/37 gate enables,
+  38/39 pwr-state check, 40/41 DVFS writes, 42 QoS, 43 done.
+* `write_crumb.sh` (device helper, miscdata+0xA0000 too) verified
+  write/read-back/clear works on the live phone via su.
+
+## Verdict reading guide
+
+* `CRUMB01` + `3c` (60) but no `3d` (61) -> hang inside
+  `platform_driver_register` (probe dispatch on platform bus).
+* 60..62 then glue steps 10.. then a gap -> the last glue step byte is the
+  exact dying call (e.g. stops at 0x16=22 -> top-force-shutdown write).
+* no magic at all -> hang in module ELF load (relocations/verification),
+  before any of our code; compare with `elprobe.ko` which loads fine.
+
+Two probe runs produced zero surviving bytes of the hang location. The
+conclusion is that a console stream cannot outrun a CPU stall on this
+device - by the time `dmesg -w` output is flushed to the host, the CPU is
+dead, and the on-device page cache dies with DRAM on the cold reset.
+
+So probe #3 writes its trail directly to **flash**, in a verified scratch
+area:
+
+* `miscdata` (sda2, 1 MiB) layout probed on-device:
+  `+0x0000` production data (serial, DOWNLOAD/WRITESN/CFT/BBAT/WCN/ANTENNA/
+  IMEI) - untouched; `+0x2000+` zeros all the way to the end (verified at
+  0x4000..0xF4240); UFS, so byte writes need no erase and zeroing restores.
+  Write+read-back verified at the chosen offset, then cleared.
+* New module `mdbg_crumb.c` (`obj-m`, no dependencies): opens
+  `/dev/block/by-name/miscdata`, arms `"CRUMB01"` at `+0xA0000`, exports
+  `mdbg_crumb(int step)`; each call appends one step byte and fsyncs.
+  `mali_kbase` calls it at every boundary:
+  * 60/61 module init enter / platform_driver_register returned
+  * 62 probe callback entered
+  * 63 power_control_init entered
+  * 70+i each `dev_init[i]` step
+  * 10..43 the qogirl6 glue sub-steps (syscon lookups, nvmem, clock gets,
+    clock enables, top-force write, pwr-state check, GPLL trim, DVFS/QoS
+    writes)
+* Readout after any recovery: `dd if=miscdata bs=1 skip=655360 count=64`
+  -> the step bytes name the exact call that stalled, even across a
+  power cycle and the rescue restore.
+
+If the crumbs show 60 written but not 61, the hang is inside
+`platform_driver_register` (probe dispatch). If even 60 is missing, the
+hang is in module ELF load/relocation itself - then compare with
+`elprobe.ko`, which loads fine on this kernel.

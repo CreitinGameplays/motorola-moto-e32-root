@@ -41,12 +41,28 @@ param(
     [Parameter(Mandatory = $true)][string]$Image,
     [string]$Adb = 'D:\AndroidSDKTools\adb\adb.exe',
     [int]$WaitSeconds = 900,
-    [string]$Out
+    [string]$Out,
+    [string]$CheckpointLabel,
+    [switch]$RequireReset,
+    [switch]$RequireCheckpointBreadcrumb,
+    [switch]$SkipWait
 )
 
 $ErrorActionPreference = 'Continue'
 if (-not (Test-Path $Image)) { throw "image not found: $Image" }
 if (-not $Out) { $Out = "docs\evidence\$((Get-Date -Format yyyy-MM-dd))-boot_b-tests.txt" }
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+
+$imageStream = [System.IO.File]::OpenRead((Resolve-Path $Image).Path)
+try {
+    $imageMagic = New-Object byte[] 8
+    if ($imageStream.Read($imageMagic, 0, 8) -ne 8 -or
+        [System.Text.Encoding]::ASCII.GetString($imageMagic) -ne 'ANDROID!') {
+        throw 'refusing to flash a raw kernel Image: expected an Android boot image with ANDROID! magic'
+    }
+} finally {
+    $imageStream.Dispose()
+}
 
 $lines = New-Object System.Collections.Generic.List[string]
 function Log([string]$s) { $lines.Add($s); Write-Host $s }
@@ -61,6 +77,7 @@ Log ("=" * 72)
 Log "boot_b test, $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 Log "image : $Image"
 Log "        $imgBytes bytes, sha256 $imgHash"
+if ($CheckpointLabel) { Log "checkpoint label : $CheckpointLabel" }
 Log ("=" * 72)
 
 Log "--- pre-flight ---"
@@ -70,6 +87,53 @@ $bak = (Get-Item $Image).BaseName
 Log "slot            : $slot"
 Log "running kernel  : $ver"
 if ($slot -ne '_b') { Log "ABORT: not on slot _b (running $slot); the test channel needs _b"; $lines | Out-File -Append -Encoding utf8 $Out; throw "wrong slot" }
+$rootUid = Sh "su -c 'id -u'"
+if ($rootUid -ne '0') {
+    Log "ABORT: persistent root is unavailable (su uid=$rootUid); refusing to use mali_kroot"
+    $lines | Out-File -Append -Encoding utf8 $Out
+    throw "persistent Magisk root required"
+}
+$enforce = Sh 'getenforce'
+if ($enforce -ne 'Enforcing') {
+    Log "ABORT: SELinux is $enforce, expected Enforcing; refusing to run a test boot"
+    $lines | Out-File -Append -Encoding utf8 $Out
+    throw "SELinux is not Enforcing"
+}
+$bootAInfo = Sh "su -c 'sha256sum /dev/block/by-name/boot_a'"
+$bootAHash = (($bootAInfo -split '\s+')[0]).ToLower()
+$expectedRescue = 'fc3ca0efd6414d4f5d24c478b1592ea1ba9386f1476883a0bd8a1b8b1a3844c0'
+Log "root uid        : $rootUid"
+Log "SELinux         : $enforce"
+Log "boot_a rescue   : $bootAHash"
+if ($bootAHash -ne $expectedRescue) {
+    Log "ABORT: boot_a is not the verified rescue image"
+    $lines | Out-File -Append -Encoding utf8 $Out
+    throw "unexpected boot_a hash"
+}
+
+$helperPath = Join-Path $repoRoot 'scripts\device\set_slot_b_tries1.sh'
+if ((Get-Content $helperPath -Raw) -match 'mali_kroot') {
+    throw "refusing unsafe one-attempt helper containing mali_kroot"
+}
+$helperHash = (Get-FileHash $helperPath -Algorithm SHA256).Hash.ToLower()
+Log "--- stage one-attempt helper ---"
+$helperPush = (& $Adb push $helperPath '/data/local/tmp/set_slot_b_tries1.sh' 2>&1 | Out-String).Trim()
+Log $helperPush
+Sh 'chmod 755 /data/local/tmp/set_slot_b_tries1.sh' | Out-Null
+$helperSyntax = Sh 'sh -n /data/local/tmp/set_slot_b_tries1.sh && echo HELPER_SYNTAX_OK'
+if ($helperSyntax -notmatch 'HELPER_SYNTAX_OK') {
+    Log "ABORT: device shell rejected the one-attempt helper: $helperSyntax"
+    $lines | Out-File -Append -Encoding utf8 $Out
+    throw "device helper syntax check failed"
+}
+$deviceHelperHash = Sh "sha256sum /data/local/tmp/set_slot_b_tries1.sh"
+$deviceHelperHash = (($deviceHelperHash -split '\s+')[0]).ToLower()
+Log "helper sha256   : $deviceHelperHash"
+if ($deviceHelperHash -ne $helperHash) {
+    Log "ABORT: one-attempt helper did not stage byte-identically"
+    $lines | Out-File -Append -Encoding utf8 $Out
+    throw "helper push hash mismatch"
+}
 
 Log "--- push ---"
 (& $Adb push $Image "/data/local/tmp/$bak.img" 2>&1 | Out-Null)
@@ -105,7 +169,7 @@ $slotOk = $false
 for ($i = 1; $i -le 5; $i++) {
     $s = Sh "su -c 'sh /data/local/tmp/set_slot_b_tries1.sh'"
     Log "attempt $i : $($s -replace "`r?`n", ' | ')"
-    if ($s -match '1f 00' ) { $slotOk = $true; break }
+    if ($s -match 'AB_TRIES1_OK') { $slotOk = $true; break }
     Start-Sleep -Seconds 2
 }
 if (-not $slotOk) {
@@ -120,11 +184,22 @@ $t0 = Get-Date
 (& $Adb reboot 2>&1 | Out-Null)
 Log ("reboot issued at " + $t0.ToString('HH:mm:ss'))
 
+if ($SkipWait) {
+    Log ""
+    Log "skip-wait : image written, slot b has one attempt, reboot issued"
+    Log "            not waiting: this is for images that boot to adb but never"
+    Log "            reach boot_completed (e.g. a kernel without mali, where"
+    Log "            surfaceflinger cannot start). Attach as soon as adb answers."
+    $lines | Out-File -Append -Encoding utf8 $Out
+    Write-Host "appended to $Out"
+    exit 0
+}
+
 $verdict = 'HANG'
 $last = ''
 while (((Get-Date) - $t0).TotalSeconds -lt $WaitSeconds) {
     $raw = (& $Adb devices 2>&1 | Out-String)
-    $line = ($raw -split "`n" | Where-Object { $_ -match '\sdevice$' } | Select-Object -First 1)
+    $line = ($raw -split "`r?`n" | Where-Object { $_ -match '\sdevice\s*$' } | Select-Object -First 1)
     $state = if ($null -eq $line) { 'absent' } else { 'device' }
     $el = [int]((Get-Date) - $t0).TotalSeconds
     if ($state -ne $last) { Log ("t+{0,4}s  {1}" -f $el, $state); $last = $state }
@@ -140,36 +215,73 @@ $elapsed = [int]((Get-Date) - $t0).TotalSeconds
 Log ""
 Log "VERDICT: $verdict  (adb back after ${elapsed}s)" 
 if ($verdict -eq 'RESET') {
-    Log "  => the device reset and Android returned; inspect captured pstore records"
+    Log "  => the device reset and Android returned"
 } else {
     Log "  => no adb and no reset observed; the watchdog may not have armed or fired"
     Log "     recover with a power cycle (slot b's try is spent, the SPL takes slot a"
     Log "     and the rescue restores Android), or brom_set_slot.ps1 -Slot a -ConfirmWrite"
 }
-Log "post-reset state:"
-Log (Sh "su -c 'dd if=/dev/block/by-name/misc bs=1 skip=2048 count=32 2>/dev/null | od -An -tx1'")
 
 # Preserve the warm-reset ramoops records immediately. A manual cold power
 # cycle clears DRAM and loses these; the rescue boot can continue Android, but
 # capture before doing any more diagnosis/reboots.
+$checkpointCaptured = $false
+$pstoreCaptured = $false
 if ($verdict -eq 'RESET') {
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $pstoreDir = 'artifacts\kernel-build\pstore-' + $stamp
+    $pstoreDir = Join-Path (Join-Path $repoRoot 'artifacts\kernel-build') ('pstore-' + $stamp)
     New-Item -ItemType Directory -Force -Path $pstoreDir | Out-Null
     foreach ($name in @('console-ramoops-0', 'dmesg-ramoops-0', 'pmsg-ramoops-0')) {
         $remote = "/data/local/tmp/diag-$stamp-$name"
         $local = Join-Path $pstoreDir $name
-        $copy = Sh ("su -c 'cat /sys/fs/pstore/$name > $remote 2>/dev/null'")
+        # The rescue restores stock boot_b, so Magisk su may no longer exist.
+        # Try shell-readable pstore first, then fall back to su on rooted boots.
+        Sh "cat /sys/fs/pstore/$name > $remote 2>/dev/null" | Out-Null
+        $remoteSize = Sh "wc -c < $remote 2>/dev/null"
+        if ($remoteSize -notmatch '^\s*[1-9][0-9]*\s*$') {
+            Sh ("su -c 'cat /sys/fs/pstore/$name > $remote 2>/dev/null'") | Out-Null
+        }
         $pull = (& $Adb pull $remote $local 2>&1 | Out-String).Trim()
         if (Test-Path $local) {
             $size = (Get-Item $local).Length
             Log "pstore capture  : $name ($size bytes) -> $local"
-            Sh "su -c 'rm -f $remote'" | Out-Null
+            if ($size -gt 0) { $pstoreCaptured = $true }
+            Sh "rm -f $remote" | Out-Null
         } else {
             Log "pstore missing : $name ($pull)"
         }
     }
+    if ($CheckpointLabel) {
+        $needle = "DIAG: CHECKPOINT reached: $CheckpointLabel"
+        foreach ($name in @('console-ramoops-0', 'dmesg-ramoops-0', 'pmsg-ramoops-0')) {
+            $local = Join-Path $pstoreDir $name
+            if ((Test-Path $local) -and
+                (Select-String -Path $local -SimpleMatch -Pattern $needle -Quiet `
+                    -ErrorAction SilentlyContinue)) {
+                $checkpointCaptured = $true
+                break
+            }
+        }
+        Log ("checkpoint breadcrumb captured: " +
+             $(if ($checkpointCaptured) { 'YES' } else { 'NO' }) +
+             " (absence can mean the checkpoint preceded ramoops initialization)")
+    }
+    Log ("nonempty pstore record captured: " +
+         $(if ($pstoreCaptured) { 'YES' } else { 'NO' }))
+}
+Log "post-reset state:"
+$postUid = Sh "su -c 'id -u'"
+if ($postUid -eq '0') {
+    Log (Sh "su -c 'dd if=/dev/block/by-name/misc bs=1 skip=2048 count=32 2>/dev/null | od -An -tx1'")
+} else {
+    Log 'Magisk root unavailable after reset; rescue may have restored stock boot_b.'
 }
 
 $lines | Out-File -Append -Encoding utf8 $Out
 Write-Host "appended to $Out"
+if ($RequireReset -and $verdict -ne 'RESET') {
+    throw "no reset/recovered-Android verdict; refusing to continue checkpoint workflow"
+}
+if ($RequireCheckpointBreadcrumb -and -not $checkpointCaptured) {
+    throw "expected checkpoint breadcrumb was not found in captured pstore"
+}

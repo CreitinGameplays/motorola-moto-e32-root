@@ -1,0 +1,19 @@
+﻿PSCI checkpoint probe plan, 2026-11-01 19:27:24
+positive-control image: C:\Users\Creitin\moto-root-test\artifacts\kernel-build\boot_checkpoint-control-smc-cfi.img
+  bytes=67108864 sha256=4ad2aa73de675e0237f79d175b117a4ef7b3afb9cd740273acbb3a1f36263a81
+positive-control label: stage:7
+target image: C:\Users\Creitin\moto-root-test\artifacts\kernel-build\boot_checkpoint-target-smc-cfi.img
+  bytes=67108864 sha256=b29844dca532491913ca6f5e341f9e1534b129b0602ecedb01cd61df2474d5ba
+target label: setup:cpuset_init_smp
+target pstore breadcrumb required: False
+runner outputs: C:\Users\Creitin\moto-root-test\docs\evidence\20261101-192723-checkpoint-positive-control.txt ; C:\Users\Creitin\moto-root-test\docs\evidence\20261101-192723-magisk-reroot.txt ; C:\Users\Creitin\moto-root-test\docs\evidence\20261101-192723-checkpoint-target.txt
+MODE: DEVICE EXECUTION explicitly confirmed.
+start: 2026-11-01 19:27:24
+control image was written/read back and slot b was armed for one attempt.
+After reboot, adb was absent at t+4s; operator reported a hang and performed
+manual power-cycle recovery. Host workflow was stopped before its 900-second
+window completed so this manual recovery could not be mistaken for a successful
+control reset. The positive control is not a pass; target image was not run.
+See docs/evidence/2026-11-01-smc-checkpoint-device.txt for recovery and pstore
+details. Magisk root was subsequently restored and verified Enforcing; details:
+docs/evidence/20261101-194705-magisk-reroot.txt.

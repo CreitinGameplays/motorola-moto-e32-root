@@ -56,3 +56,57 @@ VERDICT: HANG  (adb back after 902s)
 post-reset state:
 5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 9f 00
  00 00 00 00 00 00 00 00 00 00 00 00 53 6d d6 a3
+
+========================================================================
+boot_b test, 2026-11-01 15:43:24
+image : artifacts/kernel-build/boot_ramlog.img
+        67108864 bytes, sha256 8004B9CF4B9A070FEE1C19271A07986D79E70DBADA5E438C40C48CD35807451F
+========================================================================
+--- pre-flight ---
+slot            : _b
+running kernel  : Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020) (Android (6443078 based on r383902) clang version 11.0.1 (https://android.googlesource.com/toolchain/llvm-project b397f81060ce6d701042b782172ed13bee898b79), LLD 11.0.1 (/buildbot/tmp/tmp6_m7QH b397f81060ce6d701042b782172ed13bee898b79)) #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024
+--- push ---
+pushed sha256   : 8004b9cf4b9a070fee1c19271a07986d79e70dbada5e438c40c48cd35807451f
+--- flash boot_b (root) ---
+attempt 1 : adb.exe : 64+0 records in | At C:\Users\Creitin\moto-root-test\scripts\host\run_boot_b_test.ps1:53 char:30 | + function Sh([string]$cmd) { (& $Adb shell $cmd 2>&1 | Out-String).Tri ... | +                              ~~~~~~~~~~~~~~~~~~~~~~ |     + CategoryInfo          : NotSpecified: (64+0 records in:String) [], RemoteException |     + FullyQualifiedErrorId : NativeCommandError |   | 64+0 records out | 67108864 bytes (64 M) copied, 0.571981 s, 112 M/s | 8004b9cf4b9a070fee1c19271a07986d79e70dbada5e438c40c48cd35807451f
+read-back match : YES
+--- one-attempt slot b ---
+attempt 1 : uid=0 | before: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 9f 00 |  00 00 00 00 00 00 00 00 00 00 00 00 53 6d d6 a3 | block 32 bytes | 32 bytes (32 B) copied, 0.016693 s, 1.8 K/s | after: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 1f 00 |  00 00 00 00 00 00 00 00 00 00 00 00 b1 82 a5 20
+--- reboot ---
+reboot issued at 15:43:29
+t+   3s  absent
+
+VERDICT: HANG  (adb back after 901s)
+  => no adb and no reset observed; the watchdog may not have armed or fired
+     recover with a power cycle (slot b's try is spent, the SPL takes slot a
+     and the rescue restores Android), or brom_set_slot.ps1 -Slot a -ConfirmWrite
+post-reset state:
+5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 9f 00
+ 00 00 00 00 00 00 00 00 00 00 00 00 53 6d d6 a3
+
+========================================================================
+boot_b test, 2026-11-01 16:18:14
+image : artifacts/kernel-build/boot_paneldiag.img
+        67108864 bytes, sha256 3EEA82797CD03883530EFC9EE10A9540CF6C85711A711C78F1A96A01D4890340
+========================================================================
+--- pre-flight ---
+slot            : _b
+running kernel  : Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020) (Android (6443078 based on r383902) clang version 11.0.1 (https://android.googlesource.com/toolchain/llvm-project b397f81060ce6d701042b782172ed13bee898b79), LLD 11.0.1 (/buildbot/tmp/tmp6_m7QH b397f81060ce6d701042b782172ed13bee898b79)) #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024
+--- push ---
+pushed sha256   : 3eea82797cd03883530efc9ee10a9540cf6c85711a711c78f1a96a01d4890340
+--- flash boot_b (root) ---
+attempt 1 : adb.exe : 64+0 records in | At C:\Users\Creitin\moto-root-test\scripts\host\run_boot_b_test.ps1:53 char:30 | + function Sh([string]$cmd) { (& $Adb shell $cmd 2>&1 | Out-String).Tri ... | +                              ~~~~~~~~~~~~~~~~~~~~~~ |     + CategoryInfo          : NotSpecified: (64+0 records in:String) [], RemoteException |     + FullyQualifiedErrorId : NativeCommandError |   | 64+0 records out | 67108864 bytes (64 M) copied, 0.918827 s, 70 M/s | 3eea82797cd03883530efc9ee10a9540cf6c85711a711c78f1a96a01d4890340
+read-back match : YES
+--- one-attempt slot b ---
+attempt 1 : uid=0 | before: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 9f 00 |  00 00 00 00 00 00 00 00 00 00 00 00 53 6d d6 a3 | block 32 bytes | 32 bytes (32 B) copied, 0.017057 s, 1.8 K/s | after: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 1f 00 |  00 00 00 00 00 00 00 00 00 00 00 00 b1 82 a5 20
+--- reboot ---
+reboot issued at 16:18:19
+t+   4s  absent
+
+VERDICT: HANG  (adb back after 900s)
+  => no adb and no reset observed; the watchdog may not have armed or fired
+     recover with a power cycle (slot b's try is spent, the SPL takes slot a
+     and the rescue restores Android), or brom_set_slot.ps1 -Slot a -ConfirmWrite
+post-reset state:
+5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 9f 00
+ 00 00 00 00 00 00 00 00 00 00 00 00 53 6d d6 a3

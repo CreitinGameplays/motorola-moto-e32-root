@@ -1,0 +1,512 @@
+[   35.535279] init: Untracked pid 1365 exited with status 0
+[   35.539094] systemserver cmd , get para: ( 50)
+[   35.604872] sprd-spipe: spipe 6-41 not ready to open!
+[   35.648288] type=1400 audit(1793628555.227:125): avc: denied { read } for comm="Binder:391_2" name="event_count" dev="sysfs" ino=29265 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.648636] type=1400 audit(1793628555.231:126): avc: denied { read } for comm="Binder:391_2" name="max_time_ms" dev="sysfs" ino=29270 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.648753] type=1400 audit(1793628555.231:127): avc: denied { read } for comm="Binder:391_2" name="wakeup_count" dev="sysfs" ino=29266 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.648825] type=1400 audit(1793628555.231:128): avc: denied { read } for comm="Binder:391_2" name="total_time_ms" dev="sysfs" ino=29269 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.648898] type=1400 audit(1793628555.231:129): avc: denied { read } for comm="Binder:391_2" name="expire_count" dev="sysfs" ino=29267 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.648986] type=1400 audit(1793628555.231:130): avc: denied { read } for comm="Binder:391_2" name="active_count" dev="sysfs" ino=29264 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.649060] type=1400 audit(1793628555.231:131): avc: denied { read } for comm="Binder:391_2" name="last_change_ms" dev="sysfs" ino=29271 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.649153] type=1400 audit(1793628555.231:132): avc: denied { read } for comm="Binder:391_2" name="prevent_suspend_time_ms" dev="sysfs" ino=29272 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.649240] type=1400 audit(1793628555.231:133): avc: denied { read } for comm="Binder:391_2" name="name" dev="sysfs" ino=29263 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.649327] type=1400 audit(1793628555.231:134): avc: denied { read } for comm="Binder:391_2" name="active_time_ms" dev="sysfs" ino=29268 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.649423] type=1400 audit(1793628555.231:135): avc: denied { read } for comm="Binder:391_2" name="event_count" dev="sysfs" ino=32813 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.649672] type=1400 audit(1793628555.231:136): avc: denied { read } for comm="Binder:391_2" name="max_time_ms" dev="sysfs" ino=32818 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.649777] type=1400 audit(1793628555.231:137): avc: denied { read } for comm="Binder:391_2" name="wakeup_count" dev="sysfs" ino=32814 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.649898] type=1400 audit(1793628555.231:138): avc: denied { read } for comm="Binder:391_2" name="total_time_ms" dev="sysfs" ino=32817 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.650006] type=1400 audit(1793628555.231:139): avc: denied { read } for comm="Binder:391_2" name="expire_count" dev="sysfs" ino=32815 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.650124] type=1400 audit(1793628555.231:140): avc: denied { read } for comm="Binder:391_2" name="active_count" dev="sysfs" ino=32812 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.650250] type=1400 audit(1793628555.231:141): avc: denied { read } for comm="Binder:391_2" name="last_change_ms" dev="sysfs" ino=32819 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.650329] type=1400 audit(1793628555.231:142): avc: denied { read } for comm="Binder:391_2" name="prevent_suspend_time_ms" dev="sysfs" ino=32820 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.650449] type=1400 audit(1793628555.231:143): avc: denied { read } for comm="Binder:391_2" name="name" dev="sysfs" ino=32811 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.650565] type=1400 audit(1793628555.231:144): avc: denied { read } for comm="Binder:391_2" name="active_time_ms" dev="sysfs" ino=32816 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.650681] type=1400 audit(1793628555.231:145): avc: denied { read } for comm="Binder:391_2" name="event_count" dev="sysfs" ino=24064 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.650896] type=1400 audit(1793628555.231:146): avc: denied { read } for comm="Binder:391_2" name="max_time_ms" dev="sysfs" ino=24069 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.651000] type=1400 audit(1793628555.231:147): avc: denied { read } for comm="Binder:391_2" name="wakeup_count" dev="sysfs" ino=24065 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.651138] type=1400 audit(1793628555.231:148): avc: denied { read } for comm="Binder:391_2" name="total_time_ms" dev="sysfs" ino=24068 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.651212] type=1400 audit(1793628555.231:149): avc: denied { read } for comm="Binder:391_2" name="expire_count" dev="sysfs" ino=24066 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.651323] type=1400 audit(1793628555.231:150): avc: denied { read } for comm="Binder:391_2" name="active_count" dev="sysfs" ino=24063 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.651413] type=1400 audit(1793628555.231:151): avc: denied { read } for comm="Binder:391_2" name="last_change_ms" dev="sysfs" ino=24070 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.651512] type=1400 audit(1793628555.231:152): avc: denied { read } for comm="Binder:391_2" name="prevent_suspend_time_ms" dev="sysfs" ino=24071 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.651613] type=1400 audit(1793628555.231:153): avc: denied { read } for comm="Binder:391_2" name="name" dev="sysfs" ino=24062 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.651736] type=1400 audit(1793628555.231:154): avc: denied { read } for comm="Binder:391_2" name="active_time_ms" dev="sysfs" ino=24067 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.651852] type=1400 audit(1793628555.231:155): avc: denied { read } for comm="Binder:391_2" name="event_count" dev="sysfs" ino=32189 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.651923] type=1400 audit(1793628555.231:156): avc: denied { read } for comm="Binder:391_2" name="max_time_ms" dev="sysfs" ino=32194 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.652122] type=1400 audit(1793628555.231:157): avc: denied { read } for comm="Binder:391_2" name="wakeup_count" dev="sysfs" ino=32190 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.652203] type=1400 audit(1793628555.231:158): avc: denied { read } for comm="Binder:391_2" name="total_time_ms" dev="sysfs" ino=32193 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.652280] type=1400 audit(1793628555.231:159): avc: denied { read } for comm="Binder:391_2" name="expire_count" dev="sysfs" ino=32191 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.652421] type=1400 audit(1793628555.231:160): avc: denied { read } for comm="Binder:391_2" name="active_count" dev="sysfs" ino=32188 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.652522] type=1400 audit(1793628555.231:161): avc: denied { read } for comm="Binder:391_2" name="last_change_ms" dev="sysfs" ino=32195 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.652595] type=1400 audit(1793628555.231:162): avc: denied { read } for comm="Binder:391_2" name="prevent_suspend_time_ms" dev="sysfs" ino=32196 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.652707] type=1400 audit(1793628555.231:163): avc: denied { read } for comm="Binder:391_2" name="name" dev="sysfs" ino=32187 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.652804] type=1400 audit(1793628555.231:164): avc: denied { read } for comm="Binder:391_2" name="active_time_ms" dev="sysfs" ino=32192 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.652893] type=1400 audit(1793628555.231:165): avc: denied { read } for comm="Binder:391_2" name="event_count" dev="sysfs" ino=31957 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.652965] type=1400 audit(1793628555.231:166): avc: denied { read } for comm="Binder:391_2" name="max_time_ms" dev="sysfs" ino=31964 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.653052] type=1400 audit(1793628555.231:167): avc: denied { read } for comm="Binder:391_2" name="wakeup_count" dev="sysfs" ino=31958 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.653172] type=1400 audit(1793628555.231:168): avc: denied { read } for comm="Binder:391_2" name="total_time_ms" dev="sysfs" ino=31962 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.653249] type=1400 audit(1793628555.235:169): avc: denied { read } for comm="Binder:391_2" name="expire_count" dev="sysfs" ino=31960 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.653316] type=1400 audit(1793628555.235:170): avc: denied { read } for comm="Binder:391_2" name="active_count" dev="sysfs" ino=31956 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.653382] type=1400 audit(1793628555.235:171): avc: denied { read } for comm="Binder:391_2" name="last_change_ms" dev="sysfs" ino=31965 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.653560] type=1400 audit(1793628555.235:172): avc: denied { read } for comm="Binder:391_2" name="prevent_suspend_time_ms" dev="sysfs" ino=31966 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.653683] type=1400 audit(1793628555.235:173): avc: denied { read } for comm="Binder:391_2" name="name" dev="sysfs" ino=31954 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.653823] type=1400 audit(1793628555.235:174): avc: denied { read } for comm="Binder:391_2" name="active_time_ms" dev="sysfs" ino=31961 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.653927] type=1400 audit(1793628555.235:175): avc: denied { read } for comm="Binder:391_2" name="event_count" dev="sysfs" ino=29612 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.654072] type=1400 audit(1793628555.235:176): avc: denied { read } for comm="Binder:391_2" name="max_time_ms" dev="sysfs" ino=29617 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.654182] type=1400 audit(1793628555.235:177): avc: denied { read } for comm="Binder:391_2" name="wakeup_count" dev="sysfs" ino=29613 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.654294] type=1400 audit(1793628555.235:178): avc: denied { read } for comm="Binder:391_2" name="total_time_ms" dev="sysfs" ino=29616 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.654396] type=1400 audit(1793628555.235:179): avc: denied { read } for comm="Binder:391_2" name="expire_count" dev="sysfs" ino=29614 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.654549] type=1400 audit(1793628555.235:180): avc: denied { read } for comm="Binder:391_2" name="active_count" dev="sysfs" ino=29611 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.654680] type=1400 audit(1793628555.235:181): avc: denied { read } for comm="Binder:391_2" name="last_change_ms" dev="sysfs" ino=29618 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.654771] type=1400 audit(1793628555.235:182): avc: denied { read } for comm="Binder:391_2" name="prevent_suspend_time_ms" dev="sysfs" ino=29619 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.654840] type=1400 audit(1793628555.235:183): avc: denied { read } for comm="Binder:391_2" name="name" dev="sysfs" ino=29610 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.654923] type=1400 audit(1793628555.235:184): avc: denied { read } for comm="Binder:391_2" name="active_time_ms" dev="sysfs" ino=29615 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.655012] type=1400 audit(1793628555.235:185): avc: denied { read } for comm="Binder:391_2" name="event_count" dev="sysfs" ino=32309 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.655087] type=1400 audit(1793628555.235:186): avc: denied { read } for comm="Binder:391_2" name="max_time_ms" dev="sysfs" ino=32314 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.655167] type=1400 audit(1793628555.235:187): avc: denied { read } for comm="Binder:391_2" name="wakeup_count" dev="sysfs" ino=32310 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.655294] type=1400 audit(1793628555.235:188): avc: denied { read } for comm="Binder:391_2" name="total_time_ms" dev="sysfs" ino=32313 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.655402] type=1400 audit(1793628555.235:189): avc: denied { read } for comm="Binder:391_2" name="expire_count" dev="sysfs" ino=32311 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.655484] type=1400 audit(1793628555.235:190): avc: denied { read } for comm="Binder:391_2" name="active_count" dev="sysfs" ino=32308 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.655577] type=1400 audit(1793628555.235:191): avc: denied { read } for comm="Binder:391_2" name="last_change_ms" dev="sysfs" ino=32315 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.655668] type=1400 audit(1793628555.235:192): avc: denied { read } for comm="Binder:391_2" name="prevent_suspend_time_ms" dev="sysfs" ino=32316 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.655755] type=1400 audit(1793628555.235:193): avc: denied { read } for comm="Binder:391_2" name="name" dev="sysfs" ino=32307 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.655842] type=1400 audit(1793628555.235:194): avc: denied { read } for comm="Binder:391_2" name="active_time_ms" dev="sysfs" ino=32312 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.655941] type=1400 audit(1793628555.235:195): avc: denied { read } for comm="Binder:391_2" name="event_count" dev="sysfs" ino=25662 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.656155] type=1400 audit(1793628555.235:196): avc: denied { read } for comm="Binder:391_2" name="max_time_ms" dev="sysfs" ino=25667 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.656270] type=1400 audit(1793628555.235:197): avc: denied { read } for comm="Binder:391_2" name="wakeup_count" dev="sysfs" ino=25663 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.656375] type=1400 audit(1793628555.235:198): avc: denied { read } for comm="Binder:391_2" name="total_time_ms" dev="sysfs" ino=25666 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.656717] type=1400 audit(1793628555.235:199): avc: denied { read } for comm="Binder:391_2" name="expire_count" dev="sysfs" ino=25664 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.656833] type=1400 audit(1793628555.235:200): avc: denied { read } for comm="Binder:391_2" name="active_count" dev="sysfs" ino=25661 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.656931] type=1400 audit(1793628555.235:201): avc: denied { read } for comm="Binder:391_2" name="last_change_ms" dev="sysfs" ino=25668 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.657030] type=1400 audit(1793628555.235:202): avc: denied { read } for comm="Binder:391_2" name="prevent_suspend_time_ms" dev="sysfs" ino=25669 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.657111] type=1400 audit(1793628555.235:203): avc: denied { read } for comm="Binder:391_2" name="name" dev="sysfs" ino=25660 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.657179] type=1400 audit(1793628555.235:204): avc: denied { read } for comm="Binder:391_2" name="active_time_ms" dev="sysfs" ino=25665 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.657265] type=1400 audit(1793628555.235:205): avc: denied { read } for comm="Binder:391_2" name="event_count" dev="sysfs" ino=32164 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.657369] type=1400 audit(1793628555.239:206): avc: denied { read } for comm="Binder:391_2" name="max_time_ms" dev="sysfs" ino=32169 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.657455] type=1400 audit(1793628555.239:207): avc: denied { read } for comm="Binder:391_2" name="wakeup_count" dev="sysfs" ino=32165 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.657524] type=1400 audit(1793628555.239:208): avc: denied { read } for comm="Binder:391_2" name="total_time_ms" dev="sysfs" ino=32168 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.657626] type=1400 audit(1793628555.239:209): avc: denied { read } for comm="Binder:391_2" name="expire_count" dev="sysfs" ino=32166 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.657702] type=1400 audit(1793628555.239:210): avc: denied { read } for comm="Binder:391_2" name="active_count" dev="sysfs" ino=32163 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.657806] type=1400 audit(1793628555.239:211): avc: denied { read } for comm="Binder:391_2" name="last_change_ms" dev="sysfs" ino=32170 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.657908] type=1400 audit(1793628555.239:212): avc: denied { read } for comm="Binder:391_2" name="prevent_suspend_time_ms" dev="sysfs" ino=32171 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.658000] type=1400 audit(1793628555.239:213): avc: denied { read } for comm="Binder:391_2" name="name" dev="sysfs" ino=32162 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.658156] type=1400 audit(1793628555.239:214): avc: denied { read } for comm="Binder:391_2" name="active_time_ms" dev="sysfs" ino=32167 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.658230] type=1400 audit(1793628555.239:215): avc: denied { read } for comm="Binder:391_2" name="event_count" dev="sysfs" ino=29760 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.658342] type=1400 audit(1793628555.239:216): avc: denied { read } for comm="Binder:391_2" name="max_time_ms" dev="sysfs" ino=29765 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.658411] type=1400 audit(1793628555.239:217): avc: denied { read } for comm="Binder:391_2" name="wakeup_count" dev="sysfs" ino=29761 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.658479] type=1400 audit(1793628555.239:218): avc: denied { read } for comm="Binder:391_2" name="total_time_ms" dev="sysfs" ino=29764 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.658568] type=1400 audit(1793628555.239:219): avc: denied { read } for comm="Binder:391_2" name="expire_count" dev="sysfs" ino=29762 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.658719] type=1400 audit(1793628555.239:220): avc: denied { read } for comm="Binder:391_2" name="active_count" dev="sysfs" ino=29759 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.658821] type=1400 audit(1793628555.239:221): avc: denied { read } for comm="Binder:391_2" name="last_change_ms" dev="sysfs" ino=29766 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.658889] type=1400 audit(1793628555.239:222): avc: denied { read } for comm="Binder:391_2" name="prevent_suspend_time_ms" dev="sysfs" ino=29767 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.659011] type=1400 audit(1793628555.239:223): avc: denied { read } for comm="Binder:391_2" name="name" dev="sysfs" ino=29758 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.659100] type=1400 audit(1793628555.239:224): avc: denied { read } for comm="Binder:391_2" name="active_time_ms" dev="sysfs" ino=29763 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.659209] type=1400 audit(1793628555.239:225): avc: denied { read } for comm="Binder:391_2" name="event_count" dev="sysfs" ino=32590 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.659327] type=1400 audit(1793628555.239:226): avc: denied { read } for comm="Binder:391_2" name="max_time_ms" dev="sysfs" ino=32595 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.659440] type=1400 audit(1793628555.239:227): avc: denied { read } for comm="Binder:391_2" name="wakeup_count" dev="sysfs" ino=32591 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.659542] type=1400 audit(1793628555.239:228): avc: denied { read } for comm="Binder:391_2" name="total_time_ms" dev="sysfs" ino=32594 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.659659] type=1400 audit(1793628555.239:229): avc: denied { read } for comm="Binder:391_2" name="expire_count" dev="sysfs" ino=32592 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.659764] type=1400 audit(1793628555.239:230): avc: denied { read } for comm="Binder:391_2" name="active_count" dev="sysfs" ino=32589 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.659836] type=1400 audit(1793628555.239:231): avc: denied { read } for comm="Binder:391_2" name="last_change_ms" dev="sysfs" ino=32596 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.659915] type=1400 audit(1793628555.239:232): avc: denied { read } for comm="Binder:391_2" name="prevent_suspend_time_ms" dev="sysfs" ino=32597 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.659998] type=1400 audit(1793628555.239:233): avc: denied { read } for comm="Binder:391_2" name="name" dev="sysfs" ino=32588 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.660174] type=1400 audit(1793628555.239:234): avc: denied { read } for comm="Binder:391_2" name="active_time_ms" dev="sysfs" ino=32593 scontext=u:r:system_suspend:s0 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+[   35.697030] init: Untracked pid 1375 exited with status 0
+[   35.779132] init: Untracked pid 1398 exited with status 0
+[   35.902117] init: Untracked pid 1419 exited with status 0
+[   36.015883] init: Untracked pid 1453 exited with status 0
+[   36.233532] init: Untracked pid 1477 exited with status 0
+[   36.487777] sensor name Unknown.
+[   36.487810] sensor name Unknown.
+[   36.487849] sensor name Unknown.
+[   36.487872] sensor name Unknown.
+[   36.487895] sensor name Unknown.
+[   36.487917] sensor efuse Unknown.
+[   36.487941] sensor efuse Unknown.
+[   36.487962] sensor efuse Unknown.
+[   36.487985] sensor efuse Unknown.
+[   36.488085] sensor efuse Unknown.
+[   36.605240] sprd-spipe: spipe 6-41 not ready to open!
+[   36.688546] generic-adc-thermal thermal-sensor: T_AP=38911
+[   37.606114] sprd-spipe: spipe 6-41 not ready to open!
+[   37.790674] init: starting service 'audioserver'...
+[   37.796490] init: processing action (init.svc.audioserver=running) from (/system/etc/init/audioserver.rc:35)
+[   37.796641] init: Command 'start vendor.audio-hal-4-0-msd' action=init.svc.audioserver=running (/system/etc/init/audioserver.rc:37) took 0ms and failed: service vendor.audio-hal-4-0-msd not found
+[   37.796699] init: Command 'start vendor.audio-hal-2-0' action=init.svc.audioserver=running (/system/etc/init/audioserver.rc:39) took 0ms and failed: service vendor.audio-hal-2-0 not found
+[   37.796754] init: Command 'start audio-hal-2-0' action=init.svc.audioserver=running (/system/etc/init/audioserver.rc:40) took 0ms and failed: service audio-hal-2-0 not found
+[   37.820774] init: starting service 'surfaceflinger'...
+[   37.821532] init: Could not create socket 'pdx/system/vr/display/client': Failed to bind socket 'pdx/system/vr/display/client': No such file or directory
+[   37.821947] init: Could not create socket 'pdx/system/vr/display/manager': Failed to bind socket 'pdx/system/vr/display/manager': No such file or directory
+[   37.822304] init: Could not create socket 'pdx/system/vr/display/vsync': Failed to bind socket 'pdx/system/vr/display/vsync': No such file or directory
+[   37.864335] type=1400 audit(1793628557.443:235): avc: denied { map } for comm="audioserver" path="/dev/__properties__/u:object_r:media_prop:s0" dev="tmpfs" ino=7720 scontext=u:r:audioserver:s0 tcontext=u:object_r:media_prop:s0 tclass=file permissive=0
+[   37.865560] init: Unable to set property 'ro.audio.hifi_supported' from uid:1041 gid:1005 pid:1539: Read-only property was already set
+[   37.865829] init: Unable to set property 'ro.audio.whale_hal' from uid:1041 gid:1005 pid:1539: Read-only property was already set
+[   37.866008] init: Unable to set property 'ro.audio.offload_wakelock' from uid:1041 gid:1005 pid:1539: Read-only property was already set
+[   38.006341] init: Untracked pid 1553 exited with status 0
+[   38.009082] init: Untracked pid 1555 exited with status 0
+[   38.012496] init: Service 'surfaceflinger' (pid 1540) received signal 6
+[   38.012527] init: Sending signal 9 to service 'surfaceflinger' (pid 1540) process group...
+[   38.012836] libprocessgroup: Successfully killed process cgroup uid 1000 pid 1540 in 0ms
+[   38.013262] init: Sending signal 9 to service 'zygote' (pid 1159) process group...
+[   38.069407] [ASoC:SC2730] sprd_codec_info_get, chip_id = 657502208, ver_id=0, AUDIO_CODEC_2730=7
+[   38.069434] [ASoC:SC2730] sprd_codec_info_get, chip_id = 657502208, ver_id=0, AUDIO_CODEC_2730=7
+[   38.069456] [ASoC:SC2730] sprd_codec_info_get, chip_id = 657502208, ver_id=0, AUDIO_CODEC_2730=7
+[   38.069477] [ASoC:SC2730] sprd_codec_info_get, chip_id = 657502208, ver_id=0, AUDIO_CODEC_2730=7
+[   38.069498] [ASoC:SC2730] sprd_codec_info_get, chip_id = 657502208, ver_id=0, AUDIO_CODEC_2730=7
+[   38.069518] [ASoC:SC2730] sprd_codec_info_get, chip_id = 657502208, ver_id=0, AUDIO_CODEC_2730=7
+[   38.069539] [ASoC:SC2730] sprd_codec_info_get, chip_id = 657502208, ver_id=0, AUDIO_CODEC_2730=7
+[   38.069559] [ASoC:SC2730] sprd_codec_info_get, chip_id = 657502208, ver_id=0, AUDIO_CODEC_2730=7
+[   38.069886] [Audio:DSPDUMP] audio_dsp_open, minor = 0, dsp_log->minor =0
+[   38.069895] [Audio:DSPDUMP] audio_dsp_open, minor = 0, dsp_log->minor =0
+[   38.069901] [Audio:DSPDUMP] audio_dsp_open, minor = 0, dsp_log->minor =0
+[   38.069918] [Audio:PIPE] aud_pipe_open channel opened 2
+[   38.069919] [Audio:DSPDUMP] audio_dsp_ioctl enter into
+[   38.069926] [Audio:DSPDUMP] audio_dsp_ioctl enter into
+[   38.074659] sprd-apipe apipe-pcm: POINT_ALLOC count:22
+[   38.121233] [ASoC: VBC ] vbc_call_mute_put: 1930:vbc_call_mute_put, VBC_DL_MUTE disable
+[   38.121257] [Audio:SIPC] audio_cmd_copy, write cmd para: txbuf_addr_v=0xffffff800a51c000, tx_len=8
+[   38.121261] [Audio:SMSG] warning aud_smsg_recv cache is empty!
+[   38.121264] [Audio:SIPC] aud_recv_cmd channel =0 cmd=9 ENODATA
+[   38.121268] [Audio:SIPC] aud_send_cmd in,cmd =9 id:28 ret-value:0
+[   38.121271] [Audio:SIPC] aud_send_msg,cmd: 0x9, value0: 0x1c, value1: 0xffffffff,
+[   38.121274] [Audio:SIPC]  value2: 0x94380000, value3: 0x0
+[   38.121276] [Audio:SMSG] aud_smsg_send: dst=1, channel=0
+[   38.121284] [Audio:SIPC] aud_send_cmd 670 wait dsp
+[   38.135281] [Audio:SIPC] aud_recv_cmd, chan: 0x0, cmd: 0x9, value0: 0x1c, value1: 0xffffffff,
+[   38.135289] [Audio:SIPC]  value2: 0x94380000, value3: 0x0, timeout: 750
+[   38.135295] [Audio:SIPC] aud_send_cmd out,cmd =9 id:28 ret-value:0,repeat_count=1
+[   38.205731] [ASoC:BOARD] speaker ext pa select_mode = 6
+[   38.207560] libprocessgroup: Successfully killed process cgroup uid 0 pid 1159 in 194ms
+[   38.208691] init: Command 'restart zygote' action=onrestart (<Service 'surfaceflinger' onrestart>:1) took 195ms and succeeded
+[   38.210297] init: Service 'zygote' (pid 1159) received signal 9
+[   38.210566] init: starting service 'exec 20 (/debug_ramdisk/magisk --zygote-restart)'...
+[   38.213848] init: SVC_EXEC service 'exec 20 (/debug_ramdisk/magisk --zygote-restart)' pid 1578 (uid 0 gid 0+0 context u:r:magisk:s0) started; waiting...
+[   38.214288] init: starting service 'exec 21 (/system/bin/vdc volume abort_fuse)'...
+[   38.217741] init: Command 'write /sys/power/state on' action=onrestart (<Service 'zygote' onrestart>:3) took 0ms and failed: Unable to write to file '/sys/power/state': Unable to write file contents: Invalid argument
+[   38.217782] init: Sending signal 9 to service 'audioserver' (pid 1539) process group...
+[   38.235350] binder: undelivered TRANSACTION_COMPLETE
+[   38.235363] binder: undelivered transaction 10451, process died.
+[   38.239240] libprocessgroup: Successfully killed process cgroup uid 1041 pid 1539 in 21ms
+[   38.240095] init: Sending signal 9 to service 'cameraserver' (pid 1150) process group...
+[   38.251125] libprocessgroup: Successfully killed process cgroup uid 1047 pid 1150 in 10ms
+[   38.252115] init: Sending signal 9 to service 'media' (pid 1151) process group...
+[   38.263218] libprocessgroup: Successfully killed process cgroup uid 1013 pid 1151 in 10ms
+[   38.264203] init: Sending signal 9 to service 'netd' (pid 1215) process group...
+[   38.275718] libprocessgroup: Successfully killed process cgroup uid 0 pid 1215 in 11ms
+[   38.277073] init: Sending signal 9 to service 'wificond' (pid 1152) process group...
+[   38.282813] libprocessgroup: Successfully killed process cgroup uid 1010 pid 1152 in 5ms
+[   38.295229] init: Service 'cameraserver' (pid 1150) received signal 9
+[   38.297214] init: Service 'media' (pid 1151) received signal 9
+[   38.298860] init: Service 'wificond' (pid 1152) received signal 9
+[   38.299862] init: Service 'netd' (pid 1215) received signal 9
+[   38.300152] init: Sending signal 9 to service 'zygote_secondary' (pid 1167) process group...
+[   38.322403] libprocessgroup: Successfully killed process cgroup uid 0 pid 1167 in 22ms
+[   38.323991] init: Service 'zygote_secondary' (pid 1167) received signal 9
+[   38.334442] init: Untracked pid 1403 exited with status 0
+[   38.335007] init: Service 'audioserver' (pid 1539) received signal 9
+[   38.335071] init: Sending signal 9 to service 'vendor.audio-hal' (pid 1153) process group...
+[   38.335560] [Audio:SMSG] aud_smsg_recv wait interrupted!
+[   38.335564] [Audio:PIPE] aud_pipe_recv_cmd, Failed to recv,ret(-512)
+[   38.335566] [Audio:PIPE] aud_pipe_read aud_pipe_recv_cmd failed
+[   38.335568] [Audio:PIPE] user_msg_out.channel=0x0
+[   38.335570] [Audio:PIPE] user_msg_out.command=0x0
+[   38.335571] [Audio:PIPE] user_msg_out.parameter0=0x0
+[   38.335573] [Audio:PIPE] user_msg_out.parameter1=0x0
+[   38.335574] [Audio:PIPE] user_msg_out.parameter2=0x0
+[   38.335575] [Audio:PIPE] user_msg_out.parameter3=0x0
+[   38.335768] sprd-apipe apipe-cmd-in: wait interrupted!
+[   38.352563] [Audio:DSPDUMP] audio_dsp_release
+[   38.352570] [Audio:DSPDUMP] audio_dsp_release
+[   38.352612] [Audio:DSPDUMP] audio_dsp_release
+[   38.356666] libprocessgroup: Successfully killed process cgroup uid 1041 pid 1153 in 21ms
+[   38.357417] init: Command 'restart vendor.audio-hal-4-0-msd' action=onrestart (<Service 'audioserver' onrestart>:2) took 0ms and failed: service vendor.audio-hal-4-0-msd not found
+[   38.357454] init: Command 'restart vendor.audio-hal-2-0' action=onrestart (<Service 'audioserver' onrestart>:3) took 0ms and failed: service vendor.audio-hal-2-0 not found
+[   38.357486] init: Command 'restart audio-hal-2-0' action=onrestart (<Service 'audioserver' onrestart>:4) took 0ms and failed: service audio-hal-2-0 not found
+[   38.359386] init: Service 'vendor.audio-hal' (pid 1153) received signal 9
+[   38.360742] init: Untracked pid 1309 exited with status 0
+[   38.361165] init: Untracked pid 1425 received signal 9
+[   38.362046] init: Service 'exec 20 (/debug_ramdisk/magisk --zygote-restart)' (pid 1578) exited with status 0 waiting took 0.148000 seconds
+[   38.362068] init: Sending signal 9 to service 'exec 20 (/debug_ramdisk/magisk --zygote-restart)' (pid 1578) process group...
+[   38.362322] libprocessgroup: Successfully killed process cgroup uid 0 pid 1578 in 0ms
+[   38.362859] init: Service 'exec 21 (/system/bin/vdc volume abort_fuse)' (pid 1581) exited with status 0 oneshot service took 0.146000 seconds in background
+[   38.362878] init: Sending signal 9 to service 'exec 21 (/system/bin/vdc volume abort_fuse)' (pid 1581) process group...
+[   38.363023] libprocessgroup: Successfully killed process cgroup uid 1000 pid 1581 in 0ms
+[   38.363496] init: Untracked pid 1225 received signal 9
+[   38.363806] init: Untracked pid 1226 received signal 9
+[   38.364897] init: processing action (init.svc.media=*) from (/system/etc/init/mediaserver.rc:1)
+[   38.365775] init: starting service 'cameraserver'...
+[   38.370003] init: starting service 'media'...
+[   38.370614] libprocessgroup: Failed to open /dev/cpuset/camera-daemon/tasks: No such file or directory: No such file or directory
+[   38.370638] libprocessgroup: Failed to apply CameraServiceCapacity task profile: No such file or directory
+[   38.374132] init: starting service 'wificond'...
+[   38.377548] init: starting service 'vendor.audio-hal'...
+[   38.381482] init: processing action (init.svc.media=*) from (/system/etc/init/mediaserver.rc:1)
+[   38.381960] init: starting service 'zygote'...
+[   38.382483] init: Created socket '/dev/socket/zygote', mode 660, user 0, group 1000
+[   38.382706] init: Created socket '/dev/socket/usap_pool_primary', mode 660, user 0, group 1000
+[   38.384982] init: starting service 'zygote_secondary'...
+[   38.385372] init: Created socket '/dev/socket/zygote_secondary', mode 660, user 0, group 1000
+[   38.385565] init: Created socket '/dev/socket/usap_pool_secondary', mode 660, user 0, group 1000
+[   38.388300] init: processing action (init.svc.media=*) from (/system/etc/init/mediaserver.rc:1)
+[   38.389033] init: processing action (init.svc.mediadrm=running) from (/vendor/etc/init/android.hardware.drm@1.3-service.widevine.rc:1)
+[   38.389606] init: processing action (init.svc.mediadrm=running) from (/vendor/etc/init/android.hardware.drm@1.3-service.widevine.rc:1)
+[   38.466528] init: starting service 'netd'...
+[   38.467341] init: Created socket '/dev/socket/dnsproxyd', mode 660, user 0, group 3003
+[   38.467980] init: Created socket '/dev/socket/mdns', mode 660, user 0, group 1000
+[   38.468787] init: Created socket '/dev/socket/fwmarkd', mode 660, user 0, group 3003
+[   38.581415] sprd-vsp: vsp_open called 000000006e06e891,vsp_instance_cnt 0
+[   38.581423] sprd-vsp-pw: vsp_pw_on Enter client 0
+[   38.581737] sprd-vsp-pw: vsp_pw_on set OK
+[   38.581759] sprd-vsp: mmap c,ed481000,14000
+[   38.582059] ion_system_heap_allocate, size: 2097152, time:6us, pool:2097152, bud:0, ord 8:0, 4:0, 0:0
+[   38.584935] sprd-vsp: vsp_release: instance_cnt 1
+[   38.584942] sprd-vsp-pw: vsp_pw_off Enter client 0
+[   38.584948] sprd-vsp-pw: vsp_pw_off set OK
+[   38.591133] sprd-vsp: vsp_open called 00000000c7ce0702,vsp_instance_cnt 0
+[   38.591142] sprd-vsp-pw: vsp_pw_on Enter client 0
+[   38.591472] sprd-vsp-pw: vsp_pw_on set OK
+[   38.591502] sprd-vsp: mmap c,ed481000,14000
+[   38.597229] ion_carveout_heap_allocate: heap id: 1, paddr: 0xa421e000, size: 2097152
+[   38.597578] uniber: CPUs balance changed
+[   38.599271] uniber: ACTION_RESET triggered
+[   38.606500] sprd-spipe: spipe 6-41 not ready to open!
+[   38.606903] ion_carveout_heap_free: heap id: 1, paddr: 0xa421e000, size: 2097152
+[   38.612484] sprd-vsp: vsp_release: instance_cnt 1
+[   38.612503] sprd-vsp-pw: vsp_pw_off Enter client 0
+[   38.612514] sprd-vsp-pw: vsp_pw_off set OK
+[   38.618131] sprd-vsp: vsp_open called 000000004fdd710b,vsp_instance_cnt 0
+[   38.618139] sprd-vsp-pw: vsp_pw_on Enter client 0
+[   38.618450] sprd-vsp-pw: vsp_pw_on set OK
+[   38.618469] sprd-vsp: mmap c,ed481000,14000
+[   38.620905] ion_system_heap_allocate, size: 1536000, time:13us, pool:1536000, bud:0, ord 8:0, 4:0, 0:0
+[   38.624621] sprd-vsp: vsp_release: instance_cnt 1
+[   38.624629] sprd-vsp-pw: vsp_pw_off Enter client 0
+[   38.624636] sprd-vsp-pw: vsp_pw_off set OK
+[   38.627187] DIAG: initcall init_module
+[   38.630738] sprd-vsp: vsp_open called 00000000a758eeee,vsp_instance_cnt 0
+[   38.630747] sprd-vsp-pw: vsp_pw_on Enter client 0
+[   38.631058] sprd-vsp-pw: vsp_pw_on set OK
+[   38.631090] sprd-vsp: mmap c,ed481000,14000
+[   38.631378] ion_system_heap_allocate, size: 3145728, time:5us, pool:3145728, bud:0, ord 8:0, 4:0, 0:0
+[   38.635380] sprd-vsp: vsp_release: instance_cnt 1
+[   38.635405] sprd-vsp-pw: vsp_pw_off Enter client 0
+[   38.635414] sprd-vsp-pw: vsp_pw_off set OK
+[   38.641894] sprd-vsp: vsp_open called 00000000b678276e,vsp_instance_cnt 0
+[   38.641902] sprd-vsp-pw: vsp_pw_on Enter client 0
+[   38.642214] sprd-vsp-pw: vsp_pw_on set OK
+[   38.642250] sprd-vsp: mmap c,ed481000,14000
+[   38.643438] MDBG crumb: step 60 written (1)
+[   38.643754] mali 23100000.gpu: MDBG: kbase_platform_device_probe enter
+[   38.644153] MDBG crumb: step 62 written (1)
+[   38.644170] mali 23100000.gpu: Kernel DDK version r28p0-01eac0
+[   38.644227] mali 23100000.gpu: MDBG: dev_init[0] assign_irqs+0x0/0x280 [mali_kbase] enter
+[   38.644613] MDBG crumb: step 70 written (1)
+[   38.644665] mali 23100000.gpu: MDBG: dev_init[1] registers_map+0x0/0x188 [mali_kbase] enter
+[   38.644981] MDBG crumb: step 71 written (1)
+[   38.645049] mali 23100000.gpu: MDBG: dev_init[2] kbase_device_io_history_init+0x0/0x8 [mali_kbase] enter
+[   38.645075] ion_carveout_heap_allocate: heap id: 1, paddr: 0xa421e000, size: 3145728
+[   38.645358] MDBG crumb: step 72 written (1)
+[   38.645399] mali 23100000.gpu: MDBG: dev_init[3] kbase_device_pm_init+0x0/0x14 [mali_kbase] enter
+[   38.645743] MDBG crumb: step 73 written (1)
+[   38.645749] mali 23100000.gpu: MDBG: power_control_init enter
+[   38.646086] MDBG crumb: step 63 written (1)
+[   38.646272] Synchronous External Abort: synchronous external abort (0x96000010) at 0xffffff8009d74004
+[   38.646277] Internal error: : 96000010 [#1] PREEMPT SMP
+[   38.646292] sprd-sysdump: dump_die_cb save pregs_die_g ok .
+[   38.646299] Modules linked in: mali_kbase(+) mdbg_crumb
+[   38.646312] Process insmod (pid: 1644, stack limit = 0x00000000658c6472)
+[   38.646322] CPU: 1 PID: 1644 Comm: insmod Tainted: G S              4.14.199+ #56
+[   38.646328] Hardware name: Spreadtrum UMS9230 4H10 Board (DT)
+[   38.646334] task: 000000009c58e18b task.stack: 00000000658c6472
+[   38.646357] pc : regmap_mmio_read32le+0x8/0x20
+[   38.646364] lr : regmap_mmio_read+0x40/0x68
+[   38.646370] sp : ffffff80142fb760 pstate : 204000c5
+[   38.646375] x29: ffffff80142fb760 x28: ffffff80142fbe20 
+[   38.646383] x27: ffffffc0f9f59a50 x26: 000000000000004b 
+[   38.646391] x25: ffffffc0e64e80b0 x24: 0000000000000001 
+[   38.646398] x23: ffffffc0f20f4880 x22: ffffffc0f8195800 
+[   38.646405] x21: 0000000000000004 x20: ffffffc0f81eab00 
+[   38.646413] x19: ffffff80142fb814 x18: 0000000000000048 
+[   38.646420] x17: 000000000000002b x16: ffffff8008bed284 
+[   38.646427] x15: ffffff8008d2de99 x14: 000000000000004e 
+[   38.646435] x13: ffff0000ffffff00 x12: ffffffc0f20f4880 
+[   38.646442] x11: 0000000000010000 x10: 0000000000000000 
+[   38.646450] x9 : 0000000000000000 x8 : ffffff8009d74004 
+[   38.646458] x7 : 0000000000000000 x6 : 000000000000003f 
+[   38.646465] x5 : 0000000000000040 x4 : 0000000000000000 
+[   38.646473] x3 : 0000000000000004 x2 : ffffff80142fb814 
+[   38.646481] x1 : 0000000000000004 x0 : ffffffc0f81eab00 
+[   38.646495] \x0aPC: 0xffffff800863a6bc:
+[   38.646502] a6bc  a8c37bfd d65f03c0 f9400008 8b214108 39400108 12001d00 92401d08 d5033d9f
+[   38.646520] a6dc  ca080108 b5000008 d65f03c0 d5033e9f f9400008 8b214108 39000102 d65f03c0
+[   38.646541] a6fc  f9400008 8b214108 79400108 12003d00 92403d08 d5033d9f ca080108 b5000008
+[   38.646557] a71c  d65f03c0 d5033e9f f9400008 8b214108 79000102 d65f03c0 f9400008 8b214108
+[   38.646573] a73c  b9400100 2a0003e8 d5033d9f ca080108 b5000008 d65f03c0 d5033e9f f9400008
+[   38.646588] a75c  8b214108 b9000102 d65f03c0 f9400008 8b214108 f9400100 d5033d9f ca000008
+[   38.646603] a77c  b5000008 d65f03c0 d5033e9f f9400008 2a0203e9 8b214108 f9000109 d65f03c0
+[   38.646618] a79c  f9400008 8b214108 79400108 5ac00908 53107d00 d5033d9f ca000008 b5000008
+[   38.646635] \x0aLR: 0xffffff800863a83c:
+[   38.646641] a83c  97fb8ce1 37f80160 f9400e68 aa1303e0 2a1503e1 2a1403e2 d63f0100 f9400a60
+[   38.646657] a85c  b140041f 54000048 97fb8c93 2a1f03e0 a9424ff4 f9400bf5 a8c37bfd d65f03c0
+[   38.646672] a87c  a9bd7bfd f9000bf5 a9024ff4 910003fd aa0203f3 aa0003f4 f9400800 2a0103f5
+[   38.646687] a89c  b140041f 54000068 97fb8cc7 37f80160 f9401288 aa1403e0 2a1503e1 d63f0100
+[   38.646702] a8bc  b9000260 f9400a80 b140041f 54000048 97fb8c79 2a1f03e0 a9424ff4 f9400bf5
+[   38.646717] a8dc  a8c37bfd d65f03c0 a9be7bfd f9000bf3 910003fd aa0003f3 f9400800 b140041f
+[   38.646731] a8fc  54000088 97fb8bf0 f9400a60 97fb8677 aa1303e0 97f09b23 f9400bf3 a8c27bfd
+[   38.646747] a91c  d65f03c0 d101c3ff a9017bfd a9026ffc a90367fa a9045ff8 a90557f6 a9064ff4
+[   38.646766] \x0aSP: 0xffffff80142fb6e0:
+[   38.646773] b6e0  142fb710 ffffff80 088dc794 ffffff80 08eb86c7 ffffff80 00000000 00000000
+[   38.646788] b700  00000001 00000000 142fb744 ffffff80 142fb750 ffffff80 088da250 ffffff80
+[   38.646804] b720  00000026 00000000 00000000 00000000 fff8a6c0 ffffffc0 142fb788 ffffff80
+[   38.646819] b740  00000040 00000001 71950300 380d12cf 142fb770 ffffff80 0825f920 ffffff80
+[   38.646834] b760  142fb790 ffffff80 08634298 ffffff80 00000004 00000000 0851f3f8 ffffff80
+[   38.646849] b780  142fb814 ffffff80 f8195800 ffffffc0 142fb7a0 ffffff80 08636568 ffffff80
+[   38.646865] b7a0  142fb7e0 ffffff80 086363f4 ffffff80 00000001 00000000 f20f4880 ffffffc0
+[   38.646880] b7c0  09622000 ffffff80 00000004 00000000 142fb814 ffffff80 f8195800 ffffffc0
+[   38.646896] \x0aX0: 0xffffffc0f81eaa80:
+[   38.646902] aa80  09d74000 ffffff80 09d78000 ffffff80 00000004 00000000 f81ede99 ffffffc0
+[   38.646918] aaa0  00000000 00000000 f69e5218 ffffffc0 f81edeb0 ffffffc0 f69e5230 ffffffc0
+[   38.646932] aac0  00000000 00000000 f81eaa00 ffffffc0 00000000 00000000 63d8c823 00000000
+[   38.646947] aae0  092c1b60 ffffff80 00000000 00000000 00001000 00000000 00000000 00000000
+[   38.646961] ab00  09d74000 ffffff80 00000004 00000000 ffffffed ffffffff 0863a754 ffffff80
+[   38.646976] ab20  0863a734 ffffff80 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.646991] ab40  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.647006] ab60  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.647022] \x0aX2: 0xffffff80142fb794:
+[   38.647028] b794  ffffff80 08636568 ffffff80 142fb7e0 ffffff80 086363f4 ffffff80 00000001
+[   38.647044] b7b4  00000000 f20f4880 ffffffc0 09622000 ffffff80 00000004 00000000 142fb814
+[   38.647058] b7d4  ffffff80 f8195800 ffffffc0 142fb820 ffffff80 0852744c ffffff80 0930dfe0
+[   38.647074] b7f4  ffffff80 0851bf88 ffffff80 00000000 00000000 0938d300 ffffff80 142fb840
+[   38.647105] b814  00000000 71950300 380d12cf 142fb840 ffffff80 08521ba0 ffffff80 00000000
+[   38.647120] b834  00000000 f820c500 ffffffc0 142fb870 ffffff80 0851dc48 ffffff80 09622000
+[   38.647135] b854  ffffff80 09622000 ffffff80 f820c500 ffffffc0 00000040 00000000 142fb8b0
+[   38.647149] b874  ffffff80 00c53a68 ffffff80 e64e80a8 ffffffc0 00c53a40 ffffff80 ffffffe9
+[   38.647169] \x0aX12: 0xffffffc0f20f4800:
+[   38.647176] 4800  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.647191] 4820  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.647205] 4840  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.647220] 4860  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.647235] 4880  01000028 00000000 ffffffff ffffffff 814f8000 00000000 00000003 00000000
+[   38.647250] 48a0  00000000 00000000 142f8000 ffffff80 00000002 00400100 00000000 00000000
+[   38.647272] 48c0  00000000 00000000 00000001 00000001 00000000 00000000 00000000 00000000
+[   38.647289] 48e0  00000000 00000000 00000001 00000001 00000078 00000078 00000078 00000000
+[   38.647305] \x0aX15: 0xffffff8008d2de19:
+[   38.647312] de18  08ee345a ffffff80 08ed37cf ffffff80 08edb737 ffffff80 08ed37d1 ffffff80
+[   38.647327] de38  08ed7c97 ffffff80 08ed7cdd ffffff80 08edf016 ffffff80 08edf014 ffffff80
+[   38.647343] de58  41444f4d 5341494c 0009003d 001d0014 00410026 0053004a 00000140 00000000
+[   38.647358] de78  00630059 0077006d 008a0081 00000094 1014140e 14141414 12141414 14140114
+[   38.647373] de98  17171200 17171717 17171717 17171717 17171717 17171717 17171717 17171717
+[   38.647387] deb8  17171717 17171717 17171717 17171717 17171717 17171736 17171717 1e171717
+[   38.647402] ded8  17171700 17170017 23171717 2b171725 17173917 03030030 03030603 03030303
+[   38.647417] def8  03030303 03030303 03030303 03030303 03030303 03030903 03030c03 03030303
+[   38.647432] df18  03031003 13030303 5e5a5400 223b6400 2f3b083b 3b3b706a 7f3b0035 3b3b3b85
+[   38.647468] \x0aX16: 0xffffff8008bed204:
+[   38.647474] d204  92609d08 53185c09 aa090109 f9000289 f9400be8 aa0803ea 17ffff73 92801fe8
+[   38.647488] d224  f2c15fe8 8a080148 b27f050a 14000042 f000476b 3942c16c 36000b6c 9278dd49
+[   38.647504] d244  b2400929 f9000289 1400003e 92801fe8 f2c15fe8 8a080148 b240050a 14000036
+[   38.647519] d264  b25501aa 14000014 92801fe8 f2c15fe8 528000ab 8a080148 aa0b010a 1400002e
+[   38.647534] d284  92801fe8 f2c15fe8 8a080148 b27e010a 14000029 92debfe8 92601d6b 8a080148
+[   38.647549] d2a4  aa080168 b25b010a f900028a 9250dd48 b254010a f900028a 51012188 7100c91f
+[   38.647564] d2c4  54000148 90000a0b 913bb56b 1000008c 3868696d 8b0d098c d61f0180 d3608148
+[   38.647579] d2e4  91002d08 1400000c d3608148 91003d08 14000009 9278dd48 5280010a 1400000d
+[   38.647595] \x0aX19: 0xffffff80142fb794:
+[   38.647602] b794  ffffff80 08636568 ffffff80 142fb7e0 ffffff80 086363f4 ffffff80 00000001
+[   38.647617] b7b4  00000000 f20f4880 ffffffc0 09622000 ffffff80 00000004 00000000 142fb814
+[   38.647633] b7d4  ffffff80 f8195800 ffffffc0 142fb820 ffffff80 0852744c ffffff80 0930dfe0
+[   38.647650] b7f4  ffffff80 0851bf88 ffffff80 00000000 00000000 0938d300 ffffff80 142fb840
+[   38.647666] b814  00000000 71950300 380d12cf 142fb840 ffffff80 08521ba0 ffffff80 00000000
+[   38.647681] b834  00000000 f820c500 ffffffc0 142fb870 ffffff80 0851dc48 ffffff80 09622000
+[   38.647696] b854  ffffff80 09622000 ffffff80 f820c500 ffffffc0 00000040 00000000 142fb8b0
+[   38.647710] b874  ffffff80 00c53a68 ffffff80 e64e80a8 ffffffc0 00c53a40 ffffff80 ffffffe9
+[   38.647726] \x0aX20: 0xffffffc0f81eaa80:
+[   38.647733] aa80  09d74000 ffffff80 09d78000 ffffff80 00000004 00000000 f81ede99 ffffffc0
+[   38.647747] aaa0  00000000 00000000 f69e5218 ffffffc0 f81edeb0 ffffffc0 f69e5230 ffffffc0
+[   38.647763] aac0  00000000 00000000 f81eaa00 ffffffc0 00000000 00000000 63d8c823 00000000
+[   38.647778] aae0  092c1b60 ffffff80 00000000 00000000 00001000 00000000 00000000 00000000
+[   38.647793] ab00  09d74000 ffffff80 00000004 00000000 ffffffed ffffffff 0863a754 ffffff80
+[   38.647808] ab20  0863a734 ffffff80 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.647830] ab40  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.647845] ab60  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.647860] \x0aX22: 0xffffffc0f8195780:
+[   38.647867] 5780  00000000 00000000 00000000 00000000 00000000 00000100 00000000 00000000
+[   38.647883] 57a0  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.647898] 57c0  00000000 00000101 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.647914] 57e0  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.647929] 5800  00060005 00000000 000000c0 00000000 00000000 00000000 00000000 00000000
+[   38.647944] 5820  08634220 ffffff80 08634244 ffffff80 f8195800 ffffffc0 01080020 00000000
+[   38.647959] 5840  00000000 00000000 00000000 00000000 00000008 00000000 00000004 00000000
+[   38.647974] 5860  00000000 00000000 00000004 00000000 00000000 00000000 00000000 00000000
+[   38.647989] \x0aX23: 0xffffffc0f20f4800:
+[   38.647996] 4800  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.648010] 4820  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.648025] 4840  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.648039] 4860  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.648054] 4880  01000028 00000000 ffffffff ffffffff 814f8000 00000000 00000003 00000000
+[   38.648068] 48a0  00000000 00000000 142f8000 ffffff80 00000002 00400100 00000000 00000000
+[   38.648083] 48c0  00000000 00000000 00000001 00000001 00000000 00000000 00000000 00000000
+[   38.648102] 48e0  00000000 00000000 00000001 00000001 00000078 00000078 00000078 00000000
+[   38.648118] \x0aX25: 0xffffffc0e64e8030:
+[   38.648124] 8030  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.648139] 8050  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.648154] 8070  00000000 00000000 23100000 00000000 00100000 00000000 15a00000 ffffff80
+[   38.648168] 8090  0000002a 00000004 0000002a 00000004 0000002a 00000004 e19ea080 ffffffc0
+[   38.648187] 80b0  e19ea400 ffffffc0 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.648202] 80d0  00000000 00000000 00000000 00000000 696c616d 00000030 00000000 00000000
+[   38.648221] 80f0  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.648241] 8110  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.648259] \x0aX27: 0xffffffc0f9f599d0:
+[   38.648266] 99d0  08190248 ffffff80 00000000 00000000 00000000 00000000 00000000 00000000
+[   38.648284] 99f0  00000000 00000000 e1563880 ffffffc0 00ca6000 ffffff80 cd216100 ffffffc0
+[   38.648299] 9a10  00000124 00000000 08190248 ffffff80 00000000 00000000 00000000 00000000
+[   38.648317] 9a30  00000000 00000000 00000000 00000000 cd216100 ffffffc0 00cb1718 ffffff80
+[   38.648336] 9a50  f9f59030 ffffffc0 f9f59078 ffffffc0 f9f590c0 ffffffc0 f9f59108 ffffffc0
+[   38.648351] 9a70  f9f59150 ffffffc0 f9f59198 ffffffc0 f9f591e0 ffffffc0 f9f59228 ffffffc0
+[   38.648375] 9a90  f9f59270 ffffffc0 f9f592b8 ffffffc0 f9f59300 ffffffc0 f9f59348 ffffffc0
+[   38.648390] 9ab0  f9f59390 ffffffc0 f9f593d8 ffffffc0 f9f59420 ffffffc0 f9f59468 ffffffc0
+[   38.648406] \x0aX28: 0xffffff80142fbda0:
+[   38.648413] bda0  142fbe90 ffffff80 0818aef4 ffffff80 f20f4880 ffffffc0 08c12000 ffffff80
+[   38.648430] bdc0  00000111 00000000 000001b3 00000000 00000015 00000000 20001000 00000000
+[   38.648444] bde0  10b29210 00000075 00000003 00000000 684de820 00000058 00000000 00000000
+[   38.648463] be00  db803fe0 ffffffc0 14545000 ffffff80 00d11e38 00000000 1521f86a ffffff80
+[   38.648480] be20  14545000 ffffff80 00d11e38 00000000 15255b78 ffffff80 1524a920 ffffff80
+[   38.648498] be40  1524adc9 ffffff80 00055000 00000000 0005dd18 00000000 00000000 00000000
+[   38.648514] be60  00000000 00000000 000184c8 00000000 00000048 0000004a 00000043 00000045
+[   38.648533] be80  00000022 00000000 71950300 380d12cf 142fbff0 ffffff80 08083cc0 ffffff80
+[   38.648556] \x0aX29: 0xffffff80142fb6e0:
+[   38.648561] b6e0  142fb710 ffffff80 088dc794 ffffff80 08eb86c7 ffffff80 00000000 00000000
+[   38.648577] b700  00000001 00000000 142fb744 ffffff80 142fb750 ffffff80 088da250 ffffff80
+[   38.648594] b720  00000026 00000000 00000000 00000000 fff8a6c0 ffffffc0 142fb788 ffffff80
+[   38.648611] b740  00000040 00000001 71950300 380d12cf 142fb770 ffffff80 0825f920 ffffff80
+[   38.648627] b760  142fb790 ffffff80 08634298 ffffff80 00000004 00000000 0851f3f8 ffffff80
+[   38.648643] b780  142fb814 ffffff80 f8195800 ffffffc0 142fb7a0 ffffff80 08636568 ffffff80
+[   38.648658] b7a0  142fb7e0 ffffff80 086363f4 ffffff80 00000001 00000000 f20f4880 ffffffc0
+[   38.648677] b7c0  09622000 ffffff80 00000004 00000000 142fb814 ffffff80 f8195800 ffffffc0
+[   38.648692] 
+[   38.648699] Call trace:
+[   38.648707] regmap_mmio_read32le+0x8/0x20
+[   38.648718] _regmap_bus_reg_read+0x14/0x1c
+[   38.648726] _regmap_read+0x150/0x21c
+[   38.648735] regmap_read+0x50/0x74
+[   38.648753] sprd_gate_enable+0x38/0x90
+[   38.648761] clk_core_enable+0x100/0x1f4
+[   38.648769] clk_enable+0x88/0x118
+[   38.648821] power_control_init+0x228/0x280 [mali_kbase]
+[   38.648865] kbase_device_pm_init+0xc/0x14 [mali_kbase]
+[   38.648906] kbase_device_init+0xa0/0x160 [mali_kbase]
+[   38.648965] kbase_platform_device_probe+0x50/0x100 [mali_kbase]
+[   38.648978] platform_drv_probe+0x64/0xb8
+[   38.648985] driver_probe_device+0x424/0x4a4
+[   38.648993] __driver_attach+0xd0/0x100
+[   38.648999] bus_for_each_dev+0x84/0xcc
+[   38.649008] driver_attach+0x20/0x28
+[   38.649014] bus_add_driver+0x11c/0x1e4
+[   38.649024] driver_register+0xa4/0xf0
+[   38.649031] __platform_driver_register+0x40/0x48
+[   38.649071] init_module+0x38/0x54 [mali_kbase]
+[   38.649082] do_one_initcall+0x184/0x258
+[   38.649090] do_init_module+0x5c/0x1e8
+[   38.649102] load_module+0x2840/0x35d8
+[   38.649110] SyS_finit_module+0xa8/0xe0
+[   38.649118] el0_svc_naked+0x34/0x38
+[   38.649127] Code: 79000102 d65f03c0 f9400008 8b214108 (b9400100) 
+[   38.649136] ---[ end trace d412547a4c83012b ]---

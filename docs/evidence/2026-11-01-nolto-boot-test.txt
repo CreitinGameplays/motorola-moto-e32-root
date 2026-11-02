@@ -1,0 +1,86 @@
+# Non-LTO kernel boot test (2026-11-01)
+
+Follow-up to `2026-11-01-cfibaseline-boot-test-plan.txt`: the CFI-fixed LTO
+kernel hung conclusively, so the next single-variable experiment removes
+LTO/CFI and the lld-LTO link entirely.
+
+## Build (offline, VPS)
+
+Same tree (`hawaii-diag`), same `.config.diagwdt`, with
+`CONFIG_LTO_NONE=y` and LTO/CFI/THINLTO disabled (CFI goes with LTO in this
+tree). Full rebuild, clang 11.0.1 + ld.lld as plain ELF linker:
+
+* `Image.nolto`: 21,456,912 bytes, sha256
+  `dacd8bf2a1c7411ca7d78857964a377d35da6e4a6c943791286e5c2b5fd43151`
+* `System.map.nolto`: sha256
+  `73c07494627f08d63e052691fe104b32740c6b229e8d8c084c4c19473397bf6d`
+* `ARMd` header: text_offset 0x80000, image_size 0x1773000, flags 0xa -
+  smaller than the stock footprint, no collision with the DTB/ramdisk load
+  addresses
+* CFI checker: 0 jump-table symbols (expected without CFI), 0 outside
+* one modpost section mismatch warning appeared (LTO builds skip that
+  check); details not captured - noted as a known unknown, unlikely to
+  matter given the same source booted deep into init in all LTO builds
+
+Instrumentation carried from the diag config: `SOFTLOCKUP_DETECTOR` +
+`BOOTPARAM_SOFTLOCKUP_PANIC`, `DETECT_HUNG_TASK` + `BOOTPARAM_HUNG_TASK_PANIC`
+(60 s). `lockup_detector_init()` runs before the known stall window (tag 27),
+so a detectable stall should panic -> reset -> warm-reset pstore with a
+backtrace, with no operator intervention.
+
+## Test image
+
+`boot_nolto_magisk.img`: 67,108,864 bytes, sha256
+`c10eb7a051cd35861b153337b30756050dc2ffbb5707ba7dac697b52e284bf80`
+(Magisk ramdisk + stock DTB from the known-good Magisk base; payload
+byte-exact; AVBf/AVB0 verified).
+
+## Execution
+
+Authorized by the operator. Pre-flight passed (slot `_b`, boot complete,
+Enforcing, `su` uid 0, `boot_a` rescue `fc3ca0ef...`, `boot_b` Magisk
+`90416c09...`). Flash readback verified (`c10eb7a0...` on the partition);
+one-attempt slot armed (`b=0x001f`). Reboot issued; observation via
+`scripts/host/observe_boot_test.sh 900 nolto`.
+
+## Outcome
+
+**KERNEL BOOTS AND RUNS. The LTO/CFI/lld-link build was the boot-hang
+culprit.** The non-LTO kernel came up on the device with adb at t+39 s:
+
+* `/proc/version`: `4.14.199+ (debian@vm) (clang version 11.0.1 (upstream),
+  LLD 11.0.1) #52 SMP PREEMPT Mon Nov 2 00:35:36 UTC 2026` - our build
+* `smp: Brought up 1 node, 8 CPUs` at 0.272 s
+* KVM initialized at 0.675 s (`kvm [1]: 16-bit VMID`, GICv3 system-register
+  interface) and **`/dev/kvm` exists** (misc 10:232, root-only)
+* Magisk `su` works (uid 0), SELinux Enforcing, slot `_b`
+* full dmesg captured while running:
+  `artifacts/kernel-build/nolto_dmesg_live.txt` (12,128 lines, drivers
+  active through 155 s; the DIAG initcall breadcrumbs are visible)
+
+The boot did not complete because `mali_kbase.ko` refuses to load
+(`disagrees about version of symbol module_layout` - the known vendor-module
+CRC mismatch), so SurfaceFlinger has no GLES backend and
+`sys.boot_completed` never sets. At 148.8 s the SPRD native hang monitor hit
+its 2-minute `WAIT_BOOT_COMPLETE` timeout (`we should trigger panic...`) and
+panicked the kernel; the restart path ended in a **power-off** (operator:
+"phone auto shut down"), so the phone needs a manual power-on. The panic
+wrote its record to the `sysdumpdb` partition, which survives the power
+loss; it will be read after recovery.
+
+Conclusions:
+
+1. The kernel source tree, config and device are fine - the hang was caused
+   by the LTO/CFI ThinLTO build and/or its ld.lld link.
+2. A working endpoint exists: a non-LTO kernel with KVM enabled boots on
+   the Moto E32, exposes `/dev/kvm`, and keeps Magisk root.
+3. To reach a fully booting Android on a custom kernel, the GPU module
+   mismatch must be solved (e.g. build `mali_kbase` built-in `=y` so no
+   vendor module load is needed), or the hang monitor's boot-complete
+   timeout must be disabled.
+4. Recovery note: the panic path powered the phone off instead of rebooting;
+   the rescue fallback (slot b try already spent) should engage on the next
+   manual power-on.
+
+(recovery verification pending)
+

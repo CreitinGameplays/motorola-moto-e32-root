@@ -354,7 +354,7 @@ generic Unisoc 4.14 tree the Motorola tree is derived from.
 | host | Debian 13 x86_64 (clang + LLD, no cross-gcc required) |
 | toolchain | upstream **clang/LLD 11.0.1** (`clang+llvm-11.0.1-x86_64-linux-gnu-ubuntu-20.10`) - the same version as the `Android clang 11.0.1 r383902` / `LLD 11.0.1` that built the shipping kernel |
 | config | `artifacts/kernel-config` (the phone's own `/proc/config.gz`) with every KVM option switched on |
-| tree | `R-11-release-RORS` + patches 0001-0005 |
+| tree | `R-11-release-RORS` + patches 0001-0006 (0006 keeps the Clang CFI jump tables inside core text) |
 | script | `scripts/host/build_kernel_vps.sh` (applies the patches, sets the config, builds, prints the artifact sizes) |
 
 ```sh

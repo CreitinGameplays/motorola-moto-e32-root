@@ -1,0 +1,196 @@
+[  136.386972] init: starting service 'zygote'...
+[  136.388375] init: Created socket '/dev/socket/zygote', mode 660, user 0, group 1000
+[  136.389252] init: Created socket '/dev/socket/usap_pool_primary', mode 660, user 0, group 1000
+[  136.393916] init: starting service 'zygote_secondary'...
+[  136.394856] init: Created socket '/dev/socket/zygote_secondary', mode 660, user 0, group 1000
+[  136.395735] init: Created socket '/dev/socket/usap_pool_secondary', mode 660, user 0, group 1000
+[  136.401410] init: starting service 'netd'...
+[  136.402251] init: Created socket '/dev/socket/dnsproxyd', mode 660, user 0, group 3003
+[  136.402975] init: Created socket '/dev/socket/mdns', mode 660, user 0, group 1000
+[  136.403635] init: Created socket '/dev/socket/fwmarkd', mode 660, user 0, group 3003
+[  136.407518] init: starting service 'vendor.audio-hal'...
+[  136.522796] init: starting service 'audioserver'...
+[  136.527081] init: processing action (init.svc.audioserver=running) from (/system/etc/init/audioserver.rc:35)
+[  136.527263] init: Command 'start vendor.audio-hal-4-0-msd' action=init.svc.audioserver=running (/system/etc/init/audioserver.rc:37) took 0ms and failed: service vendor.audio-hal-4-0-msd not found
+[  136.527326] init: Command 'start vendor.audio-hal-2-0' action=init.svc.audioserver=running (/system/etc/init/audioserver.rc:39) took 0ms and failed: service vendor.audio-hal-2-0 not found
+[  136.527381] init: Command 'start audio-hal-2-0' action=init.svc.audioserver=running (/system/etc/init/audioserver.rc:40) took 0ms and failed: service audio-hal-2-0 not found
+[  136.588624] init: starting service 'surfaceflinger'...
+[  136.589427] init: Could not create socket 'pdx/system/vr/display/client': Failed to bind socket 'pdx/system/vr/display/client': No such file or directory
+[  136.589967] init: Could not create socket 'pdx/system/vr/display/manager': Failed to bind socket 'pdx/system/vr/display/manager': No such file or directory
+[  136.590707] init: Could not create socket 'pdx/system/vr/display/vsync': Failed to bind socket 'pdx/system/vr/display/vsync': No such file or directory
+[  136.639873] type=1400 audit(1793585846.207:72): avc: denied { map } for comm="audioserver" path="/dev/__properties__/u:object_r:media_prop:s0" dev="tmpfs" ino=7625 scontext=u:r:audioserver:s0 tcontext=u:object_r:media_prop:s0 tclass=file permissive=0
+[  136.641737] init: Unable to set property 'ro.audio.hifi_supported' from uid:1041 gid:1005 pid:5019: Read-only property was already set
+[  136.642134] init: Unable to set property 'ro.audio.whale_hal' from uid:1041 gid:1005 pid:5019: Read-only property was already set
+[  136.642433] init: Unable to set property 'ro.audio.offload_wakelock' from uid:1041 gid:1005 pid:5019: Read-only property was already set
+[  136.833786] init: Untracked pid 5044 exited with status 0
+[  136.834650] init: Untracked pid 5046 exited with status 0
+[  136.835288] init: Service 'surfaceflinger' (pid 5020) received signal 6
+[  136.835312] init: Sending signal 9 to service 'surfaceflinger' (pid 5020) process group...
+[  136.835584] libprocessgroup: Successfully killed process cgroup uid 1000 pid 5020 in 0ms
+[  136.835748] init: updatable process 'surfaceflinger' exited 4 times before boot completed
+[  136.836736] init: Sending signal 9 to service 'zygote' (pid 4993) process group...
+[  136.863306] libprocessgroup: Successfully killed process cgroup uid 0 pid 4993 in 26ms
+[  136.865130] init: Service 'zygote' (pid 4993) received signal 9
+[  136.865365] init: starting service 'exec 78 (/debug_ramdisk/magisk --zygote-restart)'...
+[  136.867896] init: SVC_EXEC service 'exec 78 (/debug_ramdisk/magisk --zygote-restart)' pid 5076 (uid 0 gid 0+0 context u:r:magisk:s0) started; waiting...
+[  136.868635] init: starting service 'exec 79 (/system/bin/vdc volume abort_fuse)'...
+[  136.872382] init: Command 'write /sys/power/state on' action=onrestart (<Service 'zygote' onrestart>:3) took 0ms and failed: Unable to write to file '/sys/power/state': Unable to write file contents: Invalid argument
+[  136.872441] init: Sending signal 9 to service 'audioserver' (pid 5019) process group...
+[  136.883339] libprocessgroup: Successfully killed process cgroup uid 1041 pid 5019 in 10ms
+[  136.884333] init: Sending signal 9 to service 'cameraserver' (pid 4855) process group...
+[  136.895247] libprocessgroup: Successfully killed process cgroup uid 1047 pid 4855 in 10ms
+[  136.896353] init: Sending signal 9 to service 'media' (pid 4856) process group...
+[  136.907521] libprocessgroup: Successfully killed process cgroup uid 1013 pid 4856 in 10ms
+[  136.908522] init: Sending signal 9 to service 'netd' (pid 4995) process group...
+[  136.914792] libprocessgroup: Successfully killed process cgroup uid 0 pid 4995 in 6ms
+[  136.915570] init: Sending signal 9 to service 'wificond' (pid 4857) process group...
+[  136.921482] libprocessgroup: Successfully killed process cgroup uid 1010 pid 4857 in 5ms
+[  136.925806] init: Service 'cameraserver' (pid 4855) received signal 9
+[  136.928572] init: Service 'media' (pid 4856) received signal 9
+[  136.930646] init: Service 'wificond' (pid 4857) received signal 9
+[  136.931803] init: Untracked pid 4983 exited with status 0
+[  136.932667] init: Service 'netd' (pid 4995) received signal 9
+[  136.932922] init: Sending signal 9 to service 'zygote_secondary' (pid 4994) process group...
+[  136.954517] libprocessgroup: Successfully killed process cgroup uid 0 pid 4994 in 21ms
+[  136.956121] init: Service 'zygote_secondary' (pid 4994) received signal 9
+[  136.958198] init: Service 'audioserver' (pid 5019) received signal 9
+[  136.958271] init: Sending signal 9 to service 'vendor.audio-hal' (pid 4996) process group...
+[  136.964425] libprocessgroup: Successfully killed process cgroup uid 1041 pid 4996 in 5ms
+[  136.965666] init: Command 'restart vendor.audio-hal-4-0-msd' action=onrestart (<Service 'audioserver' onrestart>:2) took 0ms and failed: service vendor.audio-hal-4-0-msd not found
+[  136.965718] init: Command 'restart vendor.audio-hal-2-0' action=onrestart (<Service 'audioserver' onrestart>:3) took 0ms and failed: service vendor.audio-hal-2-0 not found
+[  136.965763] init: Command 'restart audio-hal-2-0' action=onrestart (<Service 'audioserver' onrestart>:4) took 0ms and failed: service audio-hal-2-0 not found
+[  136.967544] init: Service 'vendor.audio-hal' (pid 4996) received signal 9
+[  136.969577] init: Service 'exec 78 (/debug_ramdisk/magisk --zygote-restart)' (pid 5076) exited with status 0 waiting took 0.102000 seconds
+[  136.969623] init: Sending signal 9 to service 'exec 78 (/debug_ramdisk/magisk --zygote-restart)' (pid 5076) process group...
+[  136.969988] libprocessgroup: Successfully killed process cgroup uid 0 pid 5076 in 0ms
+[  136.971209] init: Service 'exec 79 (/system/bin/vdc volume abort_fuse)' (pid 5077) exited with status 0 oneshot service took 0.100000 seconds in background
+[  136.971260] init: Sending signal 9 to service 'exec 79 (/system/bin/vdc volume abort_fuse)' (pid 5077) process group...
+[  136.971477] libprocessgroup: Successfully killed process cgroup uid 1000 pid 5077 in 0ms
+[  136.972531] init: Untracked pid 5010 received signal 9
+[  136.973168] init: Untracked pid 5011 received signal 9
+[  136.974311] init: processing action (sys.init.updatable_crashing=1) from (/system/etc/init/flags_health_check.rc:10)
+[  136.974924] init: starting service 'exec 80 (/system/bin/flags_health_check UPDATABLE_CRASHING)'...
+[  136.978471] init: SVC_EXEC service 'exec 80 (/system/bin/flags_health_check UPDATABLE_CRASHING)' pid 5084 (uid 1000 gid 1000+0 context default) started; waiting...
+[  137.005413] init: Service 'exec 80 (/system/bin/flags_health_check UPDATABLE_CRASHING)' (pid 5084) exited with status 0 waiting took 0.027000 seconds
+[  137.005445] init: Sending signal 9 to service 'exec 80 (/system/bin/flags_health_check UPDATABLE_CRASHING)' (pid 5084) process group...
+[  137.005675] libprocessgroup: Successfully killed process cgroup uid 1000 pid 5084 in 0ms
+[  137.007134] init: processing action (init.svc.media=*) from (/system/etc/init/mediaserver.rc:1)
+[  137.008926] init: processing action (init.svc.media=*) from (/system/etc/init/mediaserver.rc:1)
+[  137.067669] init: starting service 'cameraserver'...
+[  137.074531] init: starting service 'media'...
+[  137.074608] libprocessgroup: Failed to open /dev/cpuset/camera-daemon/tasks: No such file or directory: No such file or directory
+[  137.074647] libprocessgroup: Failed to apply CameraServiceCapacity task profile: No such file or directory
+[  137.079340] init: processing action (init.svc.media=*) from (/system/etc/init/mediaserver.rc:1)
+[  137.080384] init: processing action (init.svc.mediadrm=running) from (/vendor/etc/init/android.hardware.drm@1.3-service.widevine.rc:1)
+[  137.081108] init: starting service 'wificond'...
+[  137.180646] charger-manager charger-manager: cm_ir_compensation, us = 4450000, rc = 12, upper_limit = 4500000, lower_limit = 4450000, target_cccv = 4451944, ibat_avg = 162600, offset = 100000
+[  137.180657] charger-manager charger-manager: cm_sprd_vote_callback, VOTE_TYPE_CCCV[4451944]
+[  137.180940] bq2560x_chg 5-006b: bq2560x_charger_set_termina_vol;4451;19;19;
+[  137.207250] init: Untracked pid 4990 exited with status 0
+[  137.263909] real time: 2026-11-02 02:17:26.836784 UTC
+[  137.263920] sprd-vsp: vsp_open called 0000000060a55a0f,vsp_instance_cnt 0
+[  137.263926] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.264257] sprd-vsp-pw: vsp_pw_on set OK
+[  137.264281] sprd-vsp: mmap c,ec302000,14000
+[  137.264574] ion_system_heap_allocate, size: 2097152, time:5us, pool:2097152, bud:0, ord 8:0, 4:0, 0:0
+[  137.267426] sprd-vsp: vsp_release: instance_cnt 1
+[  137.267434] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.267446] sprd-vsp-pw: vsp_pw_off set OK
+[  137.274747] sprd-vsp: vsp_open called 0000000094c6ad8f,vsp_instance_cnt 0
+[  137.274755] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.275074] sprd-vsp-pw: vsp_pw_on set OK
+[  137.275095] sprd-vsp: mmap c,ec302000,14000
+[  137.276539] ion_carveout_heap_allocate: heap id: 1, paddr: 0xa421e000, size: 2097152
+[  137.280878] sprd-vsp: vsp_release: instance_cnt 1
+[  137.280892] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.280907] sprd-vsp-pw: vsp_pw_off set OK
+[  137.281163] ion_carveout_heap_free: heap id: 1, paddr: 0xa421e000, size: 2097152
+[  137.286149] sprd-vsp: vsp_open called 000000007504f5a0,vsp_instance_cnt 0
+[  137.286155] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.286472] sprd-vsp-pw: vsp_pw_on set OK
+[  137.286482] sprd-vsp: mmap c,ec302000,14000
+[  137.288347] ion_system_heap_allocate, size: 1536000, time:10us, pool:1536000, bud:0, ord 8:0, 4:0, 0:0
+[  137.292503] sprd-vsp: vsp_release: instance_cnt 1
+[  137.292520] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.292538] sprd-vsp-pw: vsp_pw_off set OK
+[  137.299425] sprd-vsp: vsp_open called 000000000c81c1b7,vsp_instance_cnt 0
+[  137.299432] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.299757] sprd-vsp-pw: vsp_pw_on set OK
+[  137.299781] sprd-vsp: mmap c,ec302000,14000
+[  137.300152] ion_system_heap_allocate, size: 3145728, time:5us, pool:3145728, bud:0, ord 8:0, 4:0, 0:0
+[  137.304232] sprd-vsp: vsp_release: instance_cnt 1
+[  137.304242] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.304260] sprd-vsp-pw: vsp_pw_off set OK
+[  137.312516] sprd-vsp: vsp_open called 000000007407cdc3,vsp_instance_cnt 0
+[  137.312524] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.312848] sprd-vsp-pw: vsp_pw_on set OK
+[  137.312878] sprd-vsp: mmap c,ec302000,14000
+[  137.314159] ion_carveout_heap_allocate: heap id: 1, paddr: 0xa421e000, size: 3145728
+[  137.318531] ion_carveout_heap_free: heap id: 1, paddr: 0xa421e000, size: 3145728
+[  137.318930] sprd-vsp: vsp_release: instance_cnt 1
+[  137.318935] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.318945] sprd-vsp-pw: vsp_pw_off set OK
+[  137.323770] sprd-vsp: vsp_open called 00000000b4eff273,vsp_instance_cnt 0
+[  137.323776] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.324099] sprd-vsp-pw: vsp_pw_on set OK
+[  137.324120] sprd-vsp: mmap c,ec302000,14000
+[  137.325810] ion_system_heap_allocate, size: 1536000, time:16us, pool:1536000, bud:0, ord 8:0, 4:0, 0:0
+[  137.332596] sprd-vsp: vsp_release: instance_cnt 1
+[  137.332602] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.332613] sprd-vsp-pw: vsp_pw_off set OK
+[  137.339648] sprd-vsp: vsp_open called 0000000050f7de53,vsp_instance_cnt 0
+[  137.339653] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.339973] sprd-vsp-pw: vsp_pw_on set OK
+[  137.339988] sprd-vsp: mmap c,ec302000,14000
+[  137.340231] ion_system_heap_allocate, size: 1536000, time:10us, pool:1536000, bud:0, ord 8:0, 4:0, 0:0
+[  137.342788] sprd-vsp: vsp_release: instance_cnt 1
+[  137.342794] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.342804] sprd-vsp-pw: vsp_pw_off set OK
+[  137.348679] sprd-vsp: vsp_open called 00000000f9deae5b,vsp_instance_cnt 0
+[  137.348684] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.349002] sprd-vsp-pw: vsp_pw_on set OK
+[  137.349018] sprd-vsp: mmap c,ec302000,14000
+[  137.349121] ion_system_heap_allocate, size: 1384448, time:6us, pool:1384448, bud:0, ord 8:0, 4:0, 0:0
+[  137.351619] sprd-vsp: vsp_release: instance_cnt 1
+[  137.351625] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.351635] sprd-vsp-pw: vsp_pw_off set OK
+[  137.359669] sprd-vsp: vsp_open called 0000000094e3be8c,vsp_instance_cnt 0
+[  137.359675] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.359993] sprd-vsp-pw: vsp_pw_on set OK
+[  137.360102] sprd-vsp: mmap c,ec302000,14000
+[  137.361599] ion_carveout_heap_allocate: heap id: 1, paddr: 0xa421e000, size: 1384448
+[  137.366593] ion_carveout_heap_free: heap id: 1, paddr: 0xa421e000, size: 1384448
+[  137.366749] sprd-vsp: vsp_release: instance_cnt 1
+[  137.366776] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.366801] sprd-vsp-pw: vsp_pw_off set OK
+[  137.374608] sprd-vsp: vsp_open called 0000000069ce899b,vsp_instance_cnt 0
+[  137.374613] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.374930] sprd-vsp-pw: vsp_pw_on set OK
+[  137.374943] sprd-vsp: mmap c,ec302000,14000
+[  137.380215] sprd-vsp: vsp_release: instance_cnt 1
+[  137.380223] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.380232] sprd-vsp-pw: vsp_pw_off set OK
+[  137.388270] sprd-vsp: vsp_open called 00000000cddf0ea8,vsp_instance_cnt 0
+[  137.388276] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.388594] sprd-vsp-pw: vsp_pw_on set OK
+[  137.388608] sprd-vsp: mmap c,ec302000,14000
+[  137.393623] sprd-vsp: vsp_release: instance_cnt 1
+[  137.393630] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.393640] sprd-vsp-pw: vsp_pw_off set OK
+[  137.949535] sc27xx-fgu sc27xx-fgu: track not satisfy power on start condition.
+[  137.949553] sc27xx-fgu sc27xx-fgu: track_sts: 1
+[  137.951273] bq2560x_chg 5-006b: bq25601 [0]=04 [1]=1a [2]=89 [3]=22  [4]=98 [5]=87 [6]=66 [7]=4d
+[  137.951298] bq2560x_chg 5-006b: bq25601 [8]=b4 [9]=00 [a]=80 [b]=6c  [c]=75 [d]=01 [e]=80 [f]=80
+[  137.951571] charger-manager charger-manager: cm_manager_get_jeita_status: jeita status:(2) 2 2, temperature:320, jeita_size:4
+[  137.951582] charger-manager charger-manager: current-last jeita status: 2-2, current temperature: 320
+[  137.951624] sc27xx-fgu sc27xx-fgu: init_cap=999,init_clbcnt=24174612,cur_clbcnt=24203130,normal_cap= 1000,delta_cap=1,Tbat =320,uusoc_vbat=0;4850;693;
+[  137.953732] charger-manager charger-manager: cant not get input_cur.
+[  137.953772] sc27xx-fgu sc27xx-fgu: init_cap=999,init_clbcnt=24174612,cur_clbcnt=24203130,normal_cap= 1000,delta_cap=1,Tbat =320,uusoc_vbat=0;4850;693;
+[  137.953918] charger-manager charger-manager: EVENT_HANDLE: Battery Fully Charged
+[  137.955949] charger-manager charger-manager: chg_check_vbus;4844
+[  137.956001] charger-manager charger-manager: target 4, charging_status 0
+[  137.957053] sc27xx-fgu sc27xx-fgu: init_cap=999,init_clbcnt=24174612,cur_clbcnt=24203130,normal_cap= 1000,delta_cap=1,Tbat =321,uusoc_vbat=0;4850;693;
+[  137.957210] charger-manager charger-manager: vbat=4442,OCV=4424,ibat=180,ibus=0,vbus=4857,soc=1000,1000,chg_sts=4,frce_full=0,chg_lmt_cur=540,inpt_lmt_cur = 500, chgr_type = 1, Tboard = 321, Tbatt = 321 ,thm_cur=3600,thm_pwr=18W,is_fst_chg=0,fst_chg_en=0,term_vol=4456
+[  137.957224] charger-manager charger-manager: POWER_SUPPLY_STATUS_FULL:fuel_cap = 1000
+[  137.957232] charger-manager charger-manager: POWER_SUPPLY_STATUS_FULL:fuel_cap_buf:1000
+[  137.958753] charger-manager charger-manager: fuel = 1000, cm->desc->cap = 1000, fuel_cap_buf = 1000

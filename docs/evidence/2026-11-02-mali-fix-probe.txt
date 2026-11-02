@@ -1,0 +1,126 @@
+﻿mali module probe, 2026-11-02 11:25:08
+module : artifacts/kernel-build/mali_kbase_fix.ko
+         13701472 bytes, sha256 19c8d458ab006ece491e637d30bddc1f124276cb37306ad6cacfab4c78f7279c
+
+--- 1. wait for adb ---
+adb up after 43s
+
+--- 2. pre-flight ---
+su uid            : 0
+kernel            : Linux version 4.14.199+ (debian@vm) (clang version 11.0.1 (https://github.com/llvm/llvm-project.git 76c0092665867a6defcd328ba0d0d976eb65d991), LLD 11.0.1 (https://github.com/llvm/llvm-project.git 76c0092665867a6defcd328ba0d0d976eb65d991)) #56 SMP PREEMPT Mon Nov 2 02:09:40 UTC 2026
+slot              : _b
+selinux           : Enforcing
+/dev/mali0        : ls: /dev/mali0: No such file or directory
+mali in modules   : 0
+
+--- 3. SPRD hang monitor (left ENABLED: its ~148 s panic warm-resets the phone and pushes the dmesg breadcrumbs into ramoops/pstore, which is the only post-mortem channel that survives this hang) ---
+monitor state    : cat: /proc/monitor_enable: Permission denied
+note: on a hung CPU the monitor thread dies too - the reset then comes from the rescue path, and pstore may be empty; the on-device dmesg file below is the primary evidence
+
+--- 4. push the module ---
+adb.exe : artifacts/kernel-build/mali_kbase_fix.ko: 1 file pushed, 0 skipped. 99.9 MB/s (13701472 bytes in 0.131s)
+At C:\Users\Creitin\moto-root-test\scripts\host\mali_module_probe.ps1:140 char:10
++ $push = (& $Adb push $Ko $remoteKo 2>&1 | Out-String).Trim()
++          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (artifacts/kerne...ytes in 0.131s):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+device sha256     : 19c8d458ab006ece491e637d30bddc1f124276cb37306ad6cacfab4c78f7279c
+crumb module      : artifacts/kernel-build/mdbg_crumb.ko
+crumb sha256      : 7cbb217e533499d489517080482946f2bb62abe041a9ee1972fc3faed365dea4
+crumb area before :   \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0
+crumb insmod      : RC=$?
+crumb area after  :    C   R   U   M   B   0   1  \0  \0  \0  \0  \0  \0  \0  \0  \0
+crumb armed check : CRUMB01
+
+--- 5. streaming dmesg to docs/evidence/2026-11-02-mali-fix-probe.txt.dmesg-stream.txt (host) AND /data/local/tmp/mali_probe.log (device), then insmod ---
+    (on a hang: power-cycle; the rescue restores Android and the on-device log is the primary evidence)
+insmod output:
+INS_OK=$?
+adb.exe : dmesg: klogctl: Permission denied
+At C:\Users\Creitin\moto-root-test\scripts\host\mali_module_probe.ps1:77 char:31
++ ... ction Shu([string]$cmd) { (& $Adb shell "su -c `"$cmd`"" 2>&1 | Out-S ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (dmesg: klogctl: Permission denied:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+device alive after probe window: NO (adb vanished -> hang during probe)
+
+--- 6. post state ---
+skipped: adb gone
+
+--- 6b. crumb readout (miscdata+0xA0000) ---
+adb.exe : adb.exe: no devices/emulators found
+At C:\Users\Creitin\moto-root-test\scripts\host\mali_module_probe.ps1:77 char:31
++ ... ction Shu([string]$cmd) { (& $Adb shell "su -c `"$cmd`"" 2>&1 | Out-S ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (adb.exe: no devices/emulators found:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+--- 7. streamed dmesg (last 60 lines) ---
+[   74.288319] mali 23100000.gpu: MDBG: clock_on: top_pwr_state_check
+[   74.288523] mali 23100000.gpu: MDBG: clock_on: top_pwr_state_check done
+[   74.288532] mali 23100000.gpu: MDBG: clock_on: freq_upd_cfg write
+[   74.288536] mali 23100000.gpu: MDBG: clock_on: dvfs_index_cfg write
+[   74.288540] mali 23100000.gpu: MDBG: clock_on: qos_config
+[   74.288544] mali 23100000.gpu: MDBG: clock_on: done
+[   74.292180] mali 23100000.gpu: MDBG: power_on: top_force write enter
+[   74.292192] mali 23100000.gpu: MDBG: power_on: top_force write done
+[   74.292321] mali 23100000.gpu: MDBG: power_on: top_pwr_state_check enter
+[   74.292525] mali 23100000.gpu: MDBG: power_on: top_pwr_state_check done
+[   74.292533] mali 23100000.gpu: MDBG: clock_on: efuse=T606
+[   74.292537] mali 23100000.gpu: MDBG: clock_on: src[0] enable
+[   74.292542] mali 23100000.gpu: MDBG: clock_on: src[1] enable
+[   74.292547] mali 23100000.gpu: MDBG: clock_on: src[2] enable
+[   74.292793] mali 23100000.gpu: MDBG: clock_on: src[3] enable
+[   74.292797] mali 23100000.gpu: MDBG: clock_on: src[4] enable
+[   74.293294] mali 23100000.gpu: MDBG: clock_on: gate enables (i/core/mem/sys)
+[   74.293313] mali 23100000.gpu: MDBG: clock_on: gate enables done
+[   74.293517] mali 23100000.gpu: MDBG: clock_on: top_pwr_state_check
+[   74.293720] mali 23100000.gpu: MDBG: clock_on: top_pwr_state_check done
+[   74.293729] mali 23100000.gpu: MDBG: clock_on: freq_upd_cfg write
+[   74.293732] mali 23100000.gpu: MDBG: clock_on: dvfs_index_cfg write
+[   74.293736] mali 23100000.gpu: MDBG: clock_on: qos_config
+[   74.293740] mali 23100000.gpu: MDBG: clock_on: done
+[   74.302998] mali 23100000.gpu: MDBG: power_on: top_force write enter
+[   74.303014] mali 23100000.gpu: MDBG: power_on: top_force write done
+[   74.303119] mali 23100000.gpu: MDBG: power_on: top_pwr_state_check enter
+[   74.303322] mali 23100000.gpu: MDBG: power_on: top_pwr_state_check done
+[   74.303332] mali 23100000.gpu: MDBG: clock_on: efuse=T606
+[   74.303335] mali 23100000.gpu: MDBG: clock_on: src[0] enable
+[   74.303342] mali 23100000.gpu: MDBG: clock_on: src[1] enable
+[   74.303348] mali 23100000.gpu: MDBG: clock_on: src[2] enable
+[   74.303594] mali 23100000.gpu: MDBG: clock_on: src[3] enable
+[   74.303597] mali 23100000.gpu: MDBG: clock_on: src[4] enable
+[   74.304116] mali 23100000.gpu: MDBG: clock_on: gate enables (i/core/mem/sys)
+[   74.304133] mali 23100000.gpu: MDBG: clock_on: gate enables done
+[   74.304336] mali 23100000.gpu: MDBG: clock_on: top_pwr_state_check
+[   74.304542] mali 23100000.gpu: MDBG: clock_on: top_pwr_state_check done
+[   74.304553] mali 23100000.gpu: MDBG: clock_on: freq_upd_cfg write
+[   74.304556] mali 23100000.gpu: MDBG: clock_on: dvfs_index_cfg write
+[   74.304560] mali 23100000.gpu: MDBG: clock_on: qos_config
+[   74.304564] mali 23100000.gpu: MDBG: clock_on: done
+[   74.308519] mali 23100000.gpu: MDBG: power_on: top_force write enter
+[   74.308534] mali 23100000.gpu: MDBG: power_on: top_force write done
+[   74.308638] mali 23100000.gpu: MDBG: power_on: top_pwr_state_check enter
+[   74.308854] mali 23100000.gpu: MDBG: power_on: top_pwr_state_check done
+[   74.308863] mali 23100000.gpu: MDBG: clock_on: efuse=T606
+[   74.308867] mali 23100000.gpu: MDBG: clock_on: src[0] enable
+[   74.308872] mali 23100000.gpu: MDBG: clock_on: src[1] enable
+[   74.308877] mali 23100000.gpu: MDBG: clock_on: src[2] enable
+[   74.309121] mali 23100000.gpu: MDBG: clock_on: src[3] enable
+[   74.309126] mali 23100000.gpu: MDBG: clock_on: src[4] enable
+[   74.309616] mali 23100000.gpu: MDBG: clock_on: gate enables (i/core/mem/sys)
+[   74.309633] mali 23100000.gpu: MDBG: clock_on: gate enables done
+[   74.309848] mali 23100000.gpu: MDBG: clock_on: top_pwr_state_check
+[   74.310053] mali 23100000.gpu: MDBG: clock_on: top_pwr_state_check done
+[   74.310063] mali 23100000.gpu: MDBG: clock_on: freq_upd_cfg write
+[   74.310068] mali 23100000.gpu: MDBG: clock_on: dvfs_index_cfg write
+[   74.310072] mali 23100000.gpu: MDBG: clock_on: qos_config
+[   74.310077] mali 23100000.gpu: MDBG: clock_on: done
+
+post-recovery checklist (run after the rescue restores Android):
+  adb shell su -c 'dd if=/dev/block/by-name/miscdata bs=1 skip=655360 count=64 | od -An -tx1'
+    <- PRIMARY evidence; survives any reset. magic 'CRUMB01' then one byte per step:
+       60/61 module init / 62 probe / 63 power_control_init / 70+i dev_init[i] / 10..43 glue
+  adb shell su -c 'cat /data/local/tmp/mali_probe.log'         <- secondary (page cache, may be lost)
+  adb shell su -c 'ls -l /sys/fs/pstore/'                      <- ramoops, may hold the panic

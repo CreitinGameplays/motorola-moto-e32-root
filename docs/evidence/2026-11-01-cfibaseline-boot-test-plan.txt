@@ -1,0 +1,194 @@
+# Boot test plan: CFI-fixed baseline kernel (2026-11-01)
+
+Status: PLANNED - not executed. Execution requires the operator's explicit
+go-ahead. No device contact happens before that.
+
+## Objective
+
+Boot the CFI-fixed baseline kernel `Image.p0a0s0koffmsmcq0c0` (sha256
+`6725bb367badbffc2e4c3f7cf94163c70cf0cd43187cc77559e6ddec941596a8`) on the
+device through the proven `boot_b` one-attempt channel and classify the
+result. This is the first candidate whose linker layout matches the shipping
+kernel's (all 26,362 CFI jump tables and 2,673 `__typeid__*` symbols inside
+core text; see `2026-11-01-stock-vs-custom-image-comparison.txt`). The kernel
+carries no active diagnostic knobs (panic=0 arm=0 smc=0 checkpoint=off
+paint=0 screen=0); it requests no resets, so the failed SMC-control gate does
+not apply to it. It does keep the inert `pr_emerg` setup breadcrumbs, which
+would appear in a pstore capture if a panic occurs after `do_basic_setup`
+steps begin.
+
+## Test image (built offline, before any device contact)
+
+    python scripts/host/pack_and_sign_boot.py \
+        artifacts/kernel-build/Image.p0a0s0koffmsmcq0c0 \
+        artifacts/kernel-build/boot_cfibase_magisk.img \
+        --base artifacts/kernel-build/magisk_boot_b_2026-11-01.img
+
+`--base` is the byte-exact backup of the current `boot_b` (sha256
+`90416c09f6359fdcc0711f36e214454421c42598518787f58c1916be6c5cad3c`), so the
+packed image carries the **Magisk ramdisk** and stock DTB with our kernel
+payload; the packer recomputes kernel_size and the SHA-1 id and AVB-signs with
+the throwaway test key (SHA256_RSA4096, rollback index 2).
+
+Why the Magisk ramdisk instead of the stock ramdisk: if the kernel boots, the
+stock ramdisk gives no root on our kernel (the `mali_kroot` exploit offsets do
+not match our LTO layout), so `dmesg`/pstore would be unreadable and the fix's
+runtime effect could not be verified. With the Magisk ramdisk, a successful
+boot keeps `su`, which is also the one-command restore path afterwards.
+Accepted confound: a Magisk-init failure would be indistinguishable from a
+kernel failure on the first attempt; the stock-ramdisk variant of the same
+kernel is the fallback control if the first result is ambiguous.
+
+Verification of the packed image before it goes anywhere: `ANDROID!` magic,
+kernel payload sha256 equals the Image hash above, `image_size 0x1bb1000`,
+AVB footer present, final image sha256 recorded.
+
+## Pre-flight (device on Android, Magisk root)
+
+1. `adb devices` shows the phone; `getprop ro.boot.slot_suffix` = `_b`,
+   `sys.boot_completed` = 1.
+2. `adb shell su -c id -u` = 0 and `getenforce` = Enforcing. All privileged
+   steps use `adb shell "su -c ..."` - never `mali_kroot` (it leaves SELinux
+   Permissive until reboot and costs the BASIC verdict).
+3. Partition hashes: `boot_a` = `fc3ca0ef...844c0` (rescue, untouched),
+   `boot_b` = `90416c09...cad3c` (known-good Magisk). Abort on any mismatch.
+4. Fresh backup: `su -c dd` boot_b to `/data/local/tmp`, pull, verify the
+   hash matches `90416c09...`.
+5. Record the current `/sys/fs/pstore` listing as the pre-test baseline.
+
+## Flash and arm (root only)
+
+1. Push `boot_cfibase_magisk.img`.
+2. `su -c dd` to `/dev/block/by-name/boot_b` + `sync`; read-back sha256 must
+   equal the pushed hash - abort otherwise. `boot_a` is never written.
+3. `su -c sh /data/local/tmp/set_slot_b_tries1.sh`: the helper refuses
+   unrooted execution, accepts only the two verified steady misc states
+   (`b=0x009f` / `b=0x00ef`), writes the one-attempt block (`b=0x001f`), and
+   verifies the read-back.
+4. Record the misc block and both hashes, then reboot.
+
+## Observation and classification
+
+Use `scripts/host/run_boot_b_test.ps1 -Image ... -WaitSeconds 900` for the
+flash/arm/reboot/watch/pstore-capture flow. Its RESET/HANG verdict wording is
+checkpoint-era; the actual classification for this test is by kernel identity
+once adb returns:
+
+| observation | classification | action |
+|---|---|---|
+| adb back quickly, `/proc/version` shows our build (not the stock `xscm@ontimbjlx020 ... Feb 20 2024` string), `sys.boot_completed`=1 | **BOOT** - the fix boots | verify and capture: `su -c dmesg` must contain **no** `Invalid notifier called!`; `smp: Brought up 1 node, 8 CPUs`; KVM init line and `/dev/kvm`; `getenforce`=Enforcing; `su` works; pull full dmesg + pstore. Then restore the known-good Magisk `boot_b` via `su -c dd` + readback + reboot |
+| adb back after a self-reset cycle (~2.5-12 min), `/proc/version` = stock | **PANIC or watchdog reset** - the kernel reached a reportable failure | immediately pull `console-ramoops-0` + `dmesg-ramoops-0` (warm reset preserved DRAM) and `sysdumpdb`; the panic text plus `DIAG: setup` breadcrumbs locate the failure; then verify `boot_b` state and re-root if the rescue restored stock |
+| adb back, our kernel version, but `sys.boot_completed` stays 0 | partial boot (init/ramdisk interaction) | capture dmesg via `su`, logcat, pstore; analyze before any further attempt |
+| no adb for 900 s, no reset | **HANG** (early - before the `late_initcall` hang-debug feeder arms the AON watchdog at ~1.6 s) | operator power-cycles (no buttons, no timing); the SPL spends slot b's try and the slot-a rescue returns Android in ~2.5 min; then verify `boot_b`/`su` state, re-root if needed; pstore is expected empty after a cold cycle - record the verdict |
+
+Note: a hang *after* `late_initcall` self-recovers - the vendor hang-debug
+feeder arms the AON watchdog (40 s) even with `androidboot.wdten=0`, the warm
+reset preserves pstore, and the spent try sends the SPL to the rescue. So the
+silent-hang window is only the first ~1.6 s plus any IRQ-masked stall.
+
+## Post-test restoration (every path)
+
+* BOOT: `su -c dd` `magisk_boot_b_2026-11-01.img` back to `boot_b`, readback
+  verify, reboot, verify Enforcing + `su`.
+* RESET / HANG: check `boot_b` hash - if the rescue left the Magisk image
+  (`90416c09...`), just verify `su`; if it restored stock
+  (`ccd0faff...7b18`), run the guarded
+  `scripts/host/restore_magisk_after_rescue.ps1` (it aborts rather than write
+  on unexpected hashes).
+* Never touch `boot_a`, never use `fastboot flash` (signature gate), never
+  use `mali_kroot` on a boot where an integrity verdict matters.
+
+## Risks and abort conditions
+
+* Any hash or readback mismatch: abort before the reboot.
+* `su` unavailable at pre-flight: abort (no exploit fallback).
+* The phone will reboot during the test and may hang; in the HANG case the
+  operator power-cycles when the runner's window expires - no button timing
+  is required, the one-attempt slot makes the recovery automatic.
+* If the Magisk-ramdisk result is ambiguous (e.g. init failure), the next
+  step is the stock-ramdisk variant of the same kernel as a control, not a
+  rebuild with different knobs.
+
+## Evidence
+
+`scripts/host/run_boot_b_test.ps1` appends the timeline to
+`docs/evidence/2026-11-01-boot_b-tests.txt`; this plan's outcome section is
+appended to this file after execution, including the packed image hash, the
+classification, and every capture.
+
+## Execution log (2026-11-01, authorized by the operator: Magisk ramdisk)
+
+Phase 0 - image built and verified offline:
+
+* `boot_cfibase_magisk.img`: 67,108,864 bytes, sha256
+  `7b83560deb5c0471f79ccf1e089888413455034ca272b0a06b26c098a0ac2b1a`
+* payload == `Image.p0a0s0koffmsmcq0c0` byte-exact (sha256 `6725bb36...`),
+  `ARMd` magic, text_offset 0x80000, image_size 0x1bb1000, flags 0xa
+* Magisk ramdisk 9,393,149 B + stock DTB 175,466 B from the Magisk base;
+  cmdline unchanged (`console=ttyS1,115200n8 buildvariant=user`)
+* AVB: `AVB0` vbmeta at 0x21d7000, `AVBf` footer at the partition end
+
+Phase 1 - pre-flight, all checks passed:
+
+* slot `_b`, `sys.boot_completed`=1, SELinux Enforcing, `su -c id -u`=0
+* `boot_a` = `fc3ca0ef...844c0` (rescue), `boot_b` = `90416c09...cad3c`
+  (known-good Magisk)
+* fresh backup pulled and verified byte-exact:
+  `artifacts/kernel-build/boot_b_pretest_20261101.img`
+* pstore baseline: `console-ramoops-0`, `pmsg-ramoops-0` (2 records)
+
+Phase 2 - flash and arm, all verified:
+
+* pushed image and helper hashes match the local files on the device
+* `dd` to `boot_b`: readback sha256 `7b83560d...2b1a` == pushed hash
+* one-attempt slot armed by `set_slot_b_tries1.sh` (sha256 `922da4e2...`):
+  misc steady `b=0x009f` -> one-attempt `b=0x001f` (crc block ends
+  `b1 82 a5 20`), `AB_TRIES1_OK`
+
+Phase 3 - reboot issued; observation running via
+`scripts/host/observe_boot_test.sh` (900 s window), log:
+`artifacts/kernel-build/cfibase_boot_observation.log`. Outcome appended below
+when complete.
+
+## Outcome
+
+**HANG - the CFI-fixed kernel does not boot.** Executed 2026-11-01 21:08.
+
+* Reboot issued 21:08:46 with `boot_cfibase_magisk.img` in `boot_b` and the
+  one-attempt slot armed. The operator directly observed the hang: a white
+  horizontal rectangle below mid-screen, then a frozen panel. This build has
+  every paint/diagnostic knob compiled off, so the rectangle is the panel
+  showing the bootloader's framebuffer region - the same visual signature as
+  every previous custom-kernel attempt.
+* No adb within the 900 s window; the observer logged the hang.
+* Recovery did NOT follow the usual power-cycle -> slot-a rescue path this
+  time: the phone dropped to **BROM mode** and the operator had to use the
+  BROM reset route (`docs/14-brom-recovery-runbook.md`), which restored the
+  stock `boot_b` (no Magisk); Magisk was then reinstalled. Final state
+  verified: stock kernel on `_b`, Enforcing, `su` uid 0, `boot_a` rescue hash
+  unchanged, `boot_b` back to `90416c09...cad3c`.
+
+Conclusions:
+
+1. **The CFI jump-table/typeid placement fix is necessary but not
+   sufficient.** This was a plain boot with no reset-requesting
+   instrumentation, so unlike the SMC control this result is conclusive for
+   the kernel itself: the kernel still stalls at the same early stage. The
+   notifier-callback rejection was a real defect but not the (sole) cause of
+   the stall.
+2. With source content, initcall tables and global symbols now proven
+   identical to the vendor build, the remaining structural difference is the
+   **linker**: the vendor linked with GNU ld (bfd), our build links with
+   ld.lld. LTO codegen on this tree is the other residual suspect.
+3. The one-attempt fallback is not fully reliable: this run ended in BROM
+   instead of the rescue fallback. Any further `boot_b` test must treat the
+   BROM route as the expected recovery, not the exception.
+
+Next approach (proposed, not executed): remove the LTO/linker variable
+outright - build the same tree and config with `CONFIG_LTO_NONE` (which also
+drops CFI in this tree) and test that. If it boots, LTO/CFI/lld-link is the
+culprit and the follow-up is a bfd-linked LTO build replicating the vendor's
+linker; if it still hangs, the cause is elsewhere (device-specific code
+path). A non-LTO kernel with KVM would also be a usable endpoint in itself.
+
+

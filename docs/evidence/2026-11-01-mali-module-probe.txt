@@ -1,0 +1,106 @@
+﻿mali module probe, 2026-11-01 23:17:22
+module : artifacts/kernel-build/mali_kbase.ko
+         13685336 bytes, sha256 21a1be408da8cf26d22b62a04cd60cee336793193b01c12fdcbb549e3904c114
+
+--- 1. wait for adb ---
+adb up after 0s
+
+--- 2. pre-flight ---
+su uid            : 0
+kernel            : Linux version 4.14.199+ (debian@vm) (clang version 11.0.1 (https://github.com/llvm/llvm-project.git 76c0092665867a6defcd328ba0d0d976eb65d991), LLD 11.0.1 (https://github.com/llvm/llvm-project.git 76c0092665867a6defcd328ba0d0d976eb65d991)) #56 SMP PREEMPT Mon Nov 2 02:09:40 UTC 2026
+slot              : _b
+selinux           : Enforcing
+/dev/mali0        : ls: /dev/mali0: No such file or directory
+mali in modules   : 0
+
+--- 3. disable the SPRD hang monitor ---
+monitor before    : cat: /proc/monitor_enable: Permission denied
+monitor after     : adb.exe : /system/bin/sh: can't create /proc/monitor_enable: Permission denied
+At C:\Users\Creitin\moto-root-test\scripts\host\mali_module_probe.ps1:62 char:31
++ ... ction Shu([string]$cmd) { (& $Adb shell "su -c `"$cmd`"" 2>&1 | Out-S ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (/system/bin/sh:...rmission denied:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+cat: /proc/monitor_enable: Permission denied
+
+--- 4. push the module ---
+adb.exe : artifacts/kernel-build/mali_kbase.ko: 1 file pushed, 0 skipped. 91.3 MB/s (13685336 bytes in 0.143s)
+At C:\Users\Creitin\moto-root-test\scripts\host\mali_module_probe.ps1:118 char:10
++ $push = (& $Adb push $Ko $remoteKo 2>&1 | Out-String).Trim()
++          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (artifacts/kerne...ytes in 0.143s):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+device sha256     : 21a1be408da8cf26d22b62a04cd60cee336793193b01c12fdcbb549e3904c114
+
+--- 5. streaming dmesg to docs/evidence/2026-11-01-mali-module-probe.txt.dmesg-stream.txt, then insmod ---
+    (if the phone dies here, the tail of that file is the crash point)
+insmod output:
+
+
+device alive after probe window: NO (adb vanished -> hang during probe)
+
+--- 6. post state ---
+skipped: adb gone
+
+--- 7. streamed dmesg (last 60 lines) ---
+[  137.325810] ion_system_heap_allocate, size: 1536000, time:16us, pool:1536000, bud:0, ord 8:0, 4:0, 0:0
+[  137.332596] sprd-vsp: vsp_release: instance_cnt 1
+[  137.332602] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.332613] sprd-vsp-pw: vsp_pw_off set OK
+[  137.339648] sprd-vsp: vsp_open called 0000000050f7de53,vsp_instance_cnt 0
+[  137.339653] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.339973] sprd-vsp-pw: vsp_pw_on set OK
+[  137.339988] sprd-vsp: mmap c,ec302000,14000
+[  137.340231] ion_system_heap_allocate, size: 1536000, time:10us, pool:1536000, bud:0, ord 8:0, 4:0, 0:0
+[  137.342788] sprd-vsp: vsp_release: instance_cnt 1
+[  137.342794] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.342804] sprd-vsp-pw: vsp_pw_off set OK
+[  137.348679] sprd-vsp: vsp_open called 00000000f9deae5b,vsp_instance_cnt 0
+[  137.348684] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.349002] sprd-vsp-pw: vsp_pw_on set OK
+[  137.349018] sprd-vsp: mmap c,ec302000,14000
+[  137.349121] ion_system_heap_allocate, size: 1384448, time:6us, pool:1384448, bud:0, ord 8:0, 4:0, 0:0
+[  137.351619] sprd-vsp: vsp_release: instance_cnt 1
+[  137.351625] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.351635] sprd-vsp-pw: vsp_pw_off set OK
+[  137.359669] sprd-vsp: vsp_open called 0000000094e3be8c,vsp_instance_cnt 0
+[  137.359675] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.359993] sprd-vsp-pw: vsp_pw_on set OK
+[  137.360102] sprd-vsp: mmap c,ec302000,14000
+[  137.361599] ion_carveout_heap_allocate: heap id: 1, paddr: 0xa421e000, size: 1384448
+[  137.366593] ion_carveout_heap_free: heap id: 1, paddr: 0xa421e000, size: 1384448
+[  137.366749] sprd-vsp: vsp_release: instance_cnt 1
+[  137.366776] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.366801] sprd-vsp-pw: vsp_pw_off set OK
+[  137.374608] sprd-vsp: vsp_open called 0000000069ce899b,vsp_instance_cnt 0
+[  137.374613] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.374930] sprd-vsp-pw: vsp_pw_on set OK
+[  137.374943] sprd-vsp: mmap c,ec302000,14000
+[  137.380215] sprd-vsp: vsp_release: instance_cnt 1
+[  137.380223] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.380232] sprd-vsp-pw: vsp_pw_off set OK
+[  137.388270] sprd-vsp: vsp_open called 00000000cddf0ea8,vsp_instance_cnt 0
+[  137.388276] sprd-vsp-pw: vsp_pw_on Enter client 0
+[  137.388594] sprd-vsp-pw: vsp_pw_on set OK
+[  137.388608] sprd-vsp: mmap c,ec302000,14000
+[  137.393623] sprd-vsp: vsp_release: instance_cnt 1
+[  137.393630] sprd-vsp-pw: vsp_pw_off Enter client 0
+[  137.393640] sprd-vsp-pw: vsp_pw_off set OK
+[  137.949535] sc27xx-fgu sc27xx-fgu: track not satisfy power on start condition.
+[  137.949553] sc27xx-fgu sc27xx-fgu: track_sts: 1
+[  137.951273] bq2560x_chg 5-006b: bq25601 [0]=04 [1]=1a [2]=89 [3]=22  [4]=98 [5]=87 [6]=66 [7]=4d
+[  137.951298] bq2560x_chg 5-006b: bq25601 [8]=b4 [9]=00 [a]=80 [b]=6c  [c]=75 [d]=01 [e]=80 [f]=80
+[  137.951571] charger-manager charger-manager: cm_manager_get_jeita_status: jeita status:(2) 2 2, temperature:320, jeita_size:4
+[  137.951582] charger-manager charger-manager: current-last jeita status: 2-2, current temperature: 320
+[  137.951624] sc27xx-fgu sc27xx-fgu: init_cap=999,init_clbcnt=24174612,cur_clbcnt=24203130,normal_cap= 1000,delta_cap=1,Tbat =320,uusoc_vbat=0;4850;693;
+[  137.953732] charger-manager charger-manager: cant not get input_cur.
+[  137.953772] sc27xx-fgu sc27xx-fgu: init_cap=999,init_clbcnt=24174612,cur_clbcnt=24203130,normal_cap= 1000,delta_cap=1,Tbat =320,uusoc_vbat=0;4850;693;
+[  137.953918] charger-manager charger-manager: EVENT_HANDLE: Battery Fully Charged
+[  137.955949] charger-manager charger-manager: chg_check_vbus;4844
+[  137.956001] charger-manager charger-manager: target 4, charging_status 0
+[  137.957053] sc27xx-fgu sc27xx-fgu: init_cap=999,init_clbcnt=24174612,cur_clbcnt=24203130,normal_cap= 1000,delta_cap=1,Tbat =321,uusoc_vbat=0;4850;693;
+[  137.957210] charger-manager charger-manager: vbat=4442,OCV=4424,ibat=180,ibus=0,vbus=4857,soc=1000,1000,chg_sts=4,frce_full=0,chg_lmt_cur=540,inpt_lmt_cur = 500, chgr_type = 1, Tboard = 321, Tbatt = 321 ,thm_cur=3600,thm_pwr=18W,is_fst_chg=0,fst_chg_en=0,term_vol=4456
+[  137.957224] charger-manager charger-manager: POWER_SUPPLY_STATUS_FULL:fuel_cap = 1000
+[  137.957232] charger-manager charger-manager: POWER_SUPPLY_STATUS_FULL:fuel_cap_buf:1000
+[  137.958753] charger-manager charger-manager: fuel = 1000, cm->desc->cap = 1000, fuel_cap_buf = 1000

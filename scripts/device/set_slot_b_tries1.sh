@@ -9,19 +9,44 @@
 # unbootable and fall back to slot a, the rescue - no Vol Down timing needed.
 # A successful boot lets Android's boot_control restore the normal state.
 #
-# Usage: sh /data/local/tmp/set_slot_b_tries1.sh
+# Must be run as root (the host wrapper does `su -c 'sh ...'`). It deliberately
+# does not invoke the exploit-based root helper: that one leaves SELinux
+# permissive, which spoils the integrity measurements the test boot is judged
+# on, so persistent Magisk su is required instead.
+#
+# Prints AB_TRIES1_OK only after reading the block back and matching it
+# byte-for-byte; the host wrapper refuses to reboot without it.
+#
+# Usage: su -c 'sh /data/local/tmp/set_slot_b_tries1.sh'
 B64="X2IAAEJDQUIBAgAAjgAfAAAAAAAAAAAAAAAAALGCpSA="
-/data/local/tmp/mali_kroot >/dev/null 2>&1
+EXPECT="5f62000042434142010200008e001f00000000000000000000000000b182a520"
+
+if [ "$(id -u)" != "0" ]; then
+    echo "AB_TRIES1_FAIL not root (uid=$(id -u))"
+    exit 1
+fi
 echo "uid=$(id -u)"
 
 echo "before:"
 dd if=/dev/block/by-name/misc bs=1 skip=2048 count=32 2>/dev/null | od -An -tx1
 
 echo "$B64" | base64 -d > /data/local/tmp/ab_tries1.bin
-echo "block $(wc -c < /data/local/tmp/ab_tries1.bin) bytes"
-[ "$(wc -c < /data/local/tmp/ab_tries1.bin)" = "32" ] || { echo "bad block size"; exit 1; }
+SIZE=$(wc -c < /data/local/tmp/ab_tries1.bin)
+echo "block $SIZE bytes"
+if [ "$SIZE" != "32" ]; then
+    echo "AB_TRIES1_FAIL bad block size"
+    exit 1
+fi
 
-dd if=/data/local/tmp/ab_tries1.bin of=/dev/block/by-name/misc bs=1 seek=2048 conv=notrunc 2>&1 | tail -1
+dd if=/data/local/tmp/ab_tries1.bin of=/dev/block/by-name/misc bs=1 seek=2048 conv=notrunc 2>/dev/null
 sync
+
 echo "after:"
 dd if=/dev/block/by-name/misc bs=1 skip=2048 count=32 2>/dev/null | od -An -tx1
+
+GOT=$(dd if=/dev/block/by-name/misc bs=1 skip=2048 count=32 2>/dev/null | od -An -tx1 | tr -d ' \n')
+if [ "$GOT" != "$EXPECT" ]; then
+    echo "AB_TRIES1_FAIL read-back $GOT"
+    exit 1
+fi
+echo "AB_TRIES1_OK"

@@ -1,0 +1,53 @@
+# Vendor mali_kbase probe reference (stock kernel, slot _b, 2026-11-01)
+
+Captured on the device with the stock 4.14.199+-ab612c2 kernel while
+`/vendor`'s module was loaded the normal way. This is the reference the
+in-tree build has to reproduce: the driver is **not** built into the stock
+kernel at all - `init` loads it from userspace at `post-fs`:
+
+    /vendor/etc/init/init.md.rc:32
+    insmod ${ro.vendor.ko.mount.point}/socko/mali_kbase.ko   (action=post-fs)
+
+Probe takes 9.1 ms and happens at **t+4.73 s**, i.e. long after every
+`device_initcall`, with the clock framework, regulators, syscons and pinctrl
+fully up.
+
+## Log
+
+```
+[    0.642161] drv: ums9230-clk, dev: soc:gpu-clk, taste_time: 0.152769ms
+[    4.730471] mali 23100000.gpu: Kernel DDK version r28p0-01eac0
+[    4.730719] can't find gpu qos config node
+[    4.732616] mali 23100000.gpu: GPU identified as 0x1 arch 9.0.9 r0p1 status 0
+[    4.734038] mali 23100000.gpu: No memory group manager is configured
+[    4.734051] mali 23100000.gpu: Using coherency mode 31 set from dtb
+[    4.735472] mali 23100000.gpu: kbase_job_irq_handler: irq 42 irqstatus 0x0 before driver is ready
+[    4.735478] mali 23100000.gpu: kbase_mmu_irq_handler: irq 42 irqstatus 0x0 before driver is ready
+[    4.739465] mali 23100000.gpu: Probed as mali0
+[    4.739472] drv: mali, dev: 23100000.gpu, taste_time: 9.12385ms
+[    4.740800] init: Command 'insmod .../socko/mali_kbase.ko' action=post-fs (/vendor/etc/init/init.md.rc:32) took 82ms and succeeded
+```
+
+Runtime DVFS (vendor, for later): the driver really does swing between the
+two bins, it is not pinned:
+
+```
+GPU_DVFS kbase_platform_set_boost gpu_boost_level =10
+mali GPU_DVFS kbase_platform_set_freq_volt index=3 cur_freq=384000 cur_volt=700000 --> freq=650000 volt=800000 gpu_power_on=1 gpu_clock_on=1
+mali GPU_DVFS kbase_platform_set_freq_volt index=0 cur_freq=650000 cur_volt=700000 --> freq=384000 volt=700000 gpu_power_on=0 gpu_clock_on=0
+devfreq 23100000.gpu: Couldn't update frequency transition information.
+```
+
+## Why this matters for the in-tree port
+
+* Stock never probes Mali before userspace. Our `CONFIG_MALI_MIDGARD=y` build
+  probes it at `device_initcall` time, where the GPU's clocks/syscons/
+  regulators may not exist yet - a very plausible cause of the boot hang
+  (no adb, no pstore, logo stuck).
+* The vendor module's `GPU_DVFS ...` and `can't find gpu qos config node`
+  strings come from the Unisoc glue, not from the DDK, and confirm the glue
+  path (`mali_platform_init` -> `mali_power_on` -> `mali_clock_on` ->
+  `mali_qos_config`) runs before the DDK identifies the GPU.
+* `can't find gpu qos config node` means `sprd,qos` is absent in this board's
+  DT; `gpu_qos_cfg` stays zero and the QoS registers are still written.
+* The GPU node is `23100000.gpu`, IRQ 42, coherency mode 31 from DT.

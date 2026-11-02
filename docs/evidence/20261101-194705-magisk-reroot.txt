@@ -1,0 +1,22 @@
+﻿Magisk re-root, 2026-11-01 19:47:05
+image: D:\AndroidSDKTools\pi\boot_magisk_avb.img (67108864 bytes, sha256 90416c09f6359fdcc0711f36e214454421c42598518787f58c1916be6c5cad3c)
+adb state: device
+slot=_b boot_completed=1
+Magisk is absent; staging the verified image and root-only helper.
+adb.exe : D:\AndroidSDKTools\pi\boot_magisk_avb.img: 1 file pushed, 0 skipped. 136.9 MB/s (67108864 bytes in 0.467s)
+At C:\Users\Creitin\moto-root-test\scripts\host\restore_magisk_after_rescue.ps1:74 char:19
++ ... ushImage = (& $Adb push $MagiskImage '/data/local/tmp/boot_magisk_avb ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\AndroidSDKTo...ytes in 0.467s):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+adb.exe : C:\Users\Creitin\moto-root-test\scripts\device\set_slot_b_tries1.sh: 1 file pushed, 0 skipped. 4.2 MB/s 
+(2548 bytes in 0.001s)
+At C:\Users\Creitin\moto-root-test\scripts\host\restore_magisk_after_rescue.ps1:80 char:20
++ ... shHelper = (& $Adb push $helperPath '/data/local/tmp/set_slot_b_tries ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\Creiti...ytes in 0.001s):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+Running the single-shell CVE re-root/write; the next reboot restores SELinux Enforcing.
+boot_a=fc3ca0efd6414d4f5d24c478b1592ea1ba9386f1476883a0bd8a1b8b1a3844c0 boot_b=90416c09f6359fdcc0711f36e214454421c42598518787f58c1916be6c5cad3c | boot_b already contains the verified Magisk image, no partition rewrite needed | before: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 ef 00 |  00 00 00 00 00 00 00 00 00 00 00 00 16 de b9 49 | adb.exe : conv=4 | At C:\Users\Creitin\moto-root-test\scripts\host\restore_magisk_after_rescue.ps1:123 char:20 | +     $rootOutput = (& $Adb shell $rootCommand 2>&1 | Out-String).Trim( ... | +                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ |     + CategoryInfo          : NotSpecified: (conv=4:String) [], RemoteException |     + FullyQualifiedErrorId : NativeCommandError |   | 32+0 records in | 32+0 records out | 32 bytes (32 B) copied, 0.017384 s, 1.7 K/s | after: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 1f 00 |  00 00 00 00 00 00 00 00 00 00 00 00 b1 82 a5 20 | AB_TRIES1_OK
+Rebooting into the known-good Magisk boot.
+verified: boot_b is the known-good Magisk image, su uid=0, SELinux Enforcing, Android complete on _b.

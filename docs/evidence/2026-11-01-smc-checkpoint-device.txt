@@ -1,0 +1,75 @@
+# Device SMC checkpoint attempt without UART (2026-11-01)
+
+## Attempt
+
+Phone: ZF523X9NXW, Moto E32 (`hawaii`), running Android 11 on slot `_b`.
+The known-good `boot_a` rescue hash was verified as
+`fc3ca0efd6414d4f5d24c478b1592ea1ba9386f1476883a0bd8a1b8b1a3844c0`.
+
+The packaged stage-7 SMC control image was written to `boot_b`, read back
+byte-identically, and one boot attempt was armed in `misc`:
+
+* image: `artifacts/kernel-build/boot_checkpoint-control-smc-cfi.img`
+* size: 67,108,864 bytes
+* SHA-256: `4ad2aa73de675e0237f79d175b117a4ef7b3afb9cd740273acbb3a1f36263a81`
+* `misc` changed from the observed steady block ending `8e 00 9f 00 ... 53 6d
+  d6 a3` to the one-attempt block ending `8e 00 1f 00 ... b1 82 a5 20`.
+
+After `adb reboot`, ADB was absent at t+4 s. The operator reported that the
+phone was hung and manually power-cycled it. The host workflow was stopped at
+that point so the manual recovery could not be mistaken for a successful SMC
+reset and trigger the target image. The runner's 900-second observation window
+did not complete; therefore this is **not** a positive-control pass. No target
+image was flashed.
+
+## Recovery and root restoration
+
+Android returned on `_b` without Magisk `su`; SELinux reported Permissive at
+that time. A rootless pstore copy contained only the short sysdump/init/restart
+record below and no checkpoint marker. Because the target hook executes before
+`ramoops_init()`, absence of a marker is not evidence that the hook was missed.
+
+```text
+[    0.032000] c0 sprd-sysdump: [kaslr_info_init]vmcore info init end!
+[    1.731573] c6 sprd_wdh: func_addr = 0xffffff8008e4b6b8, pgd = 0x81ba5000
+[    2.009078] c0 sprd-sysdump: section_native_hang in.
+[    2.009091] c0 sprd-sysdump: section_native_hang out.
+[    2.009315] c0 sprd-sysdump: scproc added successfully in minidump section:paddr_start=62010000,paddr_end=6205dfff
+[    2.009323] c0 sprd-sysdump: vmcoreinfo added successfully in minidump section:paddr_start=17af59000,paddr_end=17af595d3
+[    2.165782] c6 run init
+[    3.821769] c0 reboot: Restarting system
+```
+
+The old direct helper invocation failed with `ABORT: must be run as root`; this
+is now intentional because `scripts/device/set_slot_b_tries1.sh` no longer
+invokes `mali_kroot`. Its SHA-256 is
+`922da4e20ff5f76626ba10fc534202b054bb0e68a871271c0f3f51a03f6df04d`. The
+guarded host re-root path then found:
+
+* `boot_a` still matched the known rescue hash.
+* `boot_b` already matched the known-good Magisk image
+  (`90416c09f6359fdcc0711f36e214454421c42598518787f58c1916be6c5cad3c`),
+  despite Magisk root being unavailable in the running Android session.
+* The current valid successful-slot metadata was `b=0x00ef`, not the helper's
+  previously allowed `0x009f`. The helper was tightened to accept only those
+  two observed steady states and to verify the exact read-back after setting
+  `b=0x001f`.
+
+The first guarded attempts aborted before writing `boot_b` or `misc` when these
+unexpected hashes/state were seen. The final recovery attempt kept the already
+verified Magisk `boot_b`, set the one-attempt metadata, rebooted, and verified
+Android complete on `_b`, `su` uid 0, the expected `boot_b` hash, and SELinux
+Enforcing. Full details are in
+`docs/evidence/20261101-194705-magisk-reroot.txt`.
+
+## Result
+
+The stage-7 SMC control did **not** produce an observed automatic reset/recovery
+before manual intervention. With no UART and no checkpoint marker available
+before ramoops initialization, the control result is inconclusive and must not
+be interpreted as proof that stage 7 was reached. The `setup:cpuset_init_smp`
+target remains untested. Keep device checkpoint testing blocked until the
+capture/recovery method is improved or the control can be repeated with a
+reliable diagnostic channel.
+
+Plan manifest: `docs/evidence/20261101-192723-checkpoint-probe.txt`.
