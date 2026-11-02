@@ -32,10 +32,11 @@ $koHash = (Get-FileHash $Ko -Algorithm SHA256).Hash.ToLower()
 
 function Sh([string]$cmd) { (& $Adb shell $cmd 2>&1 | Out-String).TrimEnd() }
 
-# sanity: must be the custom kernel with Magisk root
+# sanity: warn (but allow) when not the custom kernel, so the module can be
+# staged from a stock boot too (the .ko only takes effect on the custom one).
 $ver = Sh 'cat /proc/version'
 if ($ver -notmatch 'debian@vm') {
-    throw "not the custom kernel (running: $ver); the module only matters there"
+    Write-Host "note: running the stock kernel; staging anyway (module is inert there)" 
 }
 $suUid = (Sh 'su -c id -u' -split "`n" | Select-Object -Last 1).Trim()
 if ($suUid -ne '0') { throw "no Magisk root (su uid=$suUid)" }

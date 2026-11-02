@@ -1,0 +1,62 @@
+# Mali autoload boot: COMPLETE (2026-11-02 12:11)
+
+The final loop, fully automated, no manual steps:
+
+    boot_b   = boot_mali_mod_magisk.img (custom kernel #56, 405b221a...)
+    module   = /data/adb/modules/mali-kbase-custom/mali_kbase.ko
+               (production build, CONFIG_MALI_MDBG_CRUMB off, 9514b2c9...)
+    boot     = plain reboot (dd channel + one-attempt marker via su)
+
+Result on the first reboot:
+
+    sys.boot_completed = 1                     (t+79 s)
+    /dev/mali0 created at 12:11                (post-fs-data autoload)
+    mali_kbase 417792 29 Live
+    surfaceflinger: running
+    su (Magisk): uid=0, SELinux Enforcing, slot _b
+
+Module load log (/data/local/tmp/mali_module_load.log):
+
+    [ 4.506449] mali_kbase: disagrees about version of symbol module_layout
+        <- vendor module at init.md.rc post-fs, expected, harmless
+    [ 26.554993] mali 23100000.gpu: Kernel DDK version r28p0-01eac0
+    [ 26.555121] clocks/regulators handled by platform glue, skipping DDK power_control_init
+    [ 26.555157] mali: syscon 'gpu_top_state' unavailable (-22)
+        <- optional syscon, absent on this board, by design
+    [ 26.557568] GPU identified as 0x1 arch 9.0.9 r0p1 status 0
+    [ 26.559466] Using coherency mode 31 set from dtb
+    [ 26.561458] Probed as mali0
+    [ 26.561462] drv: mali, dev: 23100000.gpu, taste_time: 6.477846ms
+
+6.5 ms probe (vendor: 9.1 ms), at t+26.5 s (vendor: t+4.7 s - later
+because Magisk post-fs-data runs after the vendor post-fs attempt, well
+before zygote needs the GPU).
+
+## What was wrong and what closed it
+
+1. Boot hangs (all of them): DDK power_control_init enabling aonapb-gate#9
+   -> Synchronous External Abort. Fixed by the qogirl6 platform skip.
+2. Magisk module autoload failure ("Unknown symbol mdbg_crumb"): the first
+   staged .ko was the instrumented build, which depends on the crumb
+   recorder. Fixed with the macro-gated instrumentation
+   (mdbg.h, CONFIG_MALI_MDBG_CRUMB): production builds carry no MDBG code
+   at all (verified: 0 references, 0 strings).
+3. GPU-less boots panicked at ~148 s (hang monitor) because
+   boot_completed never fired - resolved by 1+2.
+
+## Deliverables
+
+- kernel: github.com/CreitinGameplays/motorola-moto-e32-kernel, main
+  (orphan import incl. fix 0e470180c9a1 + gated instrumentation)
+- production module: artifacts/kernel-build/mali_kbase_prod.ko
+  (13682048 B, 9514b2c986666ffd...c351d5)
+- installer: scripts/host/install_mali_magisk_module.ps1
+- module skeleton: artifacts/mali-module/ (module.prop, post-fs-data.sh)
+
+## Next (from todo.md)
+
+1. KVM enablement on this now-fully-booting custom kernel (the original
+   goal): CONFIG_KVM + EL2 check on T606.
+2. Vendor module rebuilds (sprd_sensor/sprd_camera/mmdvfs) for camera/BT.
+3. Optional: retry CONFIG_MALI_MIDGARD=y (built-in, with the skip) to
+   drop the module dependency; optional devfreq/perf tuning.
