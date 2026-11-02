@@ -202,6 +202,7 @@ adb push scripts\device\set_slot_b_tries1.sh /data/local/tmp/set_slot_b_tries1.s
 adb shell 'chmod 755 /data/local/tmp/mali_kroot'
 adb shell
 hawaii:/ $ /data/local/tmp/mali_kroot
+hawaii:/ $ chmod +x /data/local/tmp/set_slot_b_tries1.sh
 hawaii:/ $ /data/local/tmp/set_slot_b_tries1.sh
 ```
 
