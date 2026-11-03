@@ -52,6 +52,11 @@ proves it.
 * **`/dev/kvm` present** (misc 10:232, root-only) and the guest boot was
   operator-initiated (Debian 13.7 netinst via Termux QEMU, same procedure
   as `2026-11-02-kvm-verified.txt`).
+* **Windows 11 ARM64 re-verified on this kernel** (operator screenshot:
+  `screenshots/kvm_win11_screenshots/2026-11-03-kvmcompat-win11-arm64-taskmanager.png`
+  - Win 11 IoT Enterprise LTSC eval, build 26100, "virt-11.1",
+  6 virtual processors, ~1.04 GHz under load, uptime 2:18).  Operator:
+  "booting fine with a decent performance" on the 4 GB-RAM E32.
 
 ## Consequence
 
