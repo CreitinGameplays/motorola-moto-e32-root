@@ -130,12 +130,65 @@ path; the 768/850 MHz levels are not reachable without a different
 approach (candidate: 768-only, post-boot, voltage maps kept - needs an
 explicit go before trying; two BROM recoveries were needed today).
 
+## 3d. Final results (2026-11-03 evening): the trim is enforced in HARDWARE
+
+The "768-only, post-boot" candidate was executed three ways on the
+running vendor driver (no boot-path changes, instant revert, sampler
+logging; evidence: `docs/evidence/2026-11-03-gpu-untrim-attempts.txt`
+section "Post-boot experiments"):
+
+1. **GPLL re-rate to 768** (clk framework `clk_set_rate` on the 650
+   source, plus a `PRE_RATE_CHANGE` notifier that vetoes the vendor
+   power-on re-clamp): the rate was granted and held, but DevCheck got
+   GPU 115 (pre-clamp run) and then GPU 69/71 with compute collapsed
+   to 5.63 GFLOPS FP32 (baseline 8.23) - the GPU gets *slower*, not
+   faster, when its GPLL parent is pushed out of the fused envelope.
+2. **Runtime untrim** (`modules/gpu-dvfs-untrim/`): patches the
+   running vendor module's `gpu_dvfs_ctx.freq_list[3]` back to the true
+   DTS 768 entry (`dvfs_index` 4 -> 3, clk_src -> the fixed twpll-768M
+   source) and re-enables the 768 MHz OPP.  This works perfectly on
+   the software side - `available_frequencies` shows
+   384/512/614.4/650/768, the governor targets 768 under load,
+   `INDEX_CFG` reads 3, all through the vendor's own
+   `kbase_platform_set_freq_volt()` path.  Benchmarks: GPU 69/71,
+   Scene Render 3.06 -> 1.78 fps, FP32 8.23 -> 4.62 GFLOPS
+   (`benchmarks/gpu/overclocked_768mhz_*/`).  Everything dropped
+   ~42 % = **650 -> 384 MHz**: the hardware CGM drives the fixed
+   twpll-768M source at half rate for DVFS index 3 on this fused
+   grade.
+3. **Register archaeology** (poker `rd`/`wr` attrs; MMIO reads on the
+   GPU-gated DVFS APB only succeed while the GPU is clocked - several
+   panic reboots proved the 50 ms idle gate is real):
+   - `CGM_CFG_DBG` (0x23014034) at the 650 level: CORE_SEL=5,
+     CORE_DIV=0, MEM_DIV=0, SYS_DIV=3; `INDEX_CFG`=4; voltage
+     index 1 (800 mV).
+   - the unnamed 0x68..0x88 gap of the DVFS APB is all zeros - the
+     per-index clock table is not driver-visible there.
+   - the topdvfs controller (`syscon@64014000`, always-on, safe to
+     read; `scripts/device/gpu_dvfs_read.sh`) holds the fused rail
+     tables: 0xe8 = `0x00020110` (bits 17+8+4) vs 0xf0 =
+     `0x00020100` - bit 4 is the T606 voltage grade, exactly the
+     value (272/0x110, mask 0x1FF) the vendor's
+     `kbase_platform_limit_max_freq()` writes at probe for
+     non-T616 binning-2 silicon (disassembly of
+     `/mnt/vendor/socko/mali_kbase.ko`, md5 f2181570...).
+
+**Verdict: 650 MHz is the hardware ceiling of this unit.** The 768/850
+DTS levels exist because the same BSP ships on higher-graded
+T615/T616/T620 parts; on the T606 the fused grade limits the 768
+source to half rate and the GPLL trim to 650. No safe software path
+around that exists - rewriting the fused grade registers would run
+the PMIC rail outside the qualified envelope and is out of scope.
+
+Kernel state: the `untrim_gpll` module parameter stays in the tree
+(default 0 = stock trim, `dd6d10c79f5b` published 2026-11-03); the
+default-ON experiment edit was reverted.
+
 ## 4. Recommendation
 
 1. Do (a) + (b) in the next kernel build (one-line header change + a
    debugfs read) - the custom kernel then matches the stock kernel's
    reported 650 MHz.
-2. Treat (c) as a separate, carefully-observed experiment, never as the
-   default config: flash a test image, run a benchmark with the thermal
-   zone monitored (`/sys/class/thermal/gpu-thmzone/temp`), and be ready to
-   revert (the `boot_a` rescue covers a hang).
+2. Treat (c) as CLOSED: 650 MHz is the qualified maximum, now proven
+   at the hardware level (section 3d).  Do not flash GPU-overclock
+   test images on this unit.

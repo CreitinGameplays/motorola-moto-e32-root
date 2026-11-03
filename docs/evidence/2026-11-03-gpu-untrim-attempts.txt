@@ -52,17 +52,77 @@ Recovered via BROM (runbook docs/14).
   ~30 "CRC differs" lines (expected: genksyms type-numbering shift) and
   loads fine - evidence in `/data/local/tmp/mali_module_load.log`.
 
-## Conclusion
+## Post-boot experiments (2026-11-03 evening): 768 is hardware-capped at 384
 
-650 MHz is the qualified maximum on this board.  The 768/850 MHz DTS
-levels (same silicon family as T615/T620) are **not reachable with the
-current glue path** - enabling them crashes at probe.  Any further
-attempt should be a middle ground: keep the trim's voltage-map
-programming and `clk_set_rate()` the top GPLL source to exactly 768 MHz
-(granted-rate logged) instead of 850, driven only after boot (not at
-probe), with the DevCheck benchmark + thermal logging as the gate.
-Given two BROM recoveries today, that experiment needs an explicit go.
+Three runtime-only approaches on the running vendor driver (no boot
+changes; the phone reboots were panic recoveries from MMIO reads on
+the idle-gated GPU DVFS APB - the DPU composes the screen without the
+GPU, so only real GL work keeps the Mali clocked):
 
-Kernel state: the `untrim_gpll` module parameter stays in the tree
-(default 0 = stock trim, harmless); `gpu_efuse_untrim.c` is kept only in
-`patches/kernel-sprd/` of the analysis repo.
+### A. GPLL re-rate + re-clamp veto (gpu_gpll_poker)
+
+`clk_set_rate(768 MHz)` on the top GPLL-derived source plus a
+`PRE_RATE_CHANGE` notifier that returns NOTIFY_BAD for the vendor's
+650 MHz power-on re-clamp (the glue ignores clk errors, the clk core
+aborts the change - no polling, no oscillation; the earlier 1 s
+keep-rate re-apply loop made DevCheck abort with +-91 % stability).
+
+Results (screenshots in `benchmarks/gpu/gpll_rerate_768mhz_*/`):
+GPU 69/71 vs baseline 119/117; Scene Render 3.09 fps (unchanged),
+compute collapsed to 5.63 GFLOPS FP32 (baseline 8.23).  The GPU is
+slower with its parent PLL pushed outside the fused envelope.
+
+### B. Runtime untrim (modules/gpu-dvfs-untrim/)
+
+Disassembly of the vendor mali_kbase.ko (md5 f2181570...) showed the
+trim: `mali_freq_init()` overwrites the 768 DTS entry with the 850
+entry relabeled to 650 kHz (dvfs_index stays 4, GPLL source, 800 mV),
+and `kbase_platform_limit_max_freq()` (live in the vendor binary at
+0x451e8, called from devfreq init) disables the 768/850 OPPs
+(0x2DC6C000/0x32A9F880) and adds a 650 one.  The vendor's devfreq
+target calls `kbase_platform_set_freq_volt()` (0x45314), which binary
+searches `gpu_dvfs_ctx.freq_list` and writes the entry's dvfs_index to
+the GPU DVFS APB INDEX_CFG (0x2301408c) - the topdvfs hardware then
+performs the mux + voltage switch itself.
+
+`gpu_dvfs_untrim.ko` restores the true 768 entry in the running
+driver's memory (validated first: freqs {384000, 512000, 614400,
+650000}, ctx layout freq_list@+64/len@+72 confirmed both by reloc
+addends and by live dump; kallsyms address of
+`gpu_dvfs_ctx.llvm.<hash>` after `kptr_restrict=0`) and re-enables the
+768 OPP.  `min_freq`/`max_freq` pinning then works (stock min is
+650000000 - the vendor floors the GPU at max; earlier max_freq writes
+failed only because the value was below min).
+
+Results (screenshots in `benchmarks/gpu/overclocked_768mhz_*/`):
+GPU 69/71; Scene Render 3.06 -> 1.78 fps (-42 %), FP32 8.23 -> 4.62
+GFLOPS (-44 %), FP16 20.4 -> 12.0.  Uniform -42 % = 384/650: **DVFS
+index 3 (fixed twpll-768M source) runs at half rate on this fused
+grade** - the hardware CGM applies /2, and 768/2 = 384 MHz is the
+only divider at or below the fused 650 target.  Temps stayed ~38 C
+(overvolted slow clock).
+
+### C. Register map facts (gpu_gpll_poker rd/wr/base attrs)
+
+- GPU DVFS APB (0x23014000) reads: 0x2c VOLTAGE_DBG=0x1001 (voltage
+  index 1 = 800 mV), 0x34 CGM_CFG_DBG=0x5003 (CORE_SEL=5 CORE_DIV=0
+  MEM_DIV=0 SYS_DIV=3) at the 650 level (INDEX_CFG=4), 0x38
+  STATE_DBG=0, 0x68..0x80 all zero.
+- topdvfs (syscon@64014000, ALWAYS-ON - safe to read any time; the CPU
+  dvfs pokes it constantly): 0xe8=0x00020110 vs 0xf0=0x00020100 -
+  bit 4 = the T606 grade, the exact value (272, mask 0x1FF) the vendor
+  probe writes there for non-T616 binning-2.  GPU rail = dcdc-mm /
+  gpu-sys (subsys tune-enable 0x150 bit 1; DTS `dcdc-mm`).
+- MMIO on the DVFS APB faults (synchronous external abort, panic) when
+  the kbase PM has clocked the GPU down (50 ms idle); `power/control=on`
+  does NOT prevent it (the glue gates clocks itself), and the
+  camera/screenrecord loads do not involve the GPU (hardware DPU
+  composition).  Only sustained GL work (e.g. a running benchmark)
+  keeps the register file readable.
+
+### Conclusion
+
+650 MHz is the qualified hardware maximum on this unit. The DTS
+768/850 levels belong to higher-graded T615/T616/T620 parts. The
+runtime-untrim tooling stays in `modules/` as research; the phone was
+returned to stock (untrim reverted, min=max=650, modules removed).
