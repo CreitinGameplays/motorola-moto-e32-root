@@ -77,5 +77,6 @@
 - `scripts/mali/kbase_probe.c` / `artifacts/kbase_probe` - DDK version + atom stride
 - `scripts/mali/mali_stage.c` / `artifacts/mali_stage` - staged UAF trigger
 - `scripts/mali/mali_leak.c` / `artifacts/mali_leak` - full scan variant (panics)
-- `scripts/mali/mali_rwtest.c` / `mali_rwtest2.c` / `mali_rwtest3.c` - UAF/reclaim tests
+- `scripts/mali/mali_rwtest.c` / `mali_rwtest3.c` - UAF/reclaim tests
+  (the intermediate `mali_rwtest2.c` iteration lives in the git history)
 - `scripts/mali/mali_gpuw.c` / `artifacts/mali_gpuw` - GPU WRITE_VALUE primitive

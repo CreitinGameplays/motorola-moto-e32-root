@@ -318,6 +318,66 @@ carried the early KVM/EL2 init. Verified guests:
 
 QEMU must run as root (`su -c`) to open `/dev/kvm`.
 
+## 10. External kernel modules (build + recovery)
+
+The analysis repo carries small out-of-tree kernel modules for
+on-device work (`modules/`):
+
+| module | purpose |
+|---|---|
+| `modules/abiprobe` | dumps `offsetof()`/`sizeof()` for the ABI-critical structs - the vendor-module ABI check (docs/17) |
+| `modules/gpu-gpll-poker` | DVFS register access + tools: `clocks`/`index`/`rate` (clk re-rate), `guard` (veto the 650 MHz GPLL re-clamp), `base` 0-5 + `rd`/`wr`/`dump` (raw AON register access), `mon` (us-resolution FSM transition capture), `clkwalk` (kernel clock tree walk) |
+| `modules/gpu-dvfs-untrim` | research record: the boot-time GPU DVFS untrim experiment (`untrim_gpll` module param, default 0) |
+
+Build against the kernel tree with a separate `O=` directory:
+
+```bash
+cd ~/kernel-sprd
+export PATH=~/toolchains/clang+llvm-11.0.1-x86_64-linux-gnu-ubuntu-20.10/bin:$PATH
+make -j$(nproc) O=/tmp/kbuild2 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+     CC="clang --target=arm64-linux-gnu-" LD=ld.lld LLVM_AR=llvm-ar \
+     LLVM_NM=llvm-nm M=~/poker_build modules
+```
+
+(put the module's .c + Makefile in `~/poker_build`; the result is
+`~/poker_build/<module>.ko`).
+
+**Recovery after a /tmp wipe** (the RAM-backed `O=` tree disappears on
+reboots - this rebuilds a module-only tree in ~2 minutes, no full
+kernel build needed):
+
+```bash
+# one-time: save the production config somewhere persistent
+cp /path/to/stock_kernel_config.txt ~/kconfig_stock.txt
+
+# fresh module-prepare tree
+mkdir -p /tmp/kbuild2 && cp ~/kconfig_stock.txt /tmp/kbuild2/.config
+cd ~/kernel-sprd
+export PATH=~/toolchains/clang+llvm-11.0.1-x86_64-linux-gnu-ubuntu-20.10/bin:$PATH
+make -j$(nproc) O=/tmp/kbuild2 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+     CC="clang --target=arm64-linux-gnu-" LD=ld.lld LLVM_AR=llvm-ar \
+     LLVM_NM=llvm-nm olddefconfig
+make -j$(nproc) O=/tmp/kbuild2 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+     CC="clang --target=arm64-linux-gnu-" LD=ld.lld LLVM_AR=llvm-ar \
+     LLVM_NM=llvm-nm modules_prepare
+# then build the module with M=... as above
+```
+
+Notes:
+
+* the module tree needs **no `Module.symvers`** - this kernel's relaxed
+  `check_version` (kernel-side patch) accepts modules built without
+  modversions, same as it accepts the vendor modules.  Verified live:
+  the poker module built against a bare `modules_prepare` tree insmods
+  and runs.
+* a full-build `O=` tree (after `make ... modules`) also works for
+  module builds and produces them with proper version info; the
+  `modules_prepare` route is just the fast recovery path.
+* on-device: `insmod /data/local/tmp/<module>.ko` via `su -c` (custom
+  kernel boots).  Remember the adb quirks (README "Shell conventions"):
+  `MSYS2_ARG_CONV_EXCL="*"` on the host, and push device scripts to
+  files instead of heredocs through `su -c`.
+
 ## Reference
 
 * build evidence + hashes: `docs/evidence/2026-11-02-mali-autoload-success.txt`

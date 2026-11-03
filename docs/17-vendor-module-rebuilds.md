@@ -356,8 +356,11 @@ the structs the vendor modules actually share with the kernel -
 * the stock config (reference = vendor ABI), and
 * the KVM kernel config after the relocation,
 
-and diff the two listings: every offset must be identical.  Script to
-write: `scripts/host/dump_struct_offsets.py`.  Then re-run
+and diff the two listings: every offset must be identical.  (Realized
+as `modules/abiprobe` in this repo - build both configs with it and
+diff; docs/18 section 10 has the module build recipe.  The original
+`scripts/host/dump_struct_offsets.py` plan was never needed as a
+script.)  Then re-run
 `scripts/host/compare_vendor_crcs.py` on the KVM kernel's
 `Module.symvers` (CRC values will differ from stock, but with the relaxed
 `check_version` that only needs to be *known*, not matched).

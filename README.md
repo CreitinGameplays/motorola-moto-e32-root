@@ -10,8 +10,9 @@ The exploit turns the Mali `kbase` UAF into kernel physical read/write, then
 patches its own `cred` (uid/gid/capabilities) and `selinux_state.enforcing`.
 Root survives until reboot and is inherited by the parent adb shell.
 
-> **Status (2026-11-02): two root paths are live on this unit, and the
-> custom kernel boots Android fully.**
+> **Status (2026-11-03): two root paths are live on this unit, and the
+> custom kernel boots Android fully - with KVM and the whole vendor
+> module stack.**
 >
 > 1. **Runtime root (the exploit)** - working and hardened. Final build
 >    verified **5/5 fresh boots and 3/3 same-boot reruns**, first attempt,
@@ -32,16 +33,22 @@ Root survives until reboot and is inherited by the parent adb shell.
 >    the in-tree `mali_kbase.ko` at post-fs-data, Magisk `su` Enforcing.
 >    Kernel history: [motorola-moto-e32-kernel](https://github.com/CreitinGameplays/motorola-moto-e32-kernel);
 >    bring-up evidence: `docs/evidence/2026-11-02-mali-autoload-success.txt`.
->    **WiFi works too** (in-tree SC2355 driver + the vendor-HAL gates
->    solved; evidence: `docs/evidence/2026-11-02-wifi-success.txt`), and
->    **KVM is the goal achieved**: Windows 11 IoT Enterprise LTSC
+>    **The vendor module stack loads in full on the daily "kvmcompat"
+>    kernel** (docs/17 "2026-11-03 (result)", docs/18 section 8): camera
+>    stack, flash IC, BT, FM, SAR sensor, `incrementalfs`, WiFi (in-tree
+>    SC2355) and **KVM**: Windows 11 IoT Enterprise LTSC
 >    24H2 ARM64 runs on the phone under KVM (System > About: "KVM
 >    Virtual Machine", 6 vCPU, build 26100.ge_release; screenshots in
 >    `screenshots/kvm_win11_screenshots/`), Debian 13 arm64 also verified.
->    See `docs/evidence/2026-11-02-kvm-verified.txt`. Known gaps on the
->    custom kernel: camera stack and BT/FM/SAR sensor (vendor modules
->    refuse to load; camera source hunt in progress -
->    `docs/17-vendor-module-rebuilds.md`).
+>    See `docs/evidence/2026-11-02-kvm-verified.txt`.
+> 4. **Overclocking research: closed as fused-capped.** The GPU (650 MHz)
+>    and CPU (1612 MHz, both clusters) ceilings are enforced by fused
+>    per-product tables inside the DVFS engines - proven with the
+>    hardware's own register content, runtime register experiments and
+>    us-resolution transition captures: `docs/20-gpu-clock-dvfs.md`
+>    (section 3d) and `docs/21-cpu-dvfs-hwdvfs.md` (sections 6-7). The
+>    T606 is the fused-down qogirl6 grade; no software path lifts either
+>    ceiling.
 >
 > **Careful:** the runtime exploit clears `selinux_state.enforcing`, leaving
 > SELinux **Permissive** until the next reboot. That is a tamper signal and it
@@ -63,7 +70,7 @@ Root survives until reboot and is inherited by the parent adb shell.
 | Device | Motorola Moto E32, XT2227-1, codename `hawaii` |
 | SoC / GPU | Unisoc UMS9230 / T606, ARM64, Mali-G57 (Valhall, JM), kbase DDK r28p0 |
 | OS | Android 11, build `RORS31.335-58-1`, security patch 2024-02-05 |
-| Kernel | stock `4.14.199+-ab612c2` (`#1 SMP PREEMPT`); our custom build (same source, non-LTO) also boots fully - see status #3 |
+| Kernel | stock `4.14.199+-ab612c2` (`#1 SMP PREEMPT`); our custom build from the same source also boots fully - the daily driver is the stock-config + KVM "kvmcompat" build (see status #3) |
 | Bootloader | unlocked in software (`ro.boot.flash.locked=0`, `verifiedbootstate=orange`) |
 | Current root | Magisk 31.1 (Magisk-patched `boot_b`, slot `_b`; on the custom kernel `boot_b` holds the custom kernel + Magisk ramdisk), Zygisk Next 1.5.2 + modules; the exploit is kept as an independent path (stock kernel only) |
 | Access needed | USB debugging, `adb` shell (uid 2000); the exploit needs **no** unlock and **no** pre-existing root |
@@ -159,6 +166,11 @@ docs/
   19-rescue-image-howto.md  the boot_a rescue image: build it, dd it to
                             boot_a, verify, and use it to recover a hung
                             test kernel (plus the A/B steady state)
+  20-gpu-clock-dvfs.md      GPU clock tree + DVFS analysis, the 650 MHz
+                            fused ceiling and the closed OC verdict
+  21-cpu-dvfs-hwdvfs.md     CPU hwdvfs engine: register map, decode,
+                            experiments - the 1612 MHz fused ceiling,
+                            proven at the deepest software-reachable level
   evidence/                 captured successful-run logs
 patches/
   kernel-sprd/              the measured header delta (git patch) + the
@@ -426,6 +438,12 @@ hardening and measured reliability are in `docs/04-reliability-hardening.md`.
 - `docs/19-rescue-image-howto.md` - the `boot_a` rescue image: build it
   (`scripts/rescue/rescue_init.c` + `build_rescue.py`), dd it to
   `boot_a`, verify the read-back, and use it when a test kernel hangs
+- `docs/20-gpu-clock-dvfs.md` - the GPU clock/DVFS tree, the GPLL trim
+  and the runtime untrim experiments; the 650 MHz ceiling is fused
+  (section 3d)
+- `docs/21-cpu-dvfs-hwdvfs.md` - the CPU hardware-DVFS engine: register
+  map and column decode, the OC experiments and the direct blocker
+  inspection (section 7); the 1612 MHz ceiling is fused
 - `docs/evidence/` - captured successful-run logs, fastboot recon and the
   kernel bring-up evidence (Mali abort root-cause, fix, autoload success)
 

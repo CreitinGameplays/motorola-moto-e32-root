@@ -169,9 +169,13 @@ Revert: `echo 8 > cpu0/target`, restore 0x0016B903 to 0x84/0x88.
 
 ## 5. Tooling
 
-* `modules/gpu-gpll-poker/` `base` 2/3/4 + `rd`/`wr`: apcpu dvfs /
-  glbregs 0x645a0000 / glbregs 0x64580000 register access (all AON,
-  safe any time; base 0 = GPU DVFS APB is the only power-gated one).
+* `modules/gpu-gpll-poker/` `base` 0-5 + `rd`/`wr`/`dump`: raw register
+  access (0 = GPU DVFS APB - the only power-gated, fault-prone one;
+  1 = topdvfs 0x64014000, 2 = apcpu dvfs 0x64018000,
+  3 = glbregs 0x645a0000 [ananke], 4 = glbregs 0x64580000 [prometheus],
+  5 = aon-apb 0x64000000 [module enables]).  Bases 1-5 are AON, safe
+  any time.  Also `mon` (us-resolution FSM transition capture) and
+  `clkwalk` (kernel clock tree walk) - see section 7a.
 * `scripts/device/cpu_dvfs_dump.sh`: full CPU DVFS state dump.
 * `scripts/device/cpu_oc_test.sh`: the phase-1 experiment (bench, write,
   flip, bench, revert) with results in /data/local/tmp/cpu_oc.log.
@@ -179,7 +183,8 @@ Revert: `echo 8 > cpu0/target`, restore 0x0016B903 to 0x84/0x88.
   probe (raw syscalls, CLOCK_MONOTONIC, 400M dependent adds, ~1.3 s at
   1.6 GHz) - build with the VPS clang
   (`--target=aarch64-linux-gnu -ffreestanding -nostdlib -static -O2
-  -Wl,-e,_start`), pin with `taskset <decimal-mask>` (toybox has no
+  -Wl,-e,_start`; add `-DITERS_M=20` for the 20M-iteration calibration
+  variant), pin with `taskset <decimal-mask>` (toybox has no
   -c and rejects 0x masks; cpu6 = mask 64, cpu0 = mask 1).  Note: its
   ms print underflows (prints 18446744074xxx) when the run crosses a
   second boundary - just re-run for a clean sample.
