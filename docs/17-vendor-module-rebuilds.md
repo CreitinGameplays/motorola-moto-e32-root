@@ -129,3 +129,158 @@ mu300 tree might be reused for newer kernels.
 - Camera rc: `/vendor/etc/init/camera.rc` insmods sprd_sensor ->
   sprd_flash_drv -> sprd_camera -> sprd_cpp -> mmdvfs -> sprd_fd in order,
   all failing on CRC.
+
+## 2026-11-03: the exact vendor build config was recovered (CRC breakthrough)
+
+The vendor `.ko` files expect the CRCs of the *shipping* kernel build. That
+build's exact `.config` was recovered from the kernel Image itself: the
+IKCONFIG blob is a gzip stream in `.rodata` whose payload is the .config text
+(`scripts/host/find_ikconfig.py`). Source images: the untouched day-one
+dumps (`bootimg.py unpack <backup>/boot_a.img|boot_b.img`).
+
+    boot_a.img -> 4.14.199+-abc1989, Jan 23 2024, xscm@ontimbjlx014  (old slot)
+    boot_b.img -> 4.14.199+-ab612c2, Feb 20 2024, xscm@ontimbjlx020  (matches
+                  /mnt/vendor/socko/*.ko: same vermagic + 2024-02-20 date)
+
+Result, saved as `artifacts/kernel-build/stock_kernel_config.txt`
+(1472 CONFIG lines). Applied to our tree, `make ARCH=arm64 olddefconfig`
+changes only the three options we added (MALI_MIDGARD, SPRD_WLAN_COMBO,
+SPRDBT_TTY) -> **the Motorola GPL drop matches the shipping build tree**.
+
+### Why the CRC comparison matters
+
+`module_layout` is exported as a *function*, not a struct:
+
+    void module_layout(struct module *mod, struct modversion_info *ver,
+                       struct kernel_param *kp, struct kernel_symbol *ks,
+                       struct tracepoint *const *tp)
+
+so its MODVERSIONS CRC covers the type graphs of struct module,
+modversion_info, kernel_param, kernel_symbol and tracepoint.
+
+Measured with `scripts/host/vps_module_crc.py` (validated by reproducing our
+running custom kernel's known dmesg CRC exactly: 0x22ad1303):
+
+    stock config, CFI on          module_layout = 0x36aac43d  <-- vendor value
+    stock config, CFI off         module_layout = 0xec8a4bdb
+    our custom #57 config         module_layout = 0x22ad1303
+    vendor modules expect         module_layout = 0x36aac43d
+
+**So the shipping kernel was a CFI build**, which the recovered config
+confirms (CONFIG_CFI_CLANG=y).  CFI puts a `cfi_check_fn cfi_check;` field
+into `struct module` (`include/linux/module.h`, after `num_syms`), and that
+field is part of the `module_layout` type graph - hence the single CRC
+difference.  The layout effect is visible in the modules themselves:
+
+    vendor .ko relocations in .gnu.linkonce.this_module
+        init    at 0x158, cleanup at 0x310   (CFI build: cfi_check at 0x150)
+    our CFI-off build
+        init    at 0x150, cleanup at 0x310
+
+Ordinary exported symbols DO match the vendor exactly under the stock
+config, e.g. kmalloc_caches 0xd2cd0418, msleep 0xf9a482f9,
+mutex_lock 0x5e38de65, sprintf 0x91715312, kthread_create_on_node
+0x2781fb6f, because CFI/LTO do not change ordinary type graphs.
+
+The vendor modules also import `__cfi_slowpath`, confirming the CFI build.
+
+### Consequence: the compat patch set
+
+LTO/CFI stay off (both hang this board at boot), so only the *ABI effects*
+of CFI are reproduced.  Two scripts:
+`scripts/host/apply_vendor_module_compat.py` and `..._compat2.py`.
+
+1. `include/linux/cfi.h` + `include/linux/module.h`: make the
+   `cfi_check_fn` typedef and `struct module::cfi_check` unconditional so
+   the kernel's `struct module` matches the vendor's (verified: our built
+   modules now have `.gnu.linkonce.this_module` size 0x380 and
+   init/cleanup relocations at 0x158/0x310, exactly like the vendor .ko).
+2. `include/linux/timer.h`: make `void (*__function)(struct timer_list *)`
+   unconditional.  **This one is easy to miss**: CFI increases
+   `struct timer_list` by 8 bytes, and timer_list is embedded in
+   `struct dev_pm_info`, which is embedded in `struct device`.  Without the
+   field, every `struct device` field after `power` (`of_node`, `fwnode`,
+   ...) is 8 bytes off for the CFI-built modules.  Both directions keep
+   working: our kernel uses `timer->function`, a CFI module's inline
+   setup_timer() stores `__timer_callback` in `function` + the real
+   callback in `__function`, and the trampoline is module-local.
+   (The only other CFI-conditional definition is
+   `struct bpf_binary_header`'s `u32 magic`, which is BPF-JIT internal.)
+2b. **Config additions can break the ABI too.**  For the camera-compat build
+   the config is stock + only the MALI/WLAN/BT drivers; KVM is deliberately
+   left out.  KVM selects `CONFIG_MMU_NOTIFIER` (adds
+   `mmu_notifier_mm` to `struct mm_struct`) and
+   `CONFIG_PREEMPT_NOTIFIERS` (adds `preempt_notifiers` to
+   `struct task_struct`, after `sched_dl_entity`), neither of which the
+   vendor kernel has.  Any vendor module touching those structs would then
+   read wrong offsets.  Keep the KVM kernel separate (it is already
+   verified) unless the vendor modules prove not to care.
+3. `kernel/module.c`: `check_modstruct_version()` skips the `module_layout`
+   CRC check.
+4. `kernel/module.c`: `check_version()` logs a CRC difference at KERN_DEBUG
+   and continues instead of refusing the module.
+5. `kernel/module.c`: export a no-op `__cfi_slowpath(uint64_t, void *,
+   void *)` - same prototype as `kernel/cfi.c`, so symbol lookup and its
+   genksyms CRC match.  Nothing calls into the CFI shadow code without CFI.
+
+Why relax all CRC checks instead of keeping them: genksyms' checksum is
+computed over a type graph whose *internal numbering depends on parse
+order*, so a CFI build and a non-CFI build of the same source produce
+different CRCs for most struct-typed symbols even when layouts are
+identical.  Measured on `mm/slab_common.c`:
+
+    CFI on  (LTO+CFI flags)   kmalloc_caches = 0x59b0d708
+    CFI off                   kmalloc_caches = 0x70422b89
+    vendor modules expect     kmalloc_caches = 0xd2cd0418
+
+and the preprocessed declaration is byte-identical in both
+(`kmalloc_caches[NR_KMALLOC_TYPES][(12 + 1) + 1]`); only the CFI-only
+`struct timer_list`/`cfi.h` text earlier in the unit differs.  The vendor
+value is reproduced only by a *stock-config + CFI* build.  Since CFI cannot
+boot here, CRC verification must be advisory - the layout patches carry the
+ABI compatibility.
+
+Vermagic: the vendor modules carry `4.14.199+-ab612c2 SMP preempt
+mod_unload modversions aarch64`.  Build with
+`make ... LOCALVERSION=+-ab612c2` (command-line make variable, exported to
+`scripts/setlocalversion`) so `UTS_RELEASE` matches byte for byte; no
+`.scmversion` is involved.  `CONFIG_MODVERSIONS=y` stays from the stock
+config so the `modversions` token remains in the vermagic.
+
+Build recipe: `scripts/host/vps_build_cameracompat.sh` (stock config +
+MALI/WLAN/BT/KVM options, LTO/CFI off, `O=/tmp/kbuild`).
+
+## Consequence: the compat patch set
+
+LTO/CFI stay off (both hang this board at boot), so instead of rebuilding
+with CFI we reproduce only the ABI effect that matters.
+`scripts/host/apply_vendor_module_compat.py` applies three small patches:
+
+1. `include/linux/cfi.h` + `include/linux/module.h`: make the
+   `cfi_check_fn` typedef and `struct module::cfi_check` unconditional, so
+   the kernel's `struct module` has the vendor's layout (init at 0x158,
+   cleanup at 0x310, section size 0x380).
+2. `kernel/module.c`: `check_modstruct_version()` accepts the
+   `module_layout` CRC difference (returns 1, one pr_info).  Every other
+   imported symbol is still CRC-checked, so a real mismatch still fails
+   loudly with the symbol name.
+3. `kernel/module.c`: export a no-op `__cfi_slowpath(uint64_t, void *,
+   void *)` - same prototype as the real handler in `kernel/cfi.c`, so both
+   the symbol lookup and its genksyms CRC match.  Without CFI nothing calls
+   into the CFI shadow code.
+
+Vermagic: the vendor modules carry `4.14.199+-ab612c2 SMP preempt
+mod_unload modversions aarch64`.  Build with
+`make ... LOCALVERSION=+-ab612c2` (command-line make variable, exported to
+`scripts/setlocalversion`) so `UTS_RELEASE` matches byte for byte; there is
+no `.scmversion` involved.  `CONFIG_MODVERSIONS=y` is kept from the stock
+config so the `modversions` token stays in the vermagic.
+
+Build recipe: `scripts/host/vps_build_cameracompat.sh` (stock config +
+MALI/WLAN/BT/KVM options, LTO/CFI off, `O=/tmp/kbuild`).  Its
+`Module.symvers` is checked against all 649 vendor import records (351
+unique symbols) with `scripts/host/compare_vendor_crcs.py`.
+
+Then test the vendor camera stack (sprd_sensor -> sprd_flash_drv ->
+sprd_camera -> sprd_cpp -> mmdvfs -> sprd_fd); the vendor modules live in
+`/mnt/vendor/socko/` and are insmod'ed by `/vendor/etc/init/camera.rc`.

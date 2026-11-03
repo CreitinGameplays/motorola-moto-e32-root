@@ -214,6 +214,35 @@ later at post-fs-data.
 * `incrementalfs` is in-tree (`fs/incfs`, `=m`) but not yet staged as a
   Magisk module - optional, affects Play incremental installs on /data
 
+## 8b. Vendor-module-compatible build (camera experiments)
+
+The stock camera/BT/SAR/FM/incfs modules in `/mnt/vendor/socko/` were built
+with CFI on, so a normal custom-kernel build refuses them.  A kernel that
+accepts them is built from the recovered stock config:
+
+```bash
+cp /path/to/stock_kernel_config.txt .config     # artifacts/kernel-build/stock_kernel_config.txt
+scripts/config --disable LTO --disable LTO_CLANG --enable LTO_NONE     --disable CFI --disable CFI_CLANG --disable CFI_CLANG_SHADOW
+scripts/config --module MALI_MIDGARD --set-str MALI_PLATFORM_NAME qogirl6     --enable MALI_REAL_HW --enable MALI_DMA_FENCE --enable MALI_GATOR_SUPPORT     --module SPRD_WLAN_COMBO --module SPRDBT_TTY
+make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC=clang LD=ld.lld     LLVM_AR=llvm-ar LLVM_NM=llvm-nm OBJDUMP=llvm-objdump     LOCALVERSION=+-ab612c2 -j$(nproc) Image modules
+```
+
+Three details make it work (all scripted):
+
+* `LOCALVERSION=+-ab612c2` reproduces the vendor vermagic
+  `4.14.199+-ab612c2 SMP preempt mod_unload modversions aarch64`.
+* `scripts/host/apply_vendor_module_compat.py` +
+  `..._compat2.py` patch the tree for the CFI ABI: unconditional
+  `struct module::cfi_check` and `struct timer_list::__function`, skip the
+  `module_layout` CRC check, log-and-accept other CRC differences, and
+  export a no-op `__cfi_slowpath`.
+* **Do not enable KVM in this config** - it selects `MMU_NOTIFIER` and
+  `PREEMPT_NOTIFIERS`, which change `struct mm_struct` / `struct
+  task_struct` and break the vendor modules.  The KVM kernel is a separate
+  build.
+
+Rationale and measurements: `docs/17-vendor-module-rebuilds.md`.
+
 ## 9. KVM (the reason this kernel exists)
 
 `/dev/kvm` is created early (misc 10:232, root-only) - the diag series
