@@ -221,6 +221,50 @@ parts).
 CPU overclock: CLOSED.  Stock state fully verified after revert
 (work indexes 6/8, stock map rows, probes back to 1334/1245 ms).
 
+### The strongest proof: the hardware's own native rows (2026-11-03)
+
+A full dump of the apcpu DVFS block (0x64018000, 0x1000 bytes; only
+0x000-0x2fc is nonzero) revealed five extra map rows the driver never
+initialises (the DT lit table stops at 0x88): registers 0x8c-0x9c =
+lit work-index rows 12-16, all pre-loaded by the SPL/hardware with
+`[c0=3, c2=7, c3=9, c4=5, c5=5, c6=4]` = **grade 7 (1.0 V) + ananke
+slot 4 = 1716 MHz** - the hardware's own above-stock config, in its
+own registers.
+
+- The driver's sysfs `target` rejects index 12 outright (bounds check
+  at the DT row count - the target attr bounced back to 8).
+- Writing the work-index REGISTER directly (`0x214 = 12`) bypasses
+  that: the FSM accepted it (target read 12) and **applied the row's
+  voltage grade 7** - but the probe stayed at 1249/1247 ms, identical
+  to the 1612 MHz stock baseline (1716 would read ~1170 ms).
+
+So even the hardware's own native higher row, driven through the
+hardware's own index register, gets its voltage honoured and its
+frequency ignored.  The frequency gate is fused; nothing upstream of
+it matters.
+
+### Online research (2026-11-03): no public T606 OC exists
+
+* XDA "Overclocking unisoc t606" (2024): the question exists, no
+  answers; userspace OC apps can only touch governors (matches our
+  findings).  The "2 GHz / 750 MHz GPU" variant the asker saw is the
+  T616 - the same die family with the full fuse grade.
+* The most rigorous public Unisoc OC work is TheGammaSqueeze's
+  UnisocBypass `oc/` research (RG Vita, UMS512/T618 - a friendlier
+  die): CPU OC 2002->2100 MHz via DTB worked at the DVFS level but
+  delivered **zero sustained throughput** (thermal budget); GPU OC
+  850->900 MHz delivered **+1.57 %** real throughput; **DT voltage
+  requests above the fused ceiling are silently ignored by the
+  hardware DVFS path** (their voltage-ceiling-hunt).  Their honest
+  recommendation: stock, or stock CPU + GPU OC for stability only.
+* No public T616/T612/UMS9230 DVFS OC exists; the ums9230-mainline
+  u-boot/linux projects do not touch DVFS.
+
+Our UMS9230 results are one wall further in than the UMS512 story:
+on qogirl6 the FREQUENCY itself is fused-capped (not just the
+voltage), which is why even the UMS512-style DTB/OPP edits are
+futile here - proven with the hardware's own rows (above).
+
 ## 6. Sources
 
 * `drivers/cpufreq/sprd-hwdvfs-normal.c` (3164 lines): map table

@@ -46,7 +46,7 @@
 #define TOPDVFS_PHYS		0x64014000
 #define TOPDVFS_SIZE		0x200
 #define APCPU_DVFS_PHYS		0x64018000	/* CPU DVFS map tables (AON) */
-#define APCPU_DVFS_SIZE		0x400
+#define APCPU_DVFS_SIZE		0x1000
 #define GLBREGS_5A_PHYS		0x645a0000	/* CPU mpll slot regs (AON) */
 #define GLBREGS_5A_SIZE		0x300
 #define GLBREGS_58_PHYS		0x64580000	/* mpll-prometheus analog (AON) */
@@ -245,6 +245,28 @@ static struct kobj_attribute wr_attr =
 	__ATTR(wr, 0600, rd_show, wr_store);
 static struct kobj_attribute base_attr = __ATTR_RW(base);
 
+static ssize_t dump_show(struct kobject *k, struct kobj_attribute *a,
+			 char *buf)
+{
+	unsigned long size;
+	void __iomem *base;
+	int len = 0;
+	int off;
+
+	base = sel_base(&size);
+	if (!base)
+		return -ENODEV;
+
+	/* PAGE_SIZE buffer: 8 hex chars + space per word = ~500 words */
+	for (off = 0; off < size && len < PAGE_SIZE - 16; off += 4) {
+		len += scnprintf(buf + len, PAGE_SIZE - len, "%03x:%08x\n",
+				 off, readl_relaxed(base + off));
+	}
+	return len;
+}
+
+static struct kobj_attribute dump_attr = __ATTR_RO(dump);
+
 /* The vendor glue re-clamps the GPLL to 650 MHz (the T606 trim) on every
  * GPU power-on via clk_set_rate().  The clk core honors PRE_RATE_CHANGE
  * aborts (drivers/clk/clk.c: "abort rate change if a driver returns
@@ -320,6 +342,7 @@ static struct attribute *poker_attrs[] = {
 	&base_attr.attr,
 	&rd_attr.attr,
 	&wr_attr.attr,
+	&dump_attr.attr,
 	&guard_attr.attr,
 	NULL,
 };
