@@ -61,9 +61,15 @@ stick to 11.0.1 unless you rebuild everything.
 
 ## 2. Configure
 
-The working config (non-LTO, `MALI_MIDGARD=m`, qogirl6 platform, WCN bus
-built-in, AON watchdog diagnostics) is committed as
-`patches/kernel-sprd/branch-hawaii-diag/phone.config` in the analysis repo.
+Two config routes exist:
+
+* **Daily kernel (recommended)** - the *stock-config* build of section 8b
+  (+ KVM per section 9).  It is the one that loads the vendor modules and
+  is what currently runs on the phone.
+* **Older custom config** (non-LTO, `MALI_MDBG_CRUMB` diagnostics, ...)
+  committed as `patches/kernel-sprd/branch-hawaii-diag/phone.config` in
+  the analysis repo - the diag-series route; it does NOT load the vendor
+  modules (CRC mismatch) and is kept for the probe/diag workflows.
 Copy it over `.config`:
 
 ```bash
@@ -89,15 +95,26 @@ Key settings and why:
 ```bash
 make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
     CC="clang --target=aarch64-linux-gnu-" LD=ld.lld \
-    LLVM_AR=llvm-ar LLVM_NM=llvm-nm KCFLAGS="" Image modules
+    LLVM_AR=llvm-ar LLVM_NM=llvm-nm KCFLAGS="" \
+    LOCALVERSION=+-ab612c2 Image modules
 ```
+
+`LOCALVERSION=+-ab612c2` makes `UTS_RELEASE` byte-match the shipping
+kernel (`4.14.199+-ab612c2`), which the vendor modules' vermagic check
+requires - omit it and every `insmod` fails with a version-magic error.
+The CFI-ABI compat patches (section 8b) must be in the tree; the
+published branch already carries them.
 
 Outputs that matter:
 
 * `arch/arm64/boot/Image` - the kernel
-* `drivers/gpu/arm/midgard/mali_kbase.ko` - the GPU driver
-* `drivers/net/wireless/sprd_wlan/sprd_wlan_combo.ko` - the SC2355 WiFi driver
-* `fs/incfs/incrementalfs.ko` - for Android's incremental installs
+* `drivers/gpu/arm/midgard/mali_kbase.ko` - the GPU driver (staged via
+  the Magisk module)
+* `drivers/net/wireless/sprd_wlan/sprdwl_ng.ko` - the SC2355 WiFi driver
+  (the module must keep this exact name; the WiFi HAL gates on a
+  `/proc/modules` line starting with `sprdwl_ng`)
+* the vendor modules (camera/BT/FM/SAR, and `incrementalfs`) are loaded
+  by the vendor rc files themselves - nothing to stage
 
 Expect the Image at ~21.4 MB. If the build fails in `sprd_wlan` or
 `midgard`, re-check step 2 (the tree builds clean with the committed
@@ -181,6 +198,13 @@ Each installs `module.prop` + `post-fs-data.sh` (from the tracked
 post-fs-data, `insmod`s the module, and logs to
 `/data/local/tmp/<id>_module_load.log`.
 
+The `.ko` files must come from the **same kernel build** as the flashed
+Image (same vermagic `4.14.199+-ab612c2`, same `module_layout` CRC) -
+after every kernel rebuild, re-run both install scripts with the fresh
+`.ko` files before rebooting into it.  The vendor modules need no
+staging: `camera.rc` / `wcn.rc` insmod them from `/mnt/vendor/socko/`
+on every boot.
+
 ## 7. Verify
 
 ```bash
@@ -202,11 +226,18 @@ mali 23100000.gpu: GPU identified as 0x1 arch 9.0.9 r0p1 status 0
 mali 23100000.gpu: Probed as mali0
 ```
 
-And two *expected* failures from the vendor's own rc files (their
-prebuilt modules cannot load against our kernel - `module_layout` CRC
-mismatch): `init.md.rc`'s `insmod .../socko/mali_kbase.ko` and
-`wcn.rc`/`camera.rc`'s insmods. Harmless: our in-tree replacements load
-later at post-fs-data.
+On the stock-config build the vendor rc insmods *succeed*, so the only
+expected log noise is:
+
+* `wcn.rc` trying to insmod the non-existent `socko/sprdbt_tty.ko` (the
+  real file is `sprdbt_sdio_tty.ko` - a vendor rc typo, harmless), and
+* our own post-fs-data insmod of `mali_kbase`/`sprdwl_ng` failing with
+  "File exists" if the vendor rc loaded its copy first (one driver per
+  name; either copy works on this kernel).
+
+On the older `phone.config` diag build those vendor insmods fail with a
+`module_layout` CRC mismatch instead - also harmless there, our in-tree
+replacements load later.
 
 ## 8. What is still not working on the custom kernel
 
@@ -214,9 +245,10 @@ Nothing in the vendor-module list - the vendor-module-compatible build
 (docs 17 section "2026-11-03 (result)", config recipe in section 8b) loads
 *all* of them: camera stack, flash IC, BT (`sprdbt_sdio_tty`, HAL runs
 real HCI), FM (`sprd_sdio_fm`), SAR (`aw9610x_sar`), and `incrementalfs`
-is loaded by the vendor rc itself.  The KVM kernel (section 9) remains a
-separate build until the task_struct/mm_struct field relocation
-(docs 17 "2026-11-03 (2)") is implemented and verified.
+is loaded by the vendor rc itself.  KVM is in the same build too (see
+section 9): the task_struct/mm_struct field relocation
+(docs 17 "2026-11-03 (2)") is implemented and device-verified with the
+`modules/abiprobe` offsets check.
 
 ## 8b. Vendor-module-compatible build (camera experiments)
 
@@ -240,10 +272,14 @@ Three details make it work (all scripted):
   `struct module::cfi_check` and `struct timer_list::__function`, skip the
   `module_layout` CRC check, log-and-accept other CRC differences, and
   export a no-op `__cfi_slowpath`.
-* **Do not enable KVM in this config** - it selects `MMU_NOTIFIER` and
-  `PREEMPT_NOTIFIERS`, which change `struct mm_struct` / `struct
-  task_struct` and break the vendor modules.  The KVM kernel is a separate
-  build.
+* **KVM can be added to this config only together with the field
+  relocation**: KVM selects `MMU_NOTIFIER`/`PREEMPT_NOTIFIERS`, which
+  change `struct mm_struct` / `struct task_struct`.  With
+  `scripts/host/apply_kvm_field_relocation.py` applied (published
+  branch: yes) the two fields sit at the struct tails and the vendor
+  ABI is preserved - verified with `modules/abiprobe`
+  (docs/evidence/abiprobe/README.md).  Without the relocation, do not
+  enable KVM.
 
 Rationale and measurements: `docs/17-vendor-module-rebuilds.md`.
 

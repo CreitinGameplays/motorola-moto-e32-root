@@ -8,10 +8,10 @@
     root (no zip round-trip needed). The module insmods the GPU driver at
     post-fs-data on every boot of the custom kernel.
 
-    The .ko must be the build matching the running custom kernel
-    (vermagic 4.14.199+ SMP preempt mod_unload modversions aarch64,
-    module_layout CRC 0x22ad1303). On the stock kernel the module is
-    useless on the stock kernel (vendor sprdwl_ng is already loaded).
+    The .ko must be the build matching the running kernel - same vermagic
+    (4.14.199+-ab612c2 since the stock-config compat kernel) and same
+    module_layout CRC. Re-run this script with the fresh .ko after every
+    kernel rebuild, before rebooting into it.
 
 .EXAMPLE
     .\scripts\host\install_wlan_magisk_module.ps1 -Ko artifacts\kernel-build\sprdwl_ng.ko
