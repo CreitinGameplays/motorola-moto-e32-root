@@ -45,6 +45,12 @@
 #define GPU_DVFS_APB_SIZE	0x100
 #define TOPDVFS_PHYS		0x64014000
 #define TOPDVFS_SIZE		0x200
+#define APCPU_DVFS_PHYS		0x64018000	/* CPU DVFS map tables (AON) */
+#define APCPU_DVFS_SIZE		0x400
+#define GLBREGS_5A_PHYS		0x645a0000	/* CPU mpll slot regs (AON) */
+#define GLBREGS_5A_SIZE		0x300
+#define GLBREGS_58_PHYS		0x64580000	/* mpll-prometheus analog (AON) */
+#define GLBREGS_58_SIZE		0x300
 
 #define POKER_MAX_CLOCKS 12
 
@@ -134,18 +140,35 @@ static struct kobj_attribute rate_attr = __ATTR_RW(rate);
  * only read while the GPU is under load. */
 static void __iomem *dvfs_reg_base;
 static void __iomem *topdvfs_reg_base;	/* likely AON: fused grade tables */
-static int reg_base_sel;			/* 0 = gpu dvfs apb, 1 = topdvfs */
-static u32 last_rd_off, last_rd_val;
+static void __iomem *apcpu_reg_base;	/* CPU DVFS map tables (AON) */
+static void __iomem *glb5a_reg_base;	/* mpll-ananke/scu slots (AON) */
+static void __iomem *glb58_reg_base;	/* mpll-prometheus slots (AON) */
+static int reg_base_sel;	/* 0 = gpu dvfs apb, 1 = topdvfs,
+				 * 2 = apcpu dvfs, 3 = glbregs 0x645a0000,
+				 * 4 = glbregs 0x64580000 */
 
 static void __iomem *sel_base(unsigned long *size)
 {
-	if (reg_base_sel) {
+	switch (reg_base_sel) {
+	case 1:
 		*size = TOPDVFS_SIZE;
 		return topdvfs_reg_base;
+	case 2:
+		*size = APCPU_DVFS_SIZE;
+		return apcpu_reg_base;
+	case 3:
+		*size = GLBREGS_5A_SIZE;
+		return glb5a_reg_base;
+	case 4:
+		*size = GLBREGS_58_SIZE;
+		return glb58_reg_base;
+	default:
+		*size = GPU_DVFS_APB_SIZE;
+		return dvfs_reg_base;
 	}
-	*size = GPU_DVFS_APB_SIZE;
-	return dvfs_reg_base;
 }
+
+static u32 last_rd_off, last_rd_val;
 
 static ssize_t rd_show(struct kobject *k, struct kobj_attribute *a,
 		       char *buf)
@@ -211,7 +234,7 @@ static ssize_t base_store(struct kobject *k, struct kobj_attribute *a,
 	ret = kstrtoint(buf, 0, &v);
 	if (ret)
 		return ret;
-	if (v < 0 || v > 1)
+	if (v < 0 || v > 4)
 		return -EINVAL;
 	reg_base_sel = v;
 	return n;
@@ -321,6 +344,21 @@ static int __init gpll_poker_init(void)
 		pr_err("gpu_gpll_poker: cannot ioremap the topdvfs controller\n");
 		return -ENOMEM;
 	}
+	apcpu_reg_base = ioremap(APCPU_DVFS_PHYS, APCPU_DVFS_SIZE);
+	if (!apcpu_reg_base) {
+		pr_err("gpu_gpll_poker: cannot ioremap the apcpu dvfs block\n");
+		return -ENOMEM;
+	}
+	glb5a_reg_base = ioremap(GLBREGS_5A_PHYS, GLBREGS_5A_SIZE);
+	if (!glb5a_reg_base) {
+		pr_err("gpu_gpll_poker: cannot ioremap glbregs 0x645a0000\n");
+		return -ENOMEM;
+	}
+	glb58_reg_base = ioremap(GLBREGS_58_PHYS, GLBREGS_58_SIZE);
+	if (!glb58_reg_base) {
+		pr_err("gpu_gpll_poker: cannot ioremap glbregs 0x64580000\n");
+		return -ENOMEM;
+	}
 
 	np = of_find_compatible_node(NULL, NULL, "sprd,mali-natt");
 	if (!np) {
@@ -371,6 +409,12 @@ static void __exit gpll_poker_exit(void)
 	}
 	if (topdvfs_reg_base)
 		iounmap(topdvfs_reg_base);
+	if (apcpu_reg_base)
+		iounmap(apcpu_reg_base);
+	if (glb5a_reg_base)
+		iounmap(glb5a_reg_base);
+	if (glb58_reg_base)
+		iounmap(glb58_reg_base);
 	if (dvfs_reg_base)
 		iounmap(dvfs_reg_base);
 	if (poker_kobj) {
