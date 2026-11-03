@@ -1,0 +1,81 @@
+# 2026-11-03: vendor-module-compatible kernel - camera, flash, WiFi all work
+
+Kernel: 4.14.199+-ab612c2 #2 SMP PREEMPT Tue Nov 3 12:20:53 UTC 2026
+(vermagic matches the shipping build byte for byte; boot_b, Magisk root,
+SELinux Enforcing, boot_completed=1, load normal)
+
+Build: stock-config kernel (recovered from the shipping Image's IKCONFIG)
++ MALI/WLAN/BT drivers, LTO/CFI off, vendor-module ABI compat patches
+(`scripts/host/apply_vendor_module_compat{,2}.py`), built with
+`LOCALVERSION=+-ab612c2`.  Image sha256
+21dc142ed6d9314fbe19d640440a08de9fcdc1596ccab149016ed3bcdc3d738a, packed
+over the Magisk base (`boot_cameracompat_magisk.img`,
+37707e5ff3561e165acc82041ca3c4d5638ef4a72e2c68d8d38cf234eb90ea06), dd'd to
+boot_b with the one-attempt marker (run_boot_b_test.ps1, read-back match).
+
+## The vendor-module ABI fix, verified
+
+* every one of the **649 CRC records** (351 unique symbols) imported by the
+  vendor `/mnt/vendor/socko/*.ko` now matches this kernel's
+  `Module.symvers` exactly - including `module_layout` 0x36aac43d
+  (the CFI value, reproduced by the unconditional `cfi_check` field).
+* built modules carry `.gnu.linkonce.this_module` 0x380 with init at
+  0x158 / cleanup at 0x310 - identical to the vendor .ko relocations.
+* vermagic `4.14.199+-ab612c2 SMP preempt mod_unload modversions aarch64`.
+* dmesg shows **no** "disagrees about version" / "CRC differs" lines.
+
+## Result: all vendor modules load
+
+/proc/modules after boot (all Live):
+
+    flash_ic_ocp8135b, sprd_sdio_fm, sprdbt_sdio_tty, sprdwl_ng,
+    mali_kbase, aw9610x_sar, sprd_fd, mmdvfs, sprd_cpp, sprd_camera,
+    sprd_flash_drv, sprd_sensor, incrementalfs
+
+So camera **and** the previously-dead extras came up:
+
+* camera: `init.svc.cameraserver=running`, `dumpsys media.camera` reports
+  **4 camera devices (0..3)**; sensor probes run (sprd_sensor open/mclk/
+  mipi_switch logs at t+42..45 s).  User confirmed photo capture works.
+* torch/flash: OCP8135B flash IC probes and torch control logs
+  (`sprd_flash_ic_close_torch`) - flashlight works.
+* WiFi: our staged `sprdwl_ng` (Magisk module) loads, `wlan0` UP with IP
+  (192.168.1.4/24), `wlan.driver.status=ok`.
+* FM (`sprd_sdio_fm`) and SAR (`aw9610x_sar`) modules load.
+* `incrementalfs` loads (Play incremental installs).
+* BT module `sprdbt_sdio_tty` loads; BT enable not tested yet (the old
+  in-tree module panicked on enable; the vendor module may behave
+  differently - test only on a stable boot).
+* **Bluetooth works too** (user-confirmed): the vendor `sprdbt_sdio_tty`
+  module loads and the BT HAL (`vendor.bluetooth-1-1`) runs; the mtty
+  transport exchanges real HCI traffic (HCI reset/read + local name
+  "moto e32") and the adapter gets its real MAC
+  (68:87:1C:0F:14:AE).  No panic - the old in-tree `sprdbt_tty` crash is
+  gone with the vendor module.  FM (`sprd_sdio_fm`) is the same story and
+  loads cleanly.
+* one benign-looking WARNING inside `sprdwl_ng`'s
+  `sc2355_rx_work_queue` during the first firmware download attempt
+  (`CMD_DOWNLOAD_INI` -> SPRD_CMD_STATUS_UNKNOWN_ERROR, WCN power-cycles
+  and retries); WiFi still reaches CONNECTED.  Same retry behavior as the
+  2026-11-02 WiFi bring-up; not a kernel-ABI issue.
+* `init` still tries to insmod a non-existent
+  `socko/sprdbt_tty.ko` (the real file is `sprdbt_sdio_tty.ko`) - a vendor
+  rc bug, harmless.
+
+## GPU DVFS data point (docs/20)
+
+The in-tree mali probe logs the vendor DVFS hook:
+`GPU_DVFS kbase_platform_modify_target_freq gpu_boost_level:0
+min_freq=384000 max_freq=650000 target_freq=384000000` - i.e. the runtime
+DVFS max is already 650 MHz (T606 GPLL trim), confirming docs/20; the
+"600 MHz" apps report is only the stale `GPU_FREQ_KHZ_MAX` constant.
+
+## Tree state
+
+* compat patches applied in `~/kernel-sprd` (hawaii-diag):
+  include/linux/{cfi.h,module.h,timer.h}, kernel/module.c.
+* Magisk modules re-staged with the matching .ko builds (mali_kbase.ko,
+  sprdwl_ng.ko from this kernel).
+* config note: KVM is **not** enabled in this build (see docs/17 section
+  "2026-11-03 (2)"): MMU_NOTIFIER/PREEMPT_NOTIFIERS would change
+  mm_struct/task_struct and break the vendor modules.

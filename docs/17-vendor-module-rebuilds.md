@@ -130,6 +130,17 @@ mu300 tree might be reused for newer kernels.
   sprd_flash_drv -> sprd_camera -> sprd_cpp -> mmdvfs -> sprd_fd in order,
   all failing on CRC.
 
+## 2026-11-03 (result): the compat kernel WORKS - camera, torch, WiFi, BT, FM, SAR, incfs all load
+
+The kernel built from the recovered stock config with the ABI compat
+patches booted and **every vendor module in /mnt/vendor/socko loads**:
+sprd_sensor, sprd_flash_drv, sprd_camera, sprd_cpp, mmdvfs, sprd_fd,
+flash_ic_ocp8135b, aw9610x_sar, sprdbt_sdio_tty, sprd_sdio_fm,
+incrementalfs.  cameraserver reports 4 camera devices; photos and the
+flashlight work; wlan0 gets an IP; the BT HAL runs real HCI traffic with
+the adapter MAC and no panic.  Evidence:
+`docs/evidence/2026-11-03-camera-compat-success.txt`.
+
 ## 2026-11-03: the exact vendor build config was recovered (CRC breakthrough)
 
 The vendor `.ko` files expect the CRCs of the *shipping* kernel build. That

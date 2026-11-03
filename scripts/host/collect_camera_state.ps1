@@ -20,10 +20,10 @@ param(
     [string]$Out = 'docs\evidence\camera-state.txt'
 )
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 
 function Su([string]$cmd) {
-    & $Adb shell "su -c '$cmd'" 2>&1
+    & $Adb shell ("su -c '" + $cmd + "'") 2>&1 | Out-String
 }
 
 $report = New-Object System.Collections.Generic.List[string]

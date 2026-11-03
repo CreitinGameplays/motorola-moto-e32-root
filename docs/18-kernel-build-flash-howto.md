@@ -205,14 +205,13 @@ later at post-fs-data.
 
 ## 8. What is still not working on the custom kernel
 
-* camera stack (`sprd_camera`, `sprd_sensor`, `sprd_cpp`, `sprd_fd`,
-  `sprd_flash_drv`, `flash_ic_ocp8135b`, `mmdvfs`) - sources not yet
-  located; see `docs/17-vendor-module-rebuilds.md`
-* BT/FM (`sprdbt_sdio_tty`, `sprd_sdio_fm`) - likely follow the WiFi route
-  (`mu300-linux` keeps `sprdbt_tty` too)
-* SAR sensor (`aw9610x_sar`)
-* `incrementalfs` is in-tree (`fs/incfs`, `=m`) but not yet staged as a
-  Magisk module - optional, affects Play incremental installs on /data
+Nothing in the vendor-module list - the vendor-module-compatible build
+(docs 17 section "2026-11-03 (result)", config recipe in section 8b) loads
+*all* of them: camera stack, flash IC, BT (`sprdbt_sdio_tty`, HAL runs
+real HCI), FM (`sprd_sdio_fm`), SAR (`aw9610x_sar`), and `incrementalfs`
+is loaded by the vendor rc itself.  The KVM kernel (section 9) remains a
+separate build until the task_struct/mm_struct field relocation
+(docs 17 "2026-11-03 (2)") is implemented and verified.
 
 ## 8b. Vendor-module-compatible build (camera experiments)
 

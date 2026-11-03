@@ -102,6 +102,17 @@ Two completely independent mechanisms produce the two numbers:
   the glue's `freq_list` into a devfreq device (like the vendor module's
   `devfreq` stats) is a bigger project - only worth it if (c) pans out.
 
+## 3b. Runtime confirmation (2026-11-03, compat kernel boot)
+
+The in-tree mali probe logs the DDK's DVFS hook at boot:
+
+    GPU_DVFS kbase_platform_modify_target_freq gpu_boost_level:0
+    min_freq=384000 max_freq=650000 target_freq=384000000
+
+So the runtime DVFS max is already 650 MHz (the T606 trim is applied) -
+option (b) is confirmed by the boot log; only the *reported* constant
+(a) remains to be changed.
+
 ## 4. Recommendation
 
 1. Do (a) + (b) in the next kernel build (one-line header change + a
