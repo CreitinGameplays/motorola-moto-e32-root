@@ -314,7 +314,18 @@ KVM_ARM_PMU, ...) adds no fields to structs that cross the module ABI.  A
 module compiled without those options that reads, say, `current->cred` or
 `dev->of_node` would land 8 bytes off once the field is inserted before it.
 
-### Plan A (recommended): relocate the two fields to the tail
+### Plan A (executing): relocate the two fields to the tail
+
+Status 2026-11-03: implemented, KVM build in progress.  Applied by
+`scripts/host/apply_kvm_field_relocation.py` (sched.h + mm_types.h).
+Verification tool: `modules/abiprobe/` (an external-module offsets probe;
+build with `make O=<dir> M=<probe dir> modules`, push, `insmod` - it
+prints 124 offsetof/sizeof entries and refuses to stay loaded).  The
+reference table from the working no-KVM compat kernel is
+`docs/evidence/abiprobe/abiprobe-reference-no-kvm-4.14.199-ab612c2.txt`;
+the KVM kernel's table must be identical (the KVM-only entries
+`preempt_notifiers`/`mmu_notifier_mm` appear additionally, at their new
+tail offsets).
 
 Move the KVM-only fields to the end of their structs so every
 pre-existing field keeps the vendor offset and only the struct size grows:

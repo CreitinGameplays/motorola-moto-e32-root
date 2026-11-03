@@ -1,0 +1,128 @@
+insmod: failed to load /data/local/tmp/abiprobe.ko: Invalid argument
+[  783.497317] real time: 2026-11-03 12:53:51.114545 UTC
+[  783.497323] DIAG: initcall init_module
+[  783.497339] ABIPROBE: offsetof(struct module, mkobj)                       80
+[  783.497342] ABIPROBE: offsetof(struct module, num_syms)                    224
+[  783.497344] ABIPROBE: offsetof(struct module, cfi_check)                   232
+[  783.497346] ABIPROBE: offsetof(struct module, kp)                          272
+[  783.497348] ABIPROBE: offsetof(struct module, num_kp)                      280
+[  783.497350] ABIPROBE: offsetof(struct module, init)                        344
+[  783.497352] ABIPROBE: offsetof(struct module, core_layout)                 384
+[  783.497354] ABIPROBE: offsetof(struct module, init_layout)                 464
+[  783.497355] ABIPROBE: offsetof(struct module, arch)                        544
+[  783.497358] ABIPROBE: offsetof(struct module, taints)                      584
+[  783.497359] ABIPROBE: offsetof(struct module, args)                        672
+[  783.497361] ABIPROBE: sizeof(struct module)                                896
+[  783.497363] ABIPROBE: offsetof(struct timer_list, entry)                   0
+[  783.497365] ABIPROBE: offsetof(struct timer_list, expires)                 16
+[  783.497368] ABIPROBE: offsetof(struct timer_list, function)                24
+[  783.497370] ABIPROBE: offsetof(struct timer_list, data)                    32
+[  783.497372] ABIPROBE: offsetof(struct timer_list, flags)                   40
+[  783.497374] ABIPROBE: offsetof(struct timer_list, __function)              48
+[  783.497375] ABIPROBE: sizeof(struct timer_list)                            56
+[  783.497377] ABIPROBE: offsetof(struct device, parent)                      0
+[  783.497379] ABIPROBE: offsetof(struct device, kobj)                        16
+[  783.497380] ABIPROBE: offsetof(struct device, driver)                      136
+[  783.497382] ABIPROBE: offsetof(struct device, platform_data)               144
+[  783.497384] ABIPROBE: offsetof(struct device, driver_data)                 152
+[  783.497385] ABIPROBE: offsetof(struct device, power)                       200
+[  783.497387] ABIPROBE: offsetof(struct device, pm_domain)                   496
+[  783.497389] ABIPROBE: offsetof(struct device, of_node)                     584
+[  783.497391] ABIPROBE: offsetof(struct device, fwnode)                      592
+[  783.497393] ABIPROBE: offsetof(struct device, dma_mask)                    520
+[  783.497395] ABIPROBE: sizeof(struct device)                                712
+[  783.497396] ABIPROBE: offsetof(struct dev_pm_info, suspend_timer)          80
+[  783.497398] ABIPROBE: offsetof(struct dev_pm_info, timer_expires)          136
+[  783.497400] ABIPROBE: offsetof(struct dev_pm_info, work)                   144
+[  783.497402] ABIPROBE: offsetof(struct dev_pm_info, wait_queue)             176
+[  783.497403] ABIPROBE: offsetof(struct dev_pm_info, wakeirq)                200
+[  783.497405] ABIPROBE: offsetof(struct dev_pm_info, usage_count)            208
+[  783.497407] ABIPROBE: offsetof(struct dev_pm_info, child_count)            212
+[  783.497409] ABIPROBE: sizeof(struct dev_pm_info)                           296
+[  783.497411] ABIPROBE: offsetof(struct task_struct, pid)                    1496
+[  783.497413] ABIPROBE: offsetof(struct task_struct, tgid)                   1500
+[  783.497415] ABIPROBE: offsetof(struct task_struct, comm)                   1936
+[  783.497417] ABIPROBE: offsetof(struct task_struct, mm)                     1320
+[  783.497419] ABIPROBE: offsetof(struct task_struct, files)                  1968
+[  783.497421] ABIPROBE: offsetof(struct task_struct, real_parent)            1512
+[  783.497423] ABIPROBE: offsetof(struct task_struct, group_leader)           1560
+[  783.497425] ABIPROBE: offsetof(struct task_struct, on_cpu)                 72
+[  783.497427] ABIPROBE: offsetof(struct task_struct, state)                  32
+[  783.497429] ABIPROBE: offsetof(struct task_struct, stack)                  40
+[  783.497431] ABIPROBE: offsetof(struct task_struct, thread)                 2672
+[  783.497433] ABIPROBE: sizeof(struct task_struct)                           3712
+[  783.497435] ABIPROBE: offsetof(struct mm_struct, mmap)                     0
+[  783.497437] ABIPROBE: offsetof(struct mm_struct, mm_users)                 80
+[  783.497439] ABIPROBE: offsetof(struct mm_struct, mm_count)                 84
+[  783.497441] ABIPROBE: offsetof(struct mm_struct, pgd)                      72
+[  783.497444] ABIPROBE: offsetof(struct mm_struct, exe_file)                 800
+[  783.497445] ABIPROBE: offsetof(struct mm_struct, tlb_flush_pending)        808
+[  783.497448] ABIPROBE: offsetof(struct mm_struct, uprobes_state)            812
+[  783.497449] ABIPROBE: offsetof(struct mm_struct, binfmt)                   712
+[  783.497451] ABIPROBE: sizeof(struct mm_struct)                             848
+[  783.497453] ABIPROBE: offsetof(struct file, f_path)                        16
+[  783.497455] ABIPROBE: offsetof(struct file, f_inode)                       32
+[  783.497457] ABIPROBE: offsetof(struct file, f_op)                          40
+[  783.497459] ABIPROBE: offsetof(struct file, f_count)                       56
+[  783.497461] ABIPROBE: offsetof(struct file, f_flags)                       64
+[  783.497463] ABIPROBE: offsetof(struct file, f_mode)                        68
+[  783.497465] ABIPROBE: offsetof(struct file, f_pos)                         104
+[  783.497468] ABIPROBE: offsetof(struct file, private_data)                  208
+[  783.497471] ABIPROBE: sizeof(struct file)                                  264
+[  783.497473] ABIPROBE: offsetof(struct net_device, name)                    0
+[  783.497475] ABIPROBE: offsetof(struct net_device, mem_end)                 40
+[  783.497477] ABIPROBE: offsetof(struct net_device, watchdog_timer)          1080
+[  783.497479] ABIPROBE: offsetof(struct net_device, num_tx_queues)           904
+[  783.497481] ABIPROBE: offsetof(struct net_device, ifindex)                 264
+[  783.497483] ABIPROBE: offsetof(struct net_device, flags)                   520
+[  783.497485] ABIPROBE: offsetof(struct net_device, mtu)                     536
+[  783.497487] ABIPROBE: offsetof(struct net_device, type)                    548
+[  783.497490] ABIPROBE: offsetof(struct net_device, hard_header_len)         550
+[  783.497491] ABIPROBE: offsetof(struct net_device, netdev_ops)              480
+[  783.497493] ABIPROBE: offsetof(struct net_device, ethtool_ops)             488
+[  783.497495] ABIPROBE: offsetof(struct net_device, features)                208
+[  783.497497] ABIPROBE: offsetof(struct net_device, hw_features)             216
+[  783.497499] ABIPROBE: sizeof(struct net_device)                            2176
+[  783.497501] ABIPROBE: offsetof(struct sk_buff, next)                       0
+[  783.497502] ABIPROBE: offsetof(struct sk_buff, prev)                       8
+[  783.497504] ABIPROBE: offsetof(struct sk_buff, sk)                         24
+[  783.497506] ABIPROBE: offsetof(struct sk_buff, dev)                        16
+[  783.497508] ABIPROBE: offsetof(struct sk_buff, cb)                         40
+[  783.497510] ABIPROBE: offsetof(struct sk_buff, head)                       200
+[  783.497511] ABIPROBE: offsetof(struct sk_buff, data)                       208
+[  783.497513] ABIPROBE: offsetof(struct sk_buff, tail)                       192
+[  783.497515] ABIPROBE: offsetof(struct sk_buff, end)                        196
+[  783.497517] ABIPROBE: offsetof(struct sk_buff, len)                        120
+[  783.497519] ABIPROBE: offsetof(struct sk_buff, data_len)                   124
+[  783.497521] ABIPROBE: offsetof(struct sk_buff, users)                      220
+[  783.497523] ABIPROBE: sizeof(struct sk_buff)                               224
+[  783.497525] ABIPROBE: offsetof(struct platform_device, name)               0
+[  783.497527] ABIPROBE: offsetof(struct platform_device, id)                 8
+[  783.497529] ABIPROBE: offsetof(struct platform_device, resource)           736
+[  783.497531] ABIPROBE: offsetof(struct platform_device, num_resources)      728
+[  783.497533] ABIPROBE: offsetof(struct platform_device, dev)                16
+[  783.497535] ABIPROBE: sizeof(struct platform_device)                       768
+[  783.497537] ABIPROBE: offsetof(struct dma_buf, size)                       0
+[  783.497539] ABIPROBE: offsetof(struct dma_buf, file)                       8
+[  783.497541] ABIPROBE: offsetof(struct dma_buf, ops)                        32
+[  783.497543] ABIPROBE: offsetof(struct dma_buf, priv)                       128
+[  783.497545] ABIPROBE: sizeof(struct dma_buf)                               248
+[  783.497547] ABIPROBE: offsetof(struct wakeup_source, name)                 0
+[  783.497549] ABIPROBE: offsetof(struct wakeup_source, entry)                16
+[  783.497551] ABIPROBE: offsetof(struct wakeup_source, timer)                48
+[  783.497553] ABIPROBE: offsetof(struct wakeup_source, wakeup_count)         184
+[  783.497555] ABIPROBE: sizeof(struct wakeup_source)                         208
+[  783.497557] ABIPROBE: offsetof(struct iova_domain, fq)                     1744
+[  783.497559] ABIPROBE: offsetof(struct iova_domain, fq_flush_start_cnt)     1752
+[  783.497561] ABIPROBE: offsetof(struct iova_domain, fq_flush_finish_cnt)    1760
+[  783.497562] ABIPROBE: offsetof(struct iova_domain, fq_timer)               1768
+[  783.497565] ABIPROBE: offsetof(struct iova_domain, fq_timer_on)            1824
+[  783.497566] ABIPROBE: sizeof(struct iova_domain)                           1832
+[  783.497568] ABIPROBE: sizeof(struct completion)                            32
+[  783.497570] ABIPROBE: sizeof(struct mutex)                                 32
+[  783.497572] ABIPROBE: sizeof(struct semaphore)                             24
+[  783.497574] ABIPROBE: sizeof(struct work_struct)                           32
+[  783.497575] ABIPROBE: sizeof(struct hrtimer)                               64
+[  783.497577] ABIPROBE: sizeof(struct list_head)                             16
+[  783.497579] ABIPROBE: sizeof(struct hlist_head)                            8
+[  783.497580] ABIPROBE: 124 entries
