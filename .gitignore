@@ -19,6 +19,7 @@ Thumbs.db
 desktop.ini
 .vscode/
 .idea/
+.opencode/
 
 # Python caches (scripts/host)
 __pycache__/
