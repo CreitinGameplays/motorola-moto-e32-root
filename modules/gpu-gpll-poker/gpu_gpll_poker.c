@@ -53,6 +53,8 @@
 #define GLBREGS_58_SIZE		0x300
 #define AON_APB_PHYS		0x64000000	/* aon apb glbregs (module enables) */
 #define AON_APB_SIZE		0x1000
+#define LOGO_FB_PHYS		0x9e000000	/* bootloader logo framebuffer (ro!) */
+#define LOGO_FB_SIZE		0x100000
 
 #define POKER_MAX_CLOCKS 12
 
@@ -146,9 +148,11 @@ static void __iomem *apcpu_reg_base;	/* CPU DVFS map tables (AON) */
 static void __iomem *glb5a_reg_base;	/* mpll-ananke/scu slots (AON) */
 static void __iomem *glb58_reg_base;	/* mpll-prometheus slots (AON) */
 static void __iomem *aonapb_reg_base;	/* aon apb glbregs (module enables) */
+static void __iomem *logofb_reg_base;	/* bootloader logo framebuffer (ro!) */
 static int reg_base_sel;	/* 0 = gpu dvfs apb, 1 = topdvfs,
 				 * 2 = apcpu dvfs, 3 = glbregs 0x645a0000,
-				 * 4 = glbregs 0x64580000, 5 = aon apb 0x64000000 */
+				 * 4 = glbregs 0x64580000, 5 = aon apb 0x64000000,
+				 * 6 = logo fb 0x9e000000 (READ ONLY) */
 
 static void __iomem *sel_base(unsigned long *size)
 {
@@ -168,6 +172,9 @@ static void __iomem *sel_base(unsigned long *size)
 	case 5:
 		*size = AON_APB_SIZE;
 		return aonapb_reg_base;
+	case 6:
+		*size = LOGO_FB_SIZE;
+		return logofb_reg_base;
 	default:
 		*size = GPU_DVFS_APB_SIZE;
 		return dvfs_reg_base;
@@ -220,6 +227,10 @@ static ssize_t wr_store(struct kobject *k, struct kobj_attribute *a,
 	if (!base || off >= size || (off & 3))
 		return -EINVAL;
 
+	/* base 6 is the logo framebuffer: read-only via this attribute */
+	if (reg_base_sel == 6)
+		return -EROFS;
+
 	writel_relaxed(val, base + off);
 	pr_info("gpu_gpll_poker: wr(%d) 0x%02x = 0x%08x\n", reg_base_sel,
 		off, (u32)val);
@@ -240,7 +251,7 @@ static ssize_t base_store(struct kobject *k, struct kobj_attribute *a,
 	ret = kstrtoint(buf, 0, &v);
 	if (ret)
 		return ret;
-	if (v < 0 || v > 5)
+	if (v < 0 || v > 6)
 		return -EINVAL;
 	reg_base_sel = v;
 	return n;
@@ -599,6 +610,11 @@ static int __init gpll_poker_init(void)
 		pr_err("gpu_gpll_poker: cannot ioremap aon apb glbregs\n");
 		return -ENOMEM;
 	}
+	logofb_reg_base = memremap(LOGO_FB_PHYS, LOGO_FB_SIZE, MEMREMAP_WB);
+	if (!logofb_reg_base) {
+		pr_err("gpu_gpll_poker: cannot memremap the logo framebuffer\n");
+		return -ENOMEM;
+	}
 
 	np = of_find_compatible_node(NULL, NULL, "sprd,mali-natt");
 	if (!np) {
@@ -657,6 +673,8 @@ static void __exit gpll_poker_exit(void)
 		iounmap(glb58_reg_base);
 	if (aonapb_reg_base)
 		iounmap(aonapb_reg_base);
+	if (logofb_reg_base)
+		memunmap(logofb_reg_base);
 	if (dvfs_reg_base)
 		iounmap(dvfs_reg_base);
 	if (poker_kobj) {

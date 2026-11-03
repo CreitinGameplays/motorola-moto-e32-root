@@ -385,3 +385,25 @@ Notes:
   needed the skip): `docs/evidence/2026-11-02-mali-abort-rootcause.txt`
 * kernel commits: https://github.com/CreitinGameplays/motorola-moto-e32-kernel
   (the build fixes are part of the same series; apply the whole branch)
+
+## 11. On-panel boot banner (what you see during boot)
+
+Every kernel from this branch paints a small message on the boot logo
+while Android starts; Android's boot animation replaces the picture a
+few seconds later.  This replaced the full-width white bars that the
+diag build used to paint (`include/linux/diag_stage.h`, DIAG_BANNER):
+
+* three dim gray **progress dashes** at the top-left, one per pre-MMU
+  milestone of `stext` (after `el2_setup`, after
+  `__create_page_tables`, after `__cpu_setup`; each one panel row below
+  the previous and one shade brighter) - if a future build ever hangs
+  before the MMU is on, the number of dashes names the last completed
+  step on a photo
+* one **teal accent line** and one centered dark **text chip**:
+  `moto-e32 custom kernel <version> kvmcompat - booting`, drawn once
+  right after `paging_init()` (the message is a compile-time constant,
+  no printf machinery runs that early)
+
+Turn it off with `#define DIAG_BANNER 0` in
+`include/linux/diag_stage.h`; the full multi-row diag console is
+`DIAG_SCREEN` (diag builds only).
