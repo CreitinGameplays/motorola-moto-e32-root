@@ -180,6 +180,42 @@ artifacts/                  local build output, dumps, the Mali Magisk-module
 tools/, apks/, ...          local working data (gitignored)
 ```
 
+## Shell conventions (Windows host)
+
+Every code block in this repo and in `docs/` is labeled with the shell it
+runs in - do not mix them:
+
+| label | where | used for |
+|---|---|---|
+| ```bash / ```sh | **Git Bash (MSYS2)** on the Windows host, or any Linux box | adb / fastboot / ssh / python one-liners / heredocs |
+| ```powershell | **Windows PowerShell** | the repo's helper scripts (`scripts\host\*.ps1`, `scripts
+un_matrix.ps1`) |
+| unlabeled blocks | command *output* dumps, not commands | - |
+
+Gotchas that otherwise break the bash blocks on Windows:
+
+* `adb.exe` is a native Windows binary and MSYS2 silently rewrites
+  arguments that look like POSIX paths
+  (`/data/local/tmp/x` becomes `C:/Program Files/Git/data/local/tmp/x`).
+  Set this **once per shell** (or in `~/.bashrc`) - every bash block in the
+  docs assumes it is set:
+
+  ```bash
+  export MSYS2_ARG_CONV_EXCL="*"
+  ```
+
+  (`MSYS_NO_PATHCONV=1` - used in a few older doc snippets - is the
+  Git-for-Windows equivalent and works too.)
+
+* Use forward-slash Windows paths in bash blocks (`D:/AndroidSDKTools/...`),
+  never backslashes; and for `adb push`/`adb pull` local paths use
+  `C:/Users/...` style, not MSYS `/c/Users/...` (adb.exe does not
+  understand `/c/`).
+* `adb` below means `D:/AndroidSDKTools/adb/adb.exe` (or `adb` if it is on
+  your `PATH`).
+* The build VM / any Linux box: plain bash, no Windows paths, no MSYS
+  variables.
+
 ## Step-by-step
 
 ### 1. Get the source and toolchain

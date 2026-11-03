@@ -1,5 +1,9 @@
 # 19 - The boot_a rescue image: building, flashing, and using it
 
+
+Shells: build steps are bash on the build machine; device steps are bash
+(Git Bash on Windows) with `export MSYS2_ARG_CONV_EXCL="*"` - see README
+"Shell conventions".
 The `boot_a` rescue is the safety net that makes every `boot_b` kernel
 experiment recoverable with one power press. This page is the complete
 how-to: build it, flash it to `boot_a`, verify it, and use it when a test

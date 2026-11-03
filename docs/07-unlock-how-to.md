@@ -1,5 +1,8 @@
 # 07 - Step-by-step: software-only bootloader unlock
 
+
+Shells: all blocks are **bash (Git Bash on Windows)** - set
+`export MSYS2_ARG_CONV_EXCL="*"` first, see README "Shell conventions".
 This is the working procedure for the Moto E32 (`hawaii`, Unisoc T606,
 Android 11, kernel 4.14.199) after the research in
 `docs/06-secure-world-unlock-path.md`. Everything happens on-device: no

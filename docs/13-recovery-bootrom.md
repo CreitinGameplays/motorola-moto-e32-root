@@ -371,7 +371,7 @@ live SHA-256 `DFC266B5…50E01`.
 
 One command, one 32-byte metadata write, phone back to Android:
 
-```
+```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File scripts\host\brom_set_slot.ps1 -Slot a -ConfirmWrite `
   -WaitMinutes 45 -MaxAttempts 20

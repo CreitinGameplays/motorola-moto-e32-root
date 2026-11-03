@@ -1,5 +1,9 @@
 # 14 - BootROM recovery runbook (phone does not boot, no logo)
 
+
+Shells: this runbook is **PowerShell-only** (the host scripts are
+`scripts\host\*.ps1`); output blocks are dumps. See README "Shell
+conventions".
 One page, copy-paste. Use this if the XT2227-1 stops booting after a bad
 kernel/image and shows no logo, no backlight and no USB beyond `1782:4D00`.
 

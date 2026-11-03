@@ -1,5 +1,10 @@
 # 18 - Building and flashing the custom kernel
 
+
+Shells: sections 0-3 are bash on the **build machine** (any Linux box);
+section 4 and later are bash/PowerShell on the **Windows host** that holds
+the images. Set `export MSYS2_ARG_CONV_EXCL="*"` in Git Bash first - see
+README "Shell conventions".
 How to go from a clean checkout to a phone running the custom kernel with
 GPU (and, once flashed, WiFi) - on any Linux machine or VM. x86_64, ~30 GB
 free disk, 8+ GB RAM recommended; a full build takes roughly 20-40 min on

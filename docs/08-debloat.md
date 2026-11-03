@@ -1,5 +1,8 @@
 # 08 - Debloat (Motorola / OOBE / Facebook)
 
+
+Shells: bash (Git Bash on Windows); `export MSYS2_ARG_CONV_EXCL="*"`
+first - see README "Shell conventions".
 After the unlock and the `/data` wipe, the setup wizard reinstalled
 Motorola's app suggestions. Everything below was removed with adb, no root
 needed (`pm uninstall` works from the `shell` uid on this build).

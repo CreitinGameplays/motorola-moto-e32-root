@@ -1,5 +1,10 @@
 # 15 - Play Integrity on the unlocked Moto E32 (no bootloader relock)
 
+
+Shells: bash blocks = Git Bash on Windows (the doc uses
+`MSYS_NO_PATHCONV=1`, equivalent to `MSYS2_ARG_CONV_EXCL="*"`); device-side
+snippets are meant to run inside an adb root shell as marked. See README
+"Shell conventions".
 Date started: 2026-10-31
 Status: **BASIC passes, DEVICE still open** (updated 2026-10-31 15:35)
 
