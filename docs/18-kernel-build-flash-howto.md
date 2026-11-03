@@ -399,11 +399,23 @@ diag build used to paint (`include/linux/diag_stage.h`, DIAG_BANNER):
   the previous and one shade brighter) - if a future build ever hangs
   before the MMU is on, the number of dashes names the last completed
   step on a photo
-* one **teal accent line** and one centered dark **text chip**:
-  `moto-e32 custom kernel <version> kvmcompat - booting`, drawn once
-  right after `paging_init()` (the message is a compile-time constant,
-  no printf machinery runs that early)
+* one **gray accent line** and a centered dark **two-line text chip**:
+  `moto-e32 custom kernel` / `<version> kvmcompat - booting`, drawn
+  once right after `paging_init()` (compile-time constant messages; no
+  printf machinery runs that early)
 
-Turn it off with `#define DIAG_BANNER 0` in
+**Geometry** (measured; see the `diag_stage.h` comment for the trail):
+the logo framebuffer at 0x9e000000 is scanned out in the panel's
+**native portrait mode, 720x1600 RGB888, stride 2160** - NOT the
+landscape 1600x720 the cmdline's `lcd_size` label suggests.  The first
+banner version painted with a 4800-byte stride and rendered as a
+sheared, overlapping mess; the same wrong assumption also means the
+old diag console photos were never clean.
+
+Colors are byte-order-safe (white/black/gray): the RGB-vs-BGR order of
+the logo scanout is unconfirmed - no colored accents until a
+known-color test is photographed.
+
+Turn the banner off with `#define DIAG_BANNER 0` in
 `include/linux/diag_stage.h`; the full multi-row diag console is
 `DIAG_SCREEN` (diag builds only).
