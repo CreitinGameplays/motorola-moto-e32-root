@@ -175,6 +175,51 @@ Revert: `echo 8 > cpu0/target`, restore 0x0016B903 to 0x84/0x88.
 * `scripts/device/cpu_dvfs_dump.sh`: full CPU DVFS state dump.
 * `scripts/device/cpu_oc_test.sh`: the phase-1 experiment (bench, write,
   flip, bench, revert) with results in /data/local/tmp/cpu_oc.log.
+* `scripts/device/cpu_freq_probe.c`: freestanding aarch64 frequency
+  probe (raw syscalls, CLOCK_MONOTONIC, 400M dependent adds, ~1.3 s at
+  1.6 GHz) - build with the VPS clang
+  (`--target=aarch64-linux-gnu -ffreestanding -nostdlib -static -O2
+  -Wl,-e,_start`), pin with `taskset <decimal-mask>` (toybox has no
+  -c and rejects 0x masks; cpu6 = mask 64, cpu0 = mask 1).  Note: its
+  ms print underflows (prints 18446744074xxx) when the run crosses a
+  second boundary - just re-run for a clean sample.
+
+## 6. EXPERIMENT RESULTS (2026-11-03): the frequency is fused-capped
+
+All experiments ran with vendor-shipped T612-2 field values, the
+driver's own cpudvfs sysfs handshake, and reverted cleanly (reboot also
+fully reverts).  Measurements via the pinned cpu_freq_probe:
+
+| test | work index | voltage grade readback | probe (ms) |
+|---|---|---|---|
+| big (A75) stock | 6 | 3 | 1334, 1334 |
+| big, T612-2 row verbatim (c2=4, c3=10, c6=4) | 7 | **4 (applied!)** | 1334, 1334 |
+| big, c3=8 + c6=4 (T606 trans code, 1820 slot) | 7 | 3 | 1334, 1334 |
+| lit (A55) stock | 8 | 5 | 1245, 1244 |
+| lit, T612-2 r10 verbatim (c2=7, c3=10, c6=5) | 10 | **7 (applied!)** | 1245, 1245 |
+
+Every combination: **the map rows ARE honored** (the voltage grades
+change exactly as the rows request), but the **CPU clock never changes**
+- the probes are identical to stock in all cases, the live PLL
+registers (0x64580000+0x54 etc.) never move, and the mpll slot
+registers are never selected.  The CGM sel toggles transiently
+(3 -> 0 -> 3) during the switch attempts - the FSM tries, then
+restores the old clock while keeping the requested voltage.
+
+### Verdict
+
+The T606's CPU frequency ceiling (1612 MHz on both clusters) is
+enforced inside the fused DVFS engine, the same mechanism family that
+caps the GPU at 650 MHz (docs/20 section 3d): the DTS/T612 map-table
+rows, the mpll slot ladders (1716/1820/2002 MHz entries all programmed
+at boot) and the voltage grades are common BSP content, but the
+fused per-product tables the FSM actually consults for the frequency
+top out at the product grade.  Software cannot lift it - the T606 is
+the binned-down SKU of the qogirl6 die (T612/T616 = the full-fat
+parts).
+
+CPU overclock: CLOSED.  Stock state fully verified after revert
+(work indexes 6/8, stock map rows, probes back to 1334/1245 ms).
 
 ## 6. Sources
 
