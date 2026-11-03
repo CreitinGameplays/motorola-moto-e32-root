@@ -45,7 +45,10 @@ param(
     [string]$CheckpointLabel,
     [switch]$RequireReset,
     [switch]$RequireCheckpointBreadcrumb,
-    [switch]$SkipWait
+    [switch]$SkipWait,
+    # no Magisk su available: elevate each adb session with the mali_kroot
+    # CVE-2021-28663 exploit instead (stock-kernel recovery path)
+    [switch]$RuntimeRoot
 )
 
 $ErrorActionPreference = 'Continue'
@@ -66,7 +69,15 @@ try {
 
 $lines = New-Object System.Collections.Generic.List[string]
 function Log([string]$s) { $lines.Add($s); Write-Host $s }
-function Sh([string]$cmd) { (& $Adb shell $cmd 2>&1 | Out-String).Trim() }
+function Sh([string]$cmd) {
+    if ($RuntimeRoot) {
+        # no Magisk su on this boot: strip the su -c '...' wrapper and
+        # elevate the session with the mali_kroot exploit instead
+        $cmd = $cmd -replace "^su -c '(.*)'\s*$", '$1'
+        $cmd = '/data/local/tmp/mali_kroot >/dev/null 2>&1; ' + $cmd
+    }
+    (& $Adb shell $cmd 2>&1 | Out-String).Trim()
+}
 
 $imgBytes = (Get-Item $Image).Length
 $imgHash = (Get-FileHash $Image -Algorithm SHA256).Hash
@@ -87,14 +98,26 @@ $bak = (Get-Item $Image).BaseName
 Log "slot            : $slot"
 Log "running kernel  : $ver"
 if ($slot -ne '_b') { Log "ABORT: not on slot _b (running $slot); the test channel needs _b"; $lines | Out-File -Append -Encoding utf8 $Out; throw "wrong slot" }
-$rootUid = Sh "su -c 'id -u'"
-if ($rootUid -ne '0') {
-    Log "ABORT: persistent root is unavailable (su uid=$rootUid); refusing to use mali_kroot"
-    $lines | Out-File -Append -Encoding utf8 $Out
-    throw "persistent Magisk root required"
+if ($RuntimeRoot) {
+    # recovery path: no Magisk on boot_b, elevate each adb session with
+    # the mali_kroot exploit instead (documented, user-requested flash)
+    $rootUid = Sh "id -u"
+    if ($rootUid -ne '0') {
+        Log "ABORT: runtime root unavailable (mali_kroot uid=$rootUid)"
+        $lines | Out-File -Append -Encoding utf8 $Out
+        throw "runtime root required"
+    }
+    Log "note: using RUNTIME root (mali_kroot), not Magisk su"
+} else {
+    $rootUid = Sh "su -c 'id -u'"
+    if ($rootUid -ne '0') {
+        Log "ABORT: persistent root is unavailable (su uid=$rootUid); use -RuntimeRoot only for recovery flashes"
+        $lines | Out-File -Append -Encoding utf8 $Out
+        throw "persistent Magisk root required"
+    }
 }
 $enforce = Sh 'getenforce'
-if ($enforce -ne 'Enforcing') {
+if ($enforce -ne 'Enforcing' -and -not $RuntimeRoot) {
     Log "ABORT: SELinux is $enforce, expected Enforcing; refusing to run a test boot"
     $lines | Out-File -Append -Encoding utf8 $Out
     throw "SELinux is not Enforcing"

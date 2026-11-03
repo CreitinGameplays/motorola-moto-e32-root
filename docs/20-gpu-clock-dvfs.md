@@ -113,6 +113,23 @@ So the runtime DVFS max is already 650 MHz (the T606 trim is applied) -
 option (b) is confirmed by the boot log; only the *reported* constant
 (a) remains to be changed.
 
+## 3c. Experiment results (2026-11-03): both untrim attempts crash the board
+
+Two independent attempts to lift the trim both hung the boot and needed
+BROM recovery - details in
+`docs/evidence/2026-11-03-gpu-untrim-attempts.txt`:
+
+1. renaming the `/hwfeature/auto` efuse string (kernel early fixup) hangs
+   the boot before post-fs-data (an unrelated early consumer keys on the
+   same string);
+2. loading our glue with the untrimmed 5-level table
+   (`mali_kbase.untrim_gpll=1`) kills the board at probe.
+
+So on this board 650 MHz is the qualified maximum with the current glue
+path; the 768/850 MHz levels are not reachable without a different
+approach (candidate: 768-only, post-boot, voltage maps kept - needs an
+explicit go before trying; two BROM recoveries were needed today).
+
 ## 4. Recommendation
 
 1. Do (a) + (b) in the next kernel build (one-line header change + a

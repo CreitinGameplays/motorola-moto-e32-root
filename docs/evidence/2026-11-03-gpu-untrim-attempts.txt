@@ -1,0 +1,68 @@
+# 2026-11-03: GPU untrim experiments - BOTH crash the board (results)
+
+Two independent attempts to lift the T606 650 MHz GPLL trim, both ended
+in a hung boot + BROM recovery.  Baseline data:
+`benchmarks/gpu/base_650mhz/BASELINE.md` (650 MHz: GPU score 119/117,
+no throttling, GPU <=51 C under sustained load).
+
+## Attempt 1: rename /hwfeature/auto efuse (kernel early fixup)
+
+`gpu_efuse_untrim.c` (kept in `patches/kernel-sprd/` as research): an
+arch_initcall rewrites the efuse string "T606" -> "T60X" in the live
+device tree, so the (OSS) qogirl6 glue keeps the untrimmed DTS table.
+The node is injected by the SPL fixup, so it cannot be patched in the
+dtbo.
+
+Result: boot hung **before post-fs-data** (< ~5 s) - the rename breaks an
+unrelated early-boot consumer of /hwfeature/auto (the node is a generic
+hardware descriptor; CPU/PM tables key on the same string).  Approach
+abandoned; the fixup is NOT committed to the kernel tree.
+
+## Attempt 2: rmmod vendor mali + insmod ours with untrim_gpll=1
+
+The proven kvmcompat image (sha 8981b765..., booted successfully twice
+before), with the Magisk mali module's post-fs-data.sh changed to
+
+    rmmod mali_kbase        # vendor copy loaded by init.md.rc at post-fs
+    insmod $KO untrim_gpll=1
+
+so OUR in-tree module (skips mali_freq_init's trim, keeps the 768/850
+OPPs, requests the DTS rate on the top GPLL source) becomes the GPU
+driver.
+
+Result: hard hang a second after post-fs-data started, then the phone
+shut itself down; the mali load log section (written in the same second)
+never reached disk - both are consistent with the GPU probe at the
+untrimmed 768/850 levels killing the board (power/clock fault).
+Recovered via BROM (runbook docs/14).
+
+## Load-order facts learned along the way
+
+* On the compat kernel the **vendor** mali_kbase loads first (init.md.rc
+  "on post-fs") and our Magisk module fails EEXIST - verified twice by
+  `/sys/module/mali_kbase/parameters/` listing only vendor params
+  (corestack_driver_control, gpu_*, kbase_unprivileged_...).
+* The vendor module registers the devfreq device with the FULL 5-level
+  table (`trans_stat` lists 850/768/614/512/384) and then limits the
+  runtime ceiling to 650 via the OPP disable + freq-list trim.
+* `/mnt/vendor/socko` is an OTA-snapshot dm device: runtime writes are
+  discarded at reboot (a verified write reverted; "lost async page
+  write"), so replacing the vendor .ko file is not possible.
+* Our lax `check_version` works as designed: the vendor module load logs
+  ~30 "CRC differs" lines (expected: genksyms type-numbering shift) and
+  loads fine - evidence in `/data/local/tmp/mali_module_load.log`.
+
+## Conclusion
+
+650 MHz is the qualified maximum on this board.  The 768/850 MHz DTS
+levels (same silicon family as T615/T620) are **not reachable with the
+current glue path** - enabling them crashes at probe.  Any further
+attempt should be a middle ground: keep the trim's voltage-map
+programming and `clk_set_rate()` the top GPLL source to exactly 768 MHz
+(granted-rate logged) instead of 850, driven only after boot (not at
+probe), with the DevCheck benchmark + thermal logging as the gate.
+Given two BROM recoveries today, that experiment needs an explicit go.
+
+Kernel state: the `untrim_gpll` module parameter stays in the tree
+(default 0 = stock trim, harmless); `gpu_efuse_untrim.c` is kept only in
+`patches/kernel-sprd/` of the analysis repo.
