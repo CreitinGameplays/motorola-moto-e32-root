@@ -217,12 +217,17 @@ later at post-fs-data.
 ## 9. KVM (the reason this kernel exists)
 
 `/dev/kvm` is created early (misc 10:232, root-only) - the diag series
-carried the early KVM/EL2 init. Verified: a Debian 13 arm64 netinst
-boots to its installer in Termux QEMU with `-accel kvm -cpu host`
-(GICv3 `its=off`, virtio-blk qcow2, UEFI ramfb, VNC). QEMU must run as
-root (`su -c`) to open `/dev/kvm`. Windows ARM64 guests are untested.
-The exact command line is in
-`docs/evidence/2026-11-02-kvm-verified.txt`.
+carried the early KVM/EL2 init. Verified guests:
+
+- Debian 13.7 arm64 netinst reaches its installer in Termux QEMU with
+  `-accel kvm -cpu host` (GICv3 `its=off`, virtio-blk qcow2, UEFI ramfb,
+  VNC) - exact command in `docs/evidence/2026-11-02-kvm-verified.txt`
+- **Windows 11 IoT Enterprise LTSC 24H2 ARM64** (build
+  26100.ge_release_24H2) installed and running as a
+  "KVM Virtual Machine" (6 vCPU, 2 GB RAM; screenshots in
+  `screenshots/kvm_win11_screenshots/`)
+
+QEMU must run as root (`su -c`) to open `/dev/kvm`.
 
 ## Reference
 

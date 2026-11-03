@@ -26,6 +26,23 @@ with `-accel kvm` (edk2 UEFI via ramfb, virtio-blk qcow2 disk, VNC out);
 "very fast" per the operator. No install was performed, but the guest
 reached the installer UI.
 
+## Windows 11 ARM64: VERIFIED RUNNING (2026-11-02)
+
+Screenshots in `screenshots/kvm_win11_screenshots/` (operator-captured
+on the phone display):
+
+- System > About: device "DESKTOP-PTOM5UP", **KVM Virtual Machine**,
+  1.61 GHz, 6 virtual processors, 2.00 GB RAM, ARM-based processor,
+  Windows 11 IoT Enterprise LTSC Evaluation **26100.ge_release_24H2**
+- Task Manager (`virt-11.1` virtual machine): 52% / 1.01 GHz, 0:00:37 up,
+  6 logical processors, Disk 0 29.2 GB, ~75% memory in use, working
+  desktop with C: 17.5 GB free of 29.2 GB
+- sc3: full-screen desktop on the phone panel (VoLTE, battery 87%)
+
+Same qemu-system-aarch64 / `-accel kvm` setup as the Debian test; the
+guest is Windows 11 ARM64 (build 26100). **Windows ARM64 is NOT
+untested anymore - it runs.**
+
 Notes from the test:
 - QEMU must run **as root** (`su -c`) to open `/dev/kvm` (root-only misc
   device, `10:232`), inside Termux's environment
@@ -34,8 +51,8 @@ Notes from the test:
   virtualization extensions work under our kernel; the earlier diag work
   confirmed KVM init at boot (`kvm [1]: 16-bit VMID`, GICv3 sysreg
   interface) and `/dev/kvm` exists (misc 10:232, root-only).
-- Expectation: most Linux ARM64 guests should work. **Windows ARM64 is
-  untested.**
+- Expectation: most Linux ARM64 guests work. **Windows ARM64 works too
+  (verified; see below and screenshots/kvm_win11_screenshots/).**
 
 Kernel-side reference:
 - the KVM bring-up was part of the diag series (early EL2/KVM init work

@@ -32,9 +32,16 @@ Root survives until reboot and is inherited by the parent adb shell.
 >    the in-tree `mali_kbase.ko` at post-fs-data, Magisk `su` Enforcing.
 >    Kernel history: [motorola-moto-e32-kernel](https://github.com/CreitinGameplays/motorola-moto-e32-kernel);
 >    bring-up evidence: `docs/evidence/2026-11-02-mali-autoload-success.txt`.
->    Known gaps on the custom kernel: WiFi and camera are not working yet
->    (their vendor modules refuse to load against it); that is the current
->    work, after which KVM enablement is next.
+>    **WiFi works too** (in-tree SC2355 driver + the vendor-HAL gates
+>    solved; evidence: `docs/evidence/2026-11-02-wifi-success.txt`), and
+>    **KVM is the goal achieved**: Windows 11 IoT Enterprise LTSC
+>    24H2 ARM64 runs on the phone under KVM (System > About: "KVM
+>    Virtual Machine", 6 vCPU, build 26100.ge_release; screenshots in
+>    `screenshots/kvm_win11_screenshots/`), Debian 13 arm64 also verified.
+>    See `docs/evidence/2026-11-02-kvm-verified.txt`. Known gaps on the
+>    custom kernel: camera stack and BT/FM/SAR sensor (vendor modules
+>    refuse to load; camera source hunt in progress -
+>    `docs/17-vendor-module-rebuilds.md`).
 >
 > **Careful:** the runtime exploit clears `selinux_state.enforcing`, leaving
 > SELinux **Permissive** until the next reboot. That is a tamper signal and it

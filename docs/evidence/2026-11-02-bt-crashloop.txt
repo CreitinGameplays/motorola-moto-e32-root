@@ -1,0 +1,65 @@
+# BT: BROKEN - enabling it kernel-panics the phone (2026-11-02)
+
+## What works
+
+The in-tree port of mu300's sprdbt_tty (drivers/misc/sprdbt_tty/,
+SDIO hif_type, ~15 4.14 fixes) **builds and loads**:
+
+    insmod sprdbt_tty.ko
+    /dev/ttyBT0 created (crw-rw---- bluetooth net_bt_admin 499,0)
+    /proc/bluetooth/sleep/btwrite present
+    /sys/devices/platform/sprd-mtty registered
+
+## What happens when BT is enabled
+
+    svc bluetooth enable
+    -> bt_chip_vendor: marlin3_lite_init
+    -> E open /sys/devices/platform/sprd-mtty/chipid faild   (node missing:
+       the HAL reads it; the driver does not create the attr)
+    -> userial vendor open: opening /dev/ttyBT0 errno 2
+       (transient: HAL starts before our insmod finishes)
+    -> later, vendor HAL crashes in libbt-vendor.so op+272 (native fault)
+    -> ~90 s after enable, WCN FIRMWARE asserts:
+         WCN BASE error: Notify firmware error:WCN loopcheck erro!
+         WCN SDIO: carddump flag set[1]
+    -> sprd-wlan: WCN in card dump, watching
+    -> mtty over load cut channel: 2
+    -> Unable to handle kernel NULL pointer dereference
+       mtty_rx_work_queue+0x160/0x230 [sprdbt_tty]
+    -> Kernel panic - not syncing: Fatal exception -> reboot (x N)
+
+Full backtrace captured in
+/sys/fs/pstore/dmesg-ramoops-0/1 on the post-crash boot (before it is
+overwritten by the next crash).
+
+## Why this is hard
+
+* The WCN chip (SC2355 Marlin3) is shared by WiFi and BT. The firmware
+  watchdog (loopcheck) trips ~90 s after BT power-on on THIS driver.
+  Stock kernel survives because it loads the vendor sprdbt_sdio_tty.ko
+  with the exact vendor init sequence (BT power on, firmware download,
+  HCI handshake) — the HAL on stock works.
+* The driver's bug is on top of an already-failing firmware: the crash is
+  the RX overload-cut path dereferencing NULL after the chip dumped.
+  Fixing the deref does NOT make BT work; it only removes the panic.
+* The vendor HAL also crashes (op+272 in libbt-vendor.so) — chipid node
+  missing is only cosmetic (chipid is a debug convenience), the fatal
+  part is the firmware assert.
+
+## Status / decision
+
+BT is **not shippable on the custom kernel today**. It is not required
+by the project (KVM is done, WiFi done, camera next). Do NOT insmod
+sprdbt_tty or run `svc bluetooth enable` until reworked:
+
+1. Fix the NULL deref in the overload-cut path (panic -> silent fail).
+2. Root-cause the loopcheck: why the firmware watchdog trips on BT
+   power-on here. Suspects: wrong BT firmware download path / ini,
+   missing `/sys/devices/platform/sprd-mtty/chipid` and `dumpmem`
+   attrs (the vendor driver exposes them; the HAL uses them to detect
+   the chip), or a channel/order mismatch vs the stock flow.
+3. Test on stock to see if the same enable sequence survives (it must;
+   it ships that way) — if yes, it is our driver; if it also loops
+   there, it is a config/hardware quirk.
+4. The Magisk module for BT is NOT installed (only manual insmod);
+   `bluetooth_on` is set to 0 so nothing re-triggers automatically.
