@@ -284,3 +284,67 @@ unique symbols) with `scripts/host/compare_vendor_crcs.py`.
 Then test the vendor camera stack (sprd_sensor -> sprd_flash_drv ->
 sprd_camera -> sprd_cpp -> mmdvfs -> sprd_fd); the vendor modules live in
 `/mnt/vendor/socko/` and are insmod'ed by `/vendor/etc/init/camera.rc`.
+
+## 2026-11-03 (2): making the vendor modules work on the *KVM* kernel
+
+Problem: `CONFIG_KVM` in this tree selects exactly two options that change
+core struct layouts the vendor modules were *not* built with:
+
+    arch/arm64/kvm/Kconfig:  config KVM
+        select MMU_NOTIFIER          -> struct mm_struct  gains
+                                        `struct mmu_notifier_mm *mmu_notifier_mm;`
+                                        (after `exe_file`)
+        select PREEMPT_NOTIFIERS     -> struct task_struct gains
+                                        `struct hlist_head preempt_notifiers;`
+                                        (after `sched_dl_entity`)
+
+Everything else KVM pulls in (HAVE_KVM_*, KVM_MMIO, KVM_VFIO, EVENTFD,
+KVM_ARM_PMU, ...) adds no fields to structs that cross the module ABI.  A
+module compiled without those options that reads, say, `current->cred` or
+`dev->of_node` would land 8 bytes off once the field is inserted before it.
+
+### Plan A (recommended): relocate the two fields to the tail
+
+Move the KVM-only fields to the end of their structs so every
+pre-existing field keeps the vendor offset and only the struct size grows:
+
+1. `include/linux/sched.h`: move `struct hlist_head preempt_notifiers;`
+   from after `struct sched_dl_entity dl;` to just above
+   `randomized_struct_fields_end` (the file's own comment says new fields
+   belong there).  All kernel access is by name (`task->preempt_notifiers`,
+   KVM's `kvm_sched_in/out` notifiers), so KVM keeps working.
+2. `include/linux/mm_types.h`: move
+   `struct mmu_notifier_mm *mmu_notifier_mm;` from after `exe_file` to just
+   before the closing `} __randomize_layout;`.  Same reasoning; the
+   mmu-notifier core only touches it by name.
+
+Both structs are opaque to modules in practice (nobody allocates them), so
+a +8 size change is harmless; only *field offsets* matter.
+
+### Verification (before flashing)
+
+Build a tiny "offsets probe" module (printed `offsetof()`/`sizeof()` for
+the structs the vendor modules actually share with the kernel -
+`device`, `task_struct`, `mm_struct`, `file`, `net_device`, `sk_buff`,
+`platform_device`, `regmap`, `clk`, `iommu_domain`, `dma_buf`,
+`timer_list`, `module`) under
+
+* the stock config (reference = vendor ABI), and
+* the KVM kernel config after the relocation,
+
+and diff the two listings: every offset must be identical.  Script to
+write: `scripts/host/dump_struct_offsets.py`.  Then re-run
+`scripts/host/compare_vendor_crcs.py` on the KVM kernel's
+`Module.symvers` (CRC values will differ from stock, but with the relaxed
+`check_version` that only needs to be *known*, not matched).
+
+### Rejected alternatives
+
+* binary-patching the vendor `.ko` field offsets - fragile, no.
+* replacing KVM's preempt-notifier usage to drop
+  `CONFIG_PREEMPT_NOTIFIERS` - much more invasive than moving one field.
+* dropping `CONFIG_MMU_NOTIFIER` - impossible, KVM's stage-2 unmap path
+  depends on it.
+* keeping two kernels (vendor-module-compat without KVM, KVM kernel
+  without vendor modules) - the current state; keep as fallback while Plan
+  A is unproven.
