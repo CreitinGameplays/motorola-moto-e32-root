@@ -247,6 +247,17 @@ Three details make it work (all scripted):
 
 Rationale and measurements: `docs/17-vendor-module-rebuilds.md`.
 
+Practical notes for the build host:
+
+* keep **one** `O=` build directory at a time on a RAM-backed `/tmp`
+  (the reference VM's tmpfs is 3.9 GB; two 2 GB build trees fill it and
+  the final `objcopy` fails with `No space left on device`).  Save the
+  finished tree's `Module.symvers` somewhere persistent
+  (`~/Module.symvers.compat-nokvm`) before deleting it - it is the
+  CRC reference for the ABI comparisons.
+* an interrupted build resumes with the same `make ... Image modules`
+  command; only the final link/objcopy steps are redone.
+
 ## 9. KVM (the reason this kernel exists)
 
 `/dev/kvm` is created early (misc 10:232, root-only) - the diag series
