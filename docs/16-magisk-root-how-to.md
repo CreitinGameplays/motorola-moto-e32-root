@@ -144,8 +144,8 @@ python -c "d=open(r'D:/AndroidSDKTools/pi/magisk_patched_raw.img','rb').read(); 
 
 # 2) AVB hash footer, same salt and rollback index as the stock image.
 #    avbtool pads the result to --partition_size (64 MiB).
-python D:/AndroidSDKTools/avb/avbtool.py add_hash_footer /
-  --image D:/AndroidSDKTools/pi/boot_magisk_payload.bin /
+python D:/AndroidSDKTools/avb/avbtool.py add_hash_footer \
+  --image D:/AndroidSDKTools/pi/boot_magisk_payload.bin \
   --partition_name boot --partition_size 67108864 \
   --key artifacts/kernel-build/avb-test-key.pem \
   --algorithm SHA256_RSA4096 --rollback_index 2 \
