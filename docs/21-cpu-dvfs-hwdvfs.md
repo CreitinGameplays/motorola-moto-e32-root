@@ -265,6 +265,93 @@ on qogirl6 the FREQUENCY itself is fused-capped (not just the
 voltage), which is why even the UMS512-style DTB/OPP edits are
 futile here - proven with the hardware's own rows (above).
 
+## 7. Direct inspection of the blocker (2026-11-03, late session)
+
+Full evidence file: `docs/evidence/2026-11-03-cpu-fsm-inspection.txt`.
+This session mapped the transition machinery itself and drove every
+remaining register surface, to locate the clamp at the hardware level.
+
+### 7a. Tools built for the inspection
+
+* poker module extensions (`modules/gpu-gpll-poker/`):
+  - `mon` - us-resolution change-detecting sampler over the work
+    index, per-cpu sel/volt regs, relock enables and BOTH mpll shadow
+    regs; writes a work index as the trigger (or triggerless).
+  - `clkwalk`/`clkaddr` - resolves `__clk_lookup`/`__clk_get_name` by
+    address from kallsyms (neither is exported) and prints any
+    clock's full parent chain with the kernel-computed rates.
+  - base 5: the aon-apb glbregs at 0x64000000 (module enables).
+* `scripts/device/cpu_freq_probe.c` gained a 20M-iteration build
+  variant (`-DITERS_M=20`, binary `cpu_freq_probe20`) for
+  low-frequency runs; the 400M default binary is unchanged so all
+  prior measurements stay comparable.
+* `scripts/device/calibrate.sh` - absolute frequency calibration via
+  the XTL row; `live_probe.sh` - live mpll regs under load;
+  `slot_rewrite_lit.sh`/`slot_test2.sh` - the slot-rewrite attack;
+  `fsm_reinit_test.sh` - the module_eb toggle (crashed; see 7e).
+
+### 7b. The claimed table is physically real (calibration)
+
+Pinning the lit cluster on the XTL row (target 0, sel=0, exactly
+26 MHz) calibrates the probe: the dependent-add loop runs at
+CPI = 5.0 exactly, and every claimed table frequency checks out
+(row 1 = 614.4 kHz claim -> 165 ms for 20M = CPI 5 x 614.4 MHz;
+row 8 = 1612 claim -> 62 ms; twpll = 1536 in the kernel clock tree
+matches row 7's sel-2 claim).  The vendor's "1612 MHz" is the real
+physical frequency - there is no hidden down-rating.
+
+### 7c. The CCF-visible PLL config is a parked shadow
+
+The kernel clock tree (clkwalk) computes mpll0 = 962 MHz and
+mpll1 = 1482 MHz from the analog-block config registers - yet the
+clusters demonstrably run at 1612.  Capturing those registers idle
+vs loaded shows only the lock bit (bit 17) toggling; the N value
+never changes with the DVFS state (idle shadow: N=74 integer /
+nint 69.231 SDM = exactly 1800.0 MHz for ananke; N=57 / 76.923 =
+exactly 2000.0 MHz for prometheus).  => the engine configures the
+PLL through a private path; the MMIO config regs and the CCF rates
+computed from them are a parked shadow.
+
+### 7d. The slot-rewrite attack: the engine ignores the slot files
+
+The archdata-written slot ladders in the analog blocks are the FULL
+FAMILY ladder on this unit (ananke: 884 1040 1378 1612 1716 1820
+1950; prometheus: 1040 1404 1612 1690 1820 1898 1950 2002) - not
+trimmed per product.  Rewriting ananke slot 3 (the 1612 slot loaded
+by lit row 8) with slot 5's verbatim 1820 config (N=62 -> 70), and
+row 8's volt column to grade 7 (1.0 V): the FSM executed the
+transition, applied the grade-7 voltage (voted_volt = 7) - and the
+CPU still ran at exactly 1612 (62 ms / 20M).  The engine does not
+read the MMIO slot files for its frequency decision; combined with
+the native-rows result (idx 4/5 -> 1612 despite the untrimmed
+ladder), the engine's per-mpll-idx frequency table is internal and
+never sourced from MMIO - the boot-cache theory is thereby
+disproven (a cache of the untrimmed ladder would have delivered
+1716/1820).
+
+### 7e. Runtime engine re-init is impossible (kernel panic)
+
+Forcing an FSM re-init via the driver's own module enable
+(aon-apb 0x64000000 + 0x4 bit 7, off 1 s / on) panics the kernel
+immediately: `reason: bad mode` (pstore console-ramoops captured,
+sprd-sysdump flow, clean reboot ~10 s later).  The engine owns the
+running clock path; it cannot be disabled under a live CPU.  DO NOT
+retry this at runtime.  (A boot-time rewrite of the slot ladder
+before the engine reads its tables would require modifying the SPL/
+bootloader - outside the software attack surface.)
+
+### 7f. Verdict of the direct inspection
+
+The 1612 MHz ceiling is enforced by the DVFS engine's internal,
+fused per-product frequency table.  Everything software can reach -
+DT rows, apcpu map tables, analog slot ladders, the work-index
+register, the engine's own transition machinery - is honored for
+VOLTAGE and ignored for FREQUENCY above the product grade, and the
+engine cannot be re-initialized while the system runs.  Same silicon
+story as the GPU cap (docs/20 sec. 3d): the T606 is the fused-down
+qogirl6 grade.  CPU overclock: CLOSED at the deepest level software
+can reach.
+
 ## 6. Sources
 
 * `drivers/cpufreq/sprd-hwdvfs-normal.c` (3164 lines): map table

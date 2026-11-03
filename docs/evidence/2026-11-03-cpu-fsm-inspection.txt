@@ -1,0 +1,100 @@
+2026-11-03 (late session): direct inspection of the CPU OC blocker
+================================================================
+
+Question: WHERE exactly does the 1612 MHz clamp live?  Earlier (docs/21
+sec. 6) we proved the frequency never changes; this session mapped the
+transition machinery itself and drove every remaining register surface.
+
+All registers via modules/gpu-gpll-poker (bases: 1 topdvfs 0x64014000,
+2 apcpu 0x64018000, 3 ananke 0x645a0000, 4 prometheus 0x64580000,
+5 aon-apb 0x64000000).  Frequency ground truth: the freestanding
+cpu_freq_probe (20M/400M dependent-add loop; absolute calibration via
+the XTL row below).
+
+1. The kernel clock tree (poker clkwalk: __clk_lookup via kallsyms)
+----------------------------------------------------------------
+mpll0  962000000    mpll0-gate 26000000  <- computed from the SHADOW regs
+mpll1 1482000000    mpll1-gate 26000000
+twpll 1536000000    ext-26m 26000000     <- 1536 = lit row 7 sel-2 claim OK
+gpll   650000000    <- GPU source matches docs/20
+rpll   390000000
+
+The CCF-visible "live" mpll config regs (ananke 0x84-0x8c, prometheus
+0x54-0x5c) decode to N=74 / N=57 integer mode (=> 962/1482 as computed
+by the driver) BUT their SDM fields decode to exactly 1800.0 / 2000.0
+MHz (nint=69.231 / 76.923).  Neither matches the 1612 the CPUs run.
+Captured idle vs loaded (live_probe.sh): only the lock bit (bit 17)
+differs; the N value NEVER changes with the DVFS state.
+=> These registers are a PARKED SHADOW, not the running config.  The
+   engine configures the PLL privately; the CCF rates are stale.
+
+2. Absolute probe calibration (calibrate.sh)
+--------------------------------------------
+XTL row (target 0: sel=0, volt=0): 20M iters = 4625/6679/15034 ms
+(noisy: Android daemons crawling on a 26 MHz cluster; first run is the
+cleanest => CPI ~ 6.0, i.e. 20M*5/26M = 3.85 s pure).
+Top row (target 8: sel=3, volt=5): 20M = 62/62/62 ms.
+Row 1 landing (614400 kHz claimed): 20M = 165/164/166 ms.
+CPI = 5.0 exactly at the top row => the claimed 1612 MHz IS the real
+physical frequency (62 ms * 1.612 GHz = 5.0 cycles/iteration).
+Row 1 at CPI 5: 20M*5/614.4 MHz = 162.8 ms ~= 165 measured.  The
+claimed freq table is physically real.
+
+3. The FSM transition dance (poker mon, us-resolution capture)
+-------------------------------------------------------------
+Trigger: direct work-index register write (0x214).  Captured:
+  - the row's voltage grade applies within ~60 us of the index write
+  - per-cpu CGM sel -> 0 (safe XTL) for ~54 us, then back to 3
+  - the mpll lock bit (shadow reg bit 17) drops for ~3.6 ms during the
+    relock window (engine powers down / reprograms / relocks the PLL)
+  - the engine executes the full dance on OUR rewritten rows (voltage
+    grades always honored exactly)
+
+4. The slot-rewrite attack (the decisive experiment)
+-----------------------------------------------------
+The analog-block "slot ladders" (archdata-written by sprd_mpll_table_
+init at boot; compact format: icp bits 0-2, postdiv bit 3, N bits 4-14):
+  ananke slots (base 3, 0xa8+4i): N = 34 40 53 62 66 70 75
+    => 884 1040 1378 [1612] 1716 1820 1950   (slot 3 = the 1612 slot)
+  prometheus slots (base 4, 0x78+4i): N = 40 54 62 65 70 73 75 77
+    => 1040 1404 [1612] 1690 1820 1898 1950 2002  (slot 2 = 1612)
+The vendor ladder is NOT trimmed per product on this unit - the high
+slots (1716/1820/1950/2002) are all present and programmed at boot.
+
+Test: rewrote ananke slot 3 (0xb4) from 0x3e3 (N=62) to 0x464 (slot 5's
+verbatim config: N=70 = 1820 MHz, icp=4), set lit row 8's volt column to
+grade 7 (1.0 V, the T612 lit-1820 grade), forced the full transition.
+Result: the FSM executed row 8, APPLIED grade 7 (voted_volt read 7) -
+and the probe stayed at 62 ms (20M) / 1248 ms (400M) = 1612 MHz.
+The rewritten slot value was still in the register afterwards - the
+engine simply does not read the MMIO slot files for its frequency
+decision.
+
+5. Why the private table must be fused (boot-cache theory disproven)
+--------------------------------------------------------------------
+If the engine cached the MMIO slot ladder at FSM init, mpll idx 4/5
+(the native SPL-default rows 0x8c-0x9c, and the T612-2 rows we wrote)
+would deliver 1716/1820 - the ladder is untrimmed on this unit.  They
+deliver 1612 (docs/21 sec. 6).  => the engine's per-mpll-idx frequency
+table is internal to the DVFS engine and never sourced from MMIO.
+The MMIO slot files appear vestigial on this SoC generation.
+
+6. Runtime FSM re-init is impossible (CRASH - do not retry)
+-----------------------------------------------------------
+Toggling the DVFS module enable (aon-apb 0x64000000+0x4 bit 7, the
+driver's own module_eb) to force an engine re-init:
+  - kernel panic within the toggle script: "reason: bad mode"
+    (pstore console-ramoops-0, timestamp 10637 s ~= 3 h uptime)
+    -> sprd-sysdump -> reboot.  The engine evidently also owns the
+    running clock path; disabling it under a live CPU is fatal.
+  - the phone rebooted cleanly; every register boot-restored to stock
+    (slot3 = 0x3e3, row8 = 0x0016b903, work indexes at the archdata
+    boot defaults lit 7 / big 5 before the governor settles).
+
+VERDICT: the 1612 MHz CPU ceiling is enforced by the DVFS engine's
+internal, per-product frequency table.  Every software-reachable copy
+of the frequency data (DT rows, apcpu map tables, analog slot ladders)
+is untrimmed family content that the engine ignores; the engine cannot
+be re-initialized at runtime.  Same silicon story as the GPU cap
+(docs/20 sec. 3d): the T606 is the fused-down qogirl6 grade.  CPU OC:
+CLOSED at the deepest level software can reach.

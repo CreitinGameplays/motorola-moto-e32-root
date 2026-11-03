@@ -1,6 +1,21 @@
 /* freestanding aarch64 CPU frequency probe: times a fixed dependent-add
  * loop with CLOCK_MONOTONIC via raw syscalls (no libc).  Static ELF,
- * runs on Android via adb shell.  Usage: bench <iters-in-millions> */
+ * runs on Android via adb shell.  Prints the elapsed ms.
+ *
+ * Iterations: 400M default; build a small variant with
+ *   -DITERS_M=50  (millions) for low-frequency runs (e.g. XTL 26 MHz).
+ * Build (VPS):
+ *   clang --target=aarch64-linux-gnu -march=armv8-a -ffreestanding \
+ *     -nostdlib -static -O2 -Wl,-e,_start cpu_freq_probe.c -o cpu_freq_probe
+ * Pin with toybox taskset decimal masks (no -c, no 0x): cpu0=1, cpu6=64,
+ * big pair=192.
+ * NOTE: the ms print underflows (prints 18446744074xxx) when the run
+ * crosses a second boundary - re-run for a clean sample. */
+
+#ifndef ITERS_M
+#define ITERS_M	400		/* millions of iterations */
+#endif
+#define ITERS	((u64)ITERS_M * 1000000UL)
 
 typedef unsigned long u64;
 typedef long i64;
@@ -42,15 +57,10 @@ void _start(void)
 {
 	struct ts t0, t1;
 	volatile u64 x = 0;
-	u64 iters = 100000000UL;	/* 100M default */
 	u64 i;
 
-	/* optional argv[1] in millions - parse via /proc self is overkill;
-	 * fixed 100M iters (~0.3-1.5 s) is enough for A/B */
-	(void)iters;
-
 	sys3(SYS_CLOCK_GETTIME, 1, (long)&t0, 0);
-	for (i = 0; i < 400000000UL; i++)
+	for (i = 0; i < ITERS; i++)
 		x += i;
 	sys3(SYS_CLOCK_GETTIME, 1, (long)&t1, 0);
 

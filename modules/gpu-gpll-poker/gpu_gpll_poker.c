@@ -51,6 +51,8 @@
 #define GLBREGS_5A_SIZE		0x300
 #define GLBREGS_58_PHYS		0x64580000	/* mpll-prometheus analog (AON) */
 #define GLBREGS_58_SIZE		0x300
+#define AON_APB_PHYS		0x64000000	/* aon apb glbregs (module enables) */
+#define AON_APB_SIZE		0x1000
 
 #define POKER_MAX_CLOCKS 12
 
@@ -143,9 +145,10 @@ static void __iomem *topdvfs_reg_base;	/* likely AON: fused grade tables */
 static void __iomem *apcpu_reg_base;	/* CPU DVFS map tables (AON) */
 static void __iomem *glb5a_reg_base;	/* mpll-ananke/scu slots (AON) */
 static void __iomem *glb58_reg_base;	/* mpll-prometheus slots (AON) */
+static void __iomem *aonapb_reg_base;	/* aon apb glbregs (module enables) */
 static int reg_base_sel;	/* 0 = gpu dvfs apb, 1 = topdvfs,
 				 * 2 = apcpu dvfs, 3 = glbregs 0x645a0000,
-				 * 4 = glbregs 0x64580000 */
+				 * 4 = glbregs 0x64580000, 5 = aon apb 0x64000000 */
 
 static void __iomem *sel_base(unsigned long *size)
 {
@@ -162,6 +165,9 @@ static void __iomem *sel_base(unsigned long *size)
 	case 4:
 		*size = GLBREGS_58_SIZE;
 		return glb58_reg_base;
+	case 5:
+		*size = AON_APB_SIZE;
+		return aonapb_reg_base;
 	default:
 		*size = GPU_DVFS_APB_SIZE;
 		return dvfs_reg_base;
@@ -234,7 +240,7 @@ static ssize_t base_store(struct kobject *k, struct kobj_attribute *a,
 	ret = kstrtoint(buf, 0, &v);
 	if (ret)
 		return ret;
-	if (v < 0 || v > 4)
+	if (v < 0 || v > 5)
 		return -EINVAL;
 	reg_base_sel = v;
 	return n;
@@ -266,6 +272,209 @@ static ssize_t dump_show(struct kobject *k, struct kobj_attribute *a,
 }
 
 static struct kobj_attribute dump_attr = __ATTR_RO(dump);
+
+/*
+ * ---- transition monitor --------------------------------------------
+ * The sprd-hwdvfs engine is a hardware FSM: software writes a work
+ * index and the engine performs the whole transition by itself.  This
+ * change-detecting sampler triggers a work-index write and records
+ * every register change around it, so the engine's own sequence
+ * (sel -> safe, mpll reprogram, relock, sel back) becomes visible
+ * and the failing step can be identified directly.
+ *
+ * mon write: "GO <idx-reg> <value> [duration_ms]"
+ *   idx-reg: 0x214 (lit) or 0x224 (big); value = work index to poke.
+ * mon read:  lines "regid t_ns val" (regid indexes mon_regs below).
+ */
+static const struct {
+	int base;			/* 2 apcpu, 3 ananke, 4 prometheus */
+	u32 off;
+} mon_regs[] = {
+	{2, 0x214},	/* lit work index */
+	{2, 0x224},	/* big work index */
+	{2, 0x38},	/* cpu0 sel(div pack */
+	{2, 0x30},	/* cpu0 volt grades */
+	{2, 0x244},	/* ananke relock/pd enable */
+	{3, 0x84},	/* mpll0 live cfg reg0 (N @ bits5-15, lock @ bit17) */
+	{3, 0x88},	/* mpll0 live cfg reg1 (kint/nint) */
+	{4, 0x54},	/* mpll1 live cfg reg0 */
+	{4, 0x58},	/* mpll1 live cfg reg1 */
+};
+#define MON_NREGS	ARRAY_SIZE(mon_regs)
+#define MON_ENTRIES	2048
+
+struct mon_ent {
+	u64 t;
+	u32 reg;
+	u32 val;
+};
+static struct mon_ent mon_ring[MON_ENTRIES];
+static int mon_count;
+static bool mon_ran;
+
+static void __iomem *mon_base(int base)
+{
+	switch (base) {
+	case 3:
+		return glb5a_reg_base;
+	case 4:
+		return glb58_reg_base;
+	default:
+		return apcpu_reg_base;
+	}
+}
+
+static u32 mon_read(int i)
+{
+	return readl_relaxed(mon_base(mon_regs[i].base) + mon_regs[i].off);
+}
+
+static ssize_t mon_store(struct kobject *k, struct kobj_attribute *a,
+			  const char *buf, size_t n)
+{
+	unsigned long idx_reg, val, dur_ms = 300;
+	u32 last[MON_NREGS];
+	u64 t0, t;
+	int i, ret;
+
+	ret = sscanf(buf, "%lx %lx %lu", &idx_reg, &val, &dur_ms);
+	if (ret < 2)
+		return -EINVAL;
+	if (idx_reg != 0x214 && idx_reg != 0x224 && idx_reg != 0)
+		return -EINVAL;
+
+	mon_count = 0;
+	mon_ran = false;
+	memset(last, 0, sizeof(last));
+
+	/* initial snapshot */
+	t0 = ktime_get_ns();
+	for (i = 0; i < MON_NREGS; i++) {
+		last[i] = mon_read(i);
+		if (mon_count < MON_ENTRIES) {
+			mon_ring[mon_count].t = 0;
+			mon_ring[mon_count].reg = i;
+			mon_ring[mon_count].val = last[i];
+			mon_count++;
+		}
+	}
+
+	/* trigger: write the work index directly (the engine reacts).
+	 * idx_reg == 0 means triggerless: just sample for the duration. */
+	if (idx_reg)
+		writel_relaxed(val, apcpu_reg_base + idx_reg);
+
+	while (mon_count < MON_ENTRIES) {
+		t = ktime_get_ns() - t0;
+		if (t > dur_ms * 1000000UL)
+			break;
+		for (i = 0; i < MON_NREGS; i++) {
+			u32 v = mon_read(i);
+
+			if (v != last[i]) {
+				last[i] = v;
+				mon_ring[mon_count].t = t;
+				mon_ring[mon_count].reg = i;
+				mon_ring[mon_count].val = v;
+				mon_count++;
+				if (mon_count >= MON_ENTRIES)
+					break;
+			}
+		}
+		cpu_relax();
+	}
+	mon_ran = true;
+	return n;
+}
+
+static ssize_t mon_show(struct kobject *k, struct kobj_attribute *a,
+			char *buf)
+{
+	int len = 0;
+	int i;
+
+	if (!mon_ran)
+		return scnprintf(buf, PAGE_SIZE, "no capture\n");
+	for (i = 0; i < mon_count && len < PAGE_SIZE - 48; i++)
+		len += scnprintf(buf + len, PAGE_SIZE - len,
+				 "%u %llu %08x\n",
+				 mon_ring[i].reg,
+				 (unsigned long long)mon_ring[i].t,
+				 mon_ring[i].val);
+	return len;
+}
+
+static struct kobj_attribute mon_attr = __ATTR_RW(mon);
+
+/*
+ * ---- clk tree walk -----------------------------------------------
+ * Resolves __clk_lookup / __clk_get_name via kallsyms (addresses are
+ * passed in from userspace - neither is EXPORT_SYMBOL'd) and prints
+ * a clock's full parent chain with the rates the kernel computes.
+ * clkaddr write: "0x<__clk_lookup> 0x<__clk_get_name>"
+ * clkwalk write: "<clk name>"; clkwalk read: the cached chain.
+ */
+typedef struct clk *(*clk_lookup_fn)(const char *);
+typedef const char *(*clk_getname_fn)(const struct clk *);
+
+static clk_lookup_fn do_clk_lookup;
+static clk_getname_fn do_clk_getname;
+static char clkwalk_buf[1536];
+static int clkwalk_len;
+
+static ssize_t clkaddr_store(struct kobject *k, struct kobj_attribute *a,
+			     const char *buf, size_t n)
+{
+	unsigned long a1, a2;
+	int ret;
+
+	ret = sscanf(buf, "%lx %lx", &a1, &a2);
+	if (ret != 2 || !a1 || !a2)
+		return -EINVAL;
+	do_clk_lookup = (clk_lookup_fn)a1;
+	do_clk_getname = (clk_getname_fn)a2;
+	return n;
+}
+static struct kobj_attribute clkaddr_attr =
+	__ATTR(clkaddr, 0600, rd_show, clkaddr_store);
+
+static ssize_t clkwalk_store(struct kobject *k, struct kobj_attribute *a,
+			     const char *buf, size_t n)
+{
+	struct clk *c;
+	char name[64];
+	int len;
+
+	if (!do_clk_lookup || !do_clk_getname)
+		return -ENODEV;
+	if (sscanf(buf, "%63s", name) != 1)
+		return -EINVAL;
+
+	clkwalk_len = 0;
+	clkwalk_buf[0] = '\0';
+	c = do_clk_lookup(name);
+	if (!c)
+		return -ENOENT;
+
+	while (c && clkwalk_len < sizeof(clkwalk_buf) - 96) {
+		len = scnprintf(clkwalk_buf + clkwalk_len,
+				sizeof(clkwalk_buf) - clkwalk_len,
+				"%s %lu\n", do_clk_getname(c),
+				(unsigned long)clk_get_rate(c));
+		clkwalk_len += len;
+		c = clk_get_parent(c);
+	}
+	return n;
+}
+
+static ssize_t clkwalk_show(struct kobject *k, struct kobj_attribute *a,
+			    char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%s", clkwalk_buf);
+}
+
+static struct kobj_attribute clkwalk_attr = __ATTR_RW(clkwalk);
+
 
 /* The vendor glue re-clamps the GPLL to 650 MHz (the T606 trim) on every
  * GPU power-on via clk_set_rate().  The clk core honors PRE_RATE_CHANGE
@@ -343,6 +552,9 @@ static struct attribute *poker_attrs[] = {
 	&rd_attr.attr,
 	&wr_attr.attr,
 	&dump_attr.attr,
+	&mon_attr.attr,
+	&clkaddr_attr.attr,
+	&clkwalk_attr.attr,
 	&guard_attr.attr,
 	NULL,
 };
@@ -380,6 +592,11 @@ static int __init gpll_poker_init(void)
 	glb58_reg_base = ioremap(GLBREGS_58_PHYS, GLBREGS_58_SIZE);
 	if (!glb58_reg_base) {
 		pr_err("gpu_gpll_poker: cannot ioremap glbregs 0x64580000\n");
+		return -ENOMEM;
+	}
+	aonapb_reg_base = ioremap(AON_APB_PHYS, AON_APB_SIZE);
+	if (!aonapb_reg_base) {
+		pr_err("gpu_gpll_poker: cannot ioremap aon apb glbregs\n");
 		return -ENOMEM;
 	}
 
@@ -438,6 +655,8 @@ static void __exit gpll_poker_exit(void)
 		iounmap(glb5a_reg_base);
 	if (glb58_reg_base)
 		iounmap(glb58_reg_base);
+	if (aonapb_reg_base)
+		iounmap(aonapb_reg_base);
 	if (dvfs_reg_base)
 		iounmap(dvfs_reg_base);
 	if (poker_kobj) {
