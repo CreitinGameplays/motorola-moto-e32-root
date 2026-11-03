@@ -1,0 +1,35 @@
+﻿
+========================================================================
+boot_b test, 2026-11-03 10:31:26
+image : artifacts/kernel-build/boot_kvmcompat_magisk.img
+        67108864 bytes, sha256 8981B765225C4E7C2B96A244416B2711BB878526C43F9D4A846DBE7658FF67F0
+========================================================================
+--- pre-flight ---
+slot            : _b
+running kernel  : Linux version 4.14.199+-ab612c2 (debian@vm) (clang version 11.0.1 (https://github.com/llvm/llvm-project.git 76c0092665867a6defcd328ba0d0d976eb65d991), LLD 11.0.1 (https://github.com/llvm/llvm-project.git 76c0092665867a6defcd328ba0d0d976eb65d991)) #2 SMP PREEMPT Tue Nov 3 12:20:53 UTC 2026
+root uid        : 0
+SELinux         : Enforcing
+boot_a rescue   : fc3ca0efd6414d4f5d24c478b1592ea1ba9386f1476883a0bd8a1b8b1a3844c0
+--- stage one-attempt helper ---
+adb.exe : C:\Users\Creitin\moto-root-test\scripts\device\set_slot_b_tries1.sh: 1 file pushed, 0 skipped. 5.1 MB/s 
+(1981 bytes in 0.000s)
+At C:\Users\Creitin\moto-root-test\scripts\host\run_boot_b_test.ps1:120 char:16
++ ... lperPush = (& $Adb push $helperPath '/data/local/tmp/set_slot_b_tries ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\Creiti...ytes in 0.000s):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+helper sha256   : 547d157a7f4641c68b76fe093c13a2c2c25a5a6d199bc742f82a947c438a5450
+--- push ---
+pushed sha256   : 8981b765225c4e7c2b96a244416b2711bb878526c43f9d4a846dbe7658ff67f0
+--- flash boot_b (root) ---
+attempt 1 : adb.exe : 64+0 records in | At C:\Users\Creitin\moto-root-test\scripts\host\run_boot_b_test.ps1:69 char:30 | + function Sh([string]$cmd) { (& $Adb shell $cmd 2>&1 | Out-String).Tri ... | +                              ~~~~~~~~~~~~~~~~~~~~~~ |     + CategoryInfo          : NotSpecified: (64+0 records in:String) [], RemoteException |     + FullyQualifiedErrorId : NativeCommandError |   | 64+0 records out | 67108864 bytes (64 M) copied, 0.810289 s, 79 M/s | 8981b765225c4e7c2b96a244416b2711bb878526c43f9d4a846dbe7658ff67f0
+read-back match : YES
+--- one-attempt slot b ---
+attempt 1 : uid=0 | before: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 9f 00 |  00 00 00 00 00 00 00 00 00 00 00 00 53 6d d6 a3 | block 32 bytes | after: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 1f 00 |  00 00 00 00 00 00 00 00 00 00 00 00 b1 82 a5 20 | AB_TRIES1_OK
+--- reboot ---
+reboot issued at 10:31:30
+
+skip-wait : image written, slot b has one attempt, reboot issued
+            not waiting: this is for images that boot to adb but never
+            reach boot_completed (e.g. a kernel without mali, where
+            surfaceflinger cannot start). Attach as soon as adb answers.

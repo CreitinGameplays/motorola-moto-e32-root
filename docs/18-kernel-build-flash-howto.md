@@ -260,6 +260,15 @@ Practical notes for the build host:
 
 ## 9. KVM (the reason this kernel exists)
 
+Status 2026-11-03: KVM is back in the *single* daily kernel - the stock
+config + KVM group + the task_struct/mm_struct field relocation pass the
+abiprobe ABI check (docs 17 "2026-11-03 (2)", evidence
+`2026-11-03-kvm-compat-success.txt`).  The build recipe of section 8b plus
+`--enable VIRTUALIZATION --enable KVM --enable KVM_ARM_HOST --enable
+KVM_VFIO --enable VHOST --enable VHOST_NET --enable VSOCKETS --enable
+MMU_NOTIFIER --enable PREEMPT_NOTIFIERS` (after the relocation patches)
+produces it.  Do NOT add those options *without* the relocation.
+
 `/dev/kvm` is created early (misc 10:232, root-only) - the diag series
 carried the early KVM/EL2 init. Verified guests:
 

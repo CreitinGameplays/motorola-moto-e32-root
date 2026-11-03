@@ -1,0 +1,62 @@
+# 2026-11-03: KVM and the vendor modules on ONE kernel
+
+Follow-up to `2026-11-03-camera-compat-success.txt`: the same
+vendor-module-compatible ABI now also runs KVM.  Kernel
+`4.14.199+-ab612c2 #2` (stock config + MALI/WLAN/BT **+ KVM/VHOST_NET/
+VSOCKETS**, LTO/CFI off, vermagic matches the shipping build).
+
+Image sha256 e1b9f30fa3acc42703f076a9611575ce2a180a5f2aca1d3c3b71222ccd0c1baa,
+packed over the Magisk base (`boot_kvmcompat_magisk.img`,
+8981b765225c4e7c2b96a244416b2711bb878526c43f9d4a846dbe7658ff67f0), dd'd to
+boot_b with the one-attempt marker (read-back verified), booted
+`boot_completed=1`, SELinux Enforcing.
+
+## The trick: field relocation (docs/17 "2026-11-03 (2)")
+
+`CONFIG_KVM` selects `MMU_NOTIFIER` and `PREEMPT_NOTIFIERS`, which insert
+`mmu_notifier_mm` into `struct mm_struct` and `preempt_notifiers` into
+`struct task_struct`.  Both fields were moved to the ends of their structs
+(`scripts/host/apply_kvm_field_relocation.py`), so every field the CFI-built
+vendor modules touch keeps the offset they were compiled with; only the
+struct sizes grow by 8 bytes (both structs are kernel-allocated only).
+
+## Verification: the offsets probe
+
+`modules/abiprobe/` prints 124 offsetof/sizeof entries for the structs the
+vendor modules share with the kernel.  Tables:
+
+    docs/evidence/abiprobe/abiprobe-reference-no-kvm-4.14.199-ab612c2.txt
+    docs/evidence/abiprobe/abiprobe-kvm-4.14.199-ab612c2.txt
+    docs/evidence/abiprobe/README.md   (the diff)
+
+Result: **all 124 reference offsets identical**; only additions are the two
+relocated fields at their new tail offsets
+(`mmu_notifier_mm=848`, `preempt_notifiers=2672`), and the only deltas are
+`offsetof(task_struct, thread)` (2672->2688, CPU-state tail) and
+`sizeof(mm_struct)` (848->856).  Built modules still have
+`.gnu.linkonce.this_module` 0x380 with init at 0x158 / cleanup at 0x310.
+
+CRC note: the relocation reorders struct members, so genksyms' type
+numbering shifts and 286/649 vendor CRC records differ from the stock
+values even though the layouts match - the relaxed `check_version` logs
+them at KERN_DEBUG and loads anyway.  Layout is what matters; the probe
+proves it.
+
+## Result on the device
+
+* all 13 vendor modules load (`sprd_sensor`, `sprd_flash_drv`,
+  `sprd_camera`, `sprd_cpp`, `mmdvfs`, `sprd_fd`, `flash_ic_ocp8135b`,
+  `aw9610x_sar`, `sprdbt_sdio_tty`, `sprd_sdio_fm`, `incrementalfs`) plus
+  the in-tree `mali_kbase` and `sprdwl_ng`;
+* camera (4 devices), flashlight, WiFi, BT: working (operator-confirmed);
+* **`/dev/kvm` present** (misc 10:232, root-only) and the guest boot was
+  operator-initiated (Debian 13.7 netinst via Termux QEMU, same procedure
+  as `2026-11-02-kvm-verified.txt`).
+
+## Consequence
+
+One kernel now does everything the separate KVM build and the
+vendor-module-compat build each did: GPU + WiFi + camera + torch + BT +
+FM + SAR + incfs + KVM.  The KVM feature set matches the verified #57
+KVM kernel (KVM, KVM_ARM_HOST, KVM_ARM_PMU, KVM_VFIO, VHOST, VHOST_NET,
+VSOCKETS).

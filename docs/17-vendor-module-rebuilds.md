@@ -316,7 +316,9 @@ module compiled without those options that reads, say, `current->cred` or
 
 ### Plan A (executing): relocate the two fields to the tail
 
-Status 2026-11-03: implemented, KVM build in progress.  Applied by
+Status 2026-11-03: **DONE and verified on the device** - see
+`docs/evidence/2026-11-03-kvm-compat-success.txt` (probe tables identical,
+all vendor modules + KVM on one kernel).  Applied by
 `scripts/host/apply_kvm_field_relocation.py` (sched.h + mm_types.h).
 Verification tool: `modules/abiprobe/` (an external-module offsets probe;
 build with `make O=<dir> M=<probe dir> modules`, push, `insmod` - it
