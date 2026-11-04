@@ -51,5 +51,24 @@ d8067a1389cc) on the first attempt; no BROM needed.
 
 Expected on the panel (see docs/18 sec. 11): a 16-px track at rows
 24..39, columns 72..648, filling left to right in 12 segments of 48 px,
-with the same bar mirrored at rows 1560..1575.  Visual confirmation
-pending.
+with the same bar mirrored at rows 1560..1575.
+
+--- visual confirmation (2026-11-04) ---
+User report: "exactly now there are 2 horizontal lines, one at the top
+and another one near the bottom and they increase left to right."
+That is precisely the v5 design - the top bar at rows 24..39 and its
+mirror at rows 1560..1575, both growing left to right - so the
+portrait geometry is now proven end to end:
+
+  * framebuffer   : 720 columns x 1600 rows, stride 2160 (720 * 3)
+  * orientation   : 1:1, buffer row = panel Y, buffer column = panel X
+  * no flip       : the mirror bar appeared at the bottom, so rows run
+                    top-to-bottom as drawn (the mirror is still useful
+                    in case another unit's panel is mounted inverted)
+  * colors        : byte-symmetric gray, so the RGB/BGR order is still
+                    unconfirmed (a known-color test is the only way)
+
+This is the first fully working on-panel indicator of the project.  The
+v4 failure (four vertical dotted columns) was the 4800-byte stride
+landing on a lattice of columns ~80 px apart, not a panel orientation
+mystery.

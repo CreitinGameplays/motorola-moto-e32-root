@@ -464,9 +464,9 @@ geometry, so its photos read upright too.
 **History:** v1 (stride 4800, text) ran up the panel edge, v2 (2160 with
 landscape dimensions) sheared, v3 ("rows 0..1", stride 4800) was invisible,
 v4 (landscape model, stride 4800) produced the vertical dotted lattice,
-and v5 (kernel `HEAD`, portrait 2160) is the first bar drawn in real panel
-coordinates: track + 12 segments at rows 24-39, mirrored at rows
-1560-1575.
+and v5 (kernel `d8067a1389cc`, portrait 2160) **works**: the panel shows
+the top bar and its bottom mirror filling left to right (user-confirmed
+2026-11-04, evidence in `docs/evidence/2026-11-04-bootbar5-flash.txt`).
 
 **If a boot stops at the logo with the bar full**, the kernel reached
 `do_basic_setup()` and the problem is in Android userspace, not the
