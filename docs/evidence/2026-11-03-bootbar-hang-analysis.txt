@@ -7,7 +7,9 @@ Image: artifacts/kernel-build/boot_custom_magisk_bar.img
 Symptom
 -------
 The panel stayed at the boot logo ("stuck on boot logo"), no progress bar
-was visible, and recovering the phone needed a BROM session.
+was visible, and recovering the phone needed a BROM session.  The dump
+below was taken with `scripts/device/post_hang_diag.sh` (prints the
+boot state, lists the pstore files and tails the console/dmesg records).
 
 1. What the kernel itself did (pstore)
 --------------------------------------
