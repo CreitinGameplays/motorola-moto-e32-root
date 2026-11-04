@@ -31,7 +31,7 @@
     `docs/05-bootloader-unlock-research.md`. The working route is the
     secure-world `miscdata` `VerifiedBoot-UNLOCK` marker, decoded in
     `docs/06-secure-world-unlock-path.md` and applied with
-    `docs/07-unlock-how-to.md`.
+    `docs/07-bootloader-unlock-how-to.md`.
 - Kernel config highlights (`artifacts/kernel-config`):
   - `CONFIG_RANDOMIZE_BASE=y` but panic log shows `Kernel Offset: disabled` -> KASLR effectively off; static kernel addresses usable
   - `CONFIG_KALLSYMS=y`, `CONFIG_KALLSYMS_ALL=y` (but `/proc/kallsyms` denied to shell)

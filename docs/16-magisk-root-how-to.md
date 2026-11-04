@@ -6,7 +6,7 @@ Shells: all blocks are **bash (Git Bash on Windows)** - set
 forward slashes. See README "Shell conventions".
 This is the working procedure for giving the XT2227-1 (`hawaii`, Unisoc T606,
 Android 11, kernel 4.14.199) **persistent root** with Magisk, on top of the
-software-unlocked bootloader from [07](07-unlock-how-to.md).
+software-unlocked bootloader from [07](07-bootloader-unlock-how-to.md).
 
 Result: `magiskd` runs on every boot, `adb shell su` works without any
 exploit, Zygisk modules can be installed, and the bootloader stays unlocked
@@ -52,7 +52,7 @@ Safety net: `boot_a` holds the rescue/restore image from
 
 | what | where | note |
 |---|---|---|
-| bootloader unlocked | see [07](07-unlock-how-to.md) | required: the AVB footer is signed with a throwaway key |
+| bootloader unlocked | see [07](07-bootloader-unlock-how-to.md) | required: the AVB footer is signed with a throwaway key |
 | runtime root exploit | `artifacts/mali_kroot` | one-time root, used to write `boot_b` |
 | `boot_a` = rescue image | `artifacts/rescue/boot_rescue_restore.img` | **install first** - the safety net |
 | stock `boot_b` backup | `$TOOLS/backups/<your-backup-dir>/boot_b.img` | sha256 must be `ccd0faff...4f7b18` |

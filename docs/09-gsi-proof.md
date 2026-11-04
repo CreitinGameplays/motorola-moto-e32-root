@@ -169,7 +169,7 @@ device running that GSI.
 
 * [06](06-secure-world-unlock-path.md): the unlock is no longer only
   "the properties say unlocked" - a foreign unsigned system image boots.
-* [07](07-unlock-how-to.md): the "what this does *not* unlock" section
+* [07](07-bootloader-unlock-how-to.md): the "what this does *not* unlock" section
   needs the DSU/GSI case spelled out - the boot-time AVB policy change is
   exactly what lets a GSI boot; the fastboot *download* gate is a separate
   mechanism and was still rejecting unsigned requests when last probed.

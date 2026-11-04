@@ -15,7 +15,7 @@ be a secure-world marker in `miscdata` that a *root* caller can have signed
 (SIP service `0xb4000020` op `0x31`) with no private key at all. The follow-up
 analysis decoded that path and it **works**: mechanism in
 [06-secure-world-unlock-path.md](06-secure-world-unlock-path.md), procedure in
-[07-unlock-how-to.md](07-unlock-how-to.md), proof in
+[07-bootloader-unlock-how-to.md](07-bootloader-unlock-how-to.md), proof in
 [09-gsi-proof.md](09-gsi-proof.md). Read this document as the survey of the
 key-based routes and of what the stock bootloader exposes - not as a verdict
 that the device cannot be unlocked.
@@ -326,7 +326,7 @@ their fingerprints, and compares them against a candidate leaked key.
 | Motorola official unlock | no | device unsupported, commands removed |
 | Unisoc identifier-token unlock | **no** (mechanism present) | needs Motorola/ODM private key; leaked key does not match |
 | CVE-2022-38694 BootROM exploit | **no** (platform matches) | needs physical download mode + hawaii UFS FDLs; Moto UFS falls back to AutoD; brick risk |
-| secure-world `miscdata` marker (SMC `0xb4000020` op `0x31`) | **yes - works** | mechanism decoded in [06](06-secure-world-unlock-path.md), applied and verified; a GSI boots as independent proof, see [07](07-unlock-how-to.md) and [09](09-gsi-proof.md) |
+| secure-world `miscdata` marker (SMC `0xb4000020` op `0x31`) | **yes - works** | mechanism decoded in [06](06-secure-world-unlock-path.md), applied and verified; a GSI boots as independent proof, see [07](07-bootloader-unlock-how-to.md) and [09](09-gsi-proof.md) |
 | run a custom kernel from RAM (`fastboot boot`) | **no** | real bootloader ACKs and reboots without executing the payload; fastbootd has no `boot` at all; kexec/devmem absent; no exec command in download mode; U-Boot console is UART-only (see the section above) |
 | write a custom kernel with `fastboot flash` | **no** | global signature gate: even the phone's own byte-identical stock images are refused with `Please verify the signature!` (`boot_b`, `misc`, `dtbo_a` all tested); the unlock marker opens boot, not writes ([evidence](evidence/2026-10-30-flash-gate.txt)). The gate is decoded in [11](11-flash-gate.md): it needs a non-secure efuse (secure-world SIP op `0xa`) or the RAM flag `0x9f70a001`, whose only setter is unreferenced dead code. `erase:` is gated by the same function |
 | switch slots with `fastboot set_active` | **yes** | ungated (not a `flash:`/`erase:` command, it only rewrites the BCB in `misc`): `set_active a` and `set_active b` both return `OKAY` in 0.016 s. See [evidence](evidence/2026-10-30-slot-switch.txt) |
@@ -343,7 +343,7 @@ The secure-world marker route turned out to be the winning one: it needs no
 private key and no FDL, only the runtime root that this repo already provides.
 It is now applied and verified on the device (`ro.boot.flash.locked=0`,
 `verifiedbootstate=orange`); the step-by-step is in
-[07-unlock-how-to.md](07-unlock-how-to.md) and the captured evidence in
+[07-bootloader-unlock-how-to.md](07-bootloader-unlock-how-to.md) and the captured evidence in
 [evidence/2026-10-29-unlock.txt](evidence/2026-10-29-unlock.txt).
 Functionally confirmed as well: an Android 15 GSI with no Motorola
 signature boots on the unlocked device ([09-gsi-proof.md](09-gsi-proof.md),

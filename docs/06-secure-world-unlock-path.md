@@ -7,7 +7,7 @@ first in-kernel experiment plan.
 
 Status: **mechanism decoded, tested on the device, applied and verified.** The
 signing call was exercised from Linux with an unsigned kernel module
-(`docs/07-unlock-how-to.md`), the resulting `miscdata` marker survives reboots,
+(`docs/07-bootloader-unlock-how-to.md`), the resulting `miscdata` marker survives reboots,
 and an unsigned Android 15 GSI boots on the stock boot chain
 (`docs/09-gsi-proof.md`). Sections 1-6 below are the reverse-engineering record
 and the original test plan; section 7 is the result log.
@@ -396,7 +396,7 @@ captures in [evidence/2026-10-29-gsi-boot.txt](evidence/2026-10-29-gsi-boot.txt)
 
 ## Reproduce
 
-Full step-by-step instructions are in `docs/07-unlock-how-to.md`; the short
+Full step-by-step instructions are in `docs/07-bootloader-unlock-how-to.md`; the short
 version:
 
 ```bash

@@ -57,7 +57,7 @@ Root survives until reboot and is inherited by the parent adb shell.
 >
 > **Update:** the bootloader is unlocked in software, using the runtime root
 > to mint the secure-world `VerifiedBoot-UNLOCK` marker into `miscdata`. See
-> `docs/07-unlock-how-to.md` and `docs/06-secure-world-unlock-path.md`.
+> `docs/07-bootloader-unlock-how-to.md` and `docs/06-secure-world-unlock-path.md`.
 >
 > **Proof:** an Android 15 GSI with no Motorola signature now boots on the
 > device (`ro.boot.flash.locked=0`, `verifiedbootstate=orange`,
@@ -123,7 +123,7 @@ firmware. Other builds need their symbols re-derived - see
 - Moto E32 XT2227-1 on the firmware above (`adb shell getprop ro.build.fingerprint`)
 - USB debugging enabled, host key authorized
 - Bootloader: the exploit works whether it is locked or unlocked (this unit has
-  since been unlocked in software - see `docs/07-unlock-how-to.md`)
+  since been unlocked in software - see `docs/07-bootloader-unlock-how-to.md`)
 
 Paths: this project keeps the big binary dependencies out of the repo.
 The docs use **`$TOOLS`** as a variable for wherever you keep them - the
@@ -148,7 +148,7 @@ docs/
   04-reliability-hardening.md  failure modes, fixes, measurements
   05-bootloader-unlock-research.md  initial unlock research: why the key/legacy routes fail
   06-secure-world-unlock-path.md  secure-world SMC signing oracle -> unlock
-  07-unlock-how-to.md       step-by-step software bootloader unlock
+  07-bootloader-unlock-how-to.md       step-by-step software bootloader unlock
   08-debloat.md             Motorola/OOBE/Facebook bloat removal
   09-gsi-proof.md           a GSI boots = independent proof of the unlock
   10-kernel-source.md       the full kernel source: where it is, how it was
@@ -336,7 +336,7 @@ Then wipe `/data` once from stock recovery (same as a normal unlock) and
 reboot: `ro.boot.flash.locked=0`, `verifiedbootstate=orange`, and U-Boot logs
 `WARNNING: LOCK FLAG IS : UNLOCK, SKIP VERIFY!!!`. The full mechanism,
 constraints and the step-by-step are in `docs/06-secure-world-unlock-path.md`
-and `docs/07-unlock-how-to.md`. Only the boot-time AVB policy changes - the
+and `docs/07-bootloader-unlock-how-to.md`. Only the boot-time AVB policy changes - the
 fastboot *download* gate is a separate mechanism and was still refusing
 unsigned requests when last probed.
 
@@ -400,7 +400,7 @@ hardening and measured reliability are in `docs/04-reliability-hardening.md`.
   unusable (not needed here).
 - The runtime exploit does not need an unlocked bootloader and no boot image is
   flashed by it. This unit's bootloader was later unlocked **in software**
-  (`miscdata` marker - see `docs/07-unlock-how-to.md`) and a Magisk-patched
+  (`miscdata` marker - see `docs/07-bootloader-unlock-how-to.md`) and a Magisk-patched
   `boot_b` was flashed afterwards (see `docs/12-slot-b-testing-channel.md`);
   `boot_a` holds the proven rescue/restore image. The key/legacy unlock routes
   are dead ends (`docs/05-bootloader-unlock-research.md`), and the separate
@@ -419,7 +419,7 @@ hardening and measured reliability are in `docs/04-reliability-hardening.md`.
 - `docs/03-root-exploit.md` - the complete exploit chain and offsets
 - `docs/04-reliability-hardening.md` - failure analysis and hardening
 - `docs/05-bootloader-unlock-research.md` - bootloader unlock feasibility
-- `docs/07-unlock-how-to.md` - step-by-step software bootloader unlock
+- `docs/07-bootloader-unlock-how-to.md` - step-by-step software bootloader unlock
 - `docs/10-kernel-source.md` - the full kernel source: Motorola/Unisoc
   `kernel-sprd` @ `R-11-release-RORS`, verified against the phone (config,
   Kconfig, headers, device tree) plus the measured gap to the shipped build
