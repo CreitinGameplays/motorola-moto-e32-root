@@ -756,8 +756,16 @@ Progress so far (2026-11-04): `spoofVendingSdk=true` written to the module
 pif.json (inert, see above) + `pm clear com.android.vending` -> Play Store
 "Check certification" -> **"Couldn't fix device certification issue"**.
 Keybox reverted to the PIF-NEXT `sw` one afterwards (no expiry risk while
-the Megatron leaf ages out).  Phone rebooted 14:04 to force a fresh GMS
-checkin; certification re-check pending.
+the Megatron leaf ages out).  Phone rebooted 14:04; the automatic checkin
+did not run (server-set interval is ~6.8 days), so the user dialed
+`*#*#2432546#*#*` (adb cannot dial it - the `tel:` URI is sanitized) and
+GMS logged **"Checkin Succeeded" at 14:15:20**.  The response still
+carries `uncertified_status = 1` with
+`uncertified_status_expiration_remaining_time_ms = 6479999363` (~75-day
+grace window) - expected 15 minutes after registration, since Google
+allows up to 24 h for it to take effect.  GSF ID confirmed unchanged.
+Next re-check: dial the code again later, clear Play Store data, run
+"Check certification"; when it flips to certified, re-run SPIC.
 
 ## 8. Working hypotheses (in order of likelihood)
 
