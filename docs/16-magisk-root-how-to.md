@@ -224,10 +224,10 @@ rescue on its own:
 ```bash
 adb push scripts/device/set_slot_b_tries1.sh /data/local/tmp/set_slot_b_tries1.sh
 adb shell 'chmod 755 /data/local/tmp/mali_kroot'
-adb shell
-hawaii:/ $ /data/local/tmp/mali_kroot
-hawaii:/ $ chmod +x /data/local/tmp/set_slot_b_tries1.sh
-hawaii:/ $ /data/local/tmp/set_slot_b_tries1.sh
+# then:
+adb shell '/data/local/tmp/mali_kroot
+chmod +x /data/local/tmp/set_slot_b_tries1.sh
+/data/local/tmp/set_slot_b_tries1.sh'
 ```
 
 The A/B block becomes: slot a = priority 14, tries 0, successful 1 (`0x008e`);
