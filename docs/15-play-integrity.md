@@ -688,6 +688,59 @@ genuinely needed.
 - repo `artifacts/` (rescue image, slot-probe dumps, kernel `Image.*`,
   `mali_kroot`, device tree)
 
+### 2026-11-04 - **DEVICE root cause found: the device is not Play Protect certified**
+
+Everything the earlier sessions blamed (revoked keybox, DroidGuard, profile
+mismatch) was secondary to this.
+
+Measured state:
+
+* Play Store -> Settings -> About -> **"Play Protect certification: Device is
+  not certified"** (read over adb UI automation, `uiautomator dump`; Play Store
+  53.8.11-29).  With an uncertified device Google caps the verdict at
+  `MEETS_BASIC_INTEGRITY` no matter what the attestation chain looks like.
+* Play Integrity (SPIC 1.4.0, local mode) - **`MEETS_BASIC_INTEGRITY` only**,
+  twice: with the installed PIF-NEXT `sw` keybox, and after swapping in the
+  Megatron RKP keybox and restarting the TrickyStore daemon + force-stopping
+  GMS.  The second run used a fresh nonce, so it was a real request.
+* Installed keybox (`/data/adb/tricky_store/keybox.xml`, md5 `0a5e6a23...`)
+  is **PIF-NEXT's `DeviceID="sw"` one**: a *software* attestation chain
+  (root `f92009e853b6b045`, expired 2026-05-24).  A software chain can never
+  produce DEVICE - it is not hardware-backed.
+* Megatron keybox (`DeviceID="45c003068fe43b0e61acc8504ee81b5c41a9b4"`, kept
+  at `/data/local/tmp/pi/keybox_megatron_backup.xml`) is a real RKP chain:
+  leaf `CN=405d3d10...` (Xiaomi, **not after 2026-11-06**), `Droid CA3` ->
+  `Droid CA2` -> `Key Attestation CA1` (Google, 2025-2035).  All four
+  signatures verify, the root is self-signed.  KeyAttestation app says
+  "Unknown root certificate" only because its bundled root list predates the
+  2025 CA; the chain itself is sound.  It still yields BASIC, which is
+  exactly what an uncertified device predicts.
+* GSF ID (the ID certification is tied to, `gservices.db` -> `android_id`):
+  **4519678717799231446**.
+
+Why the device is uncertified - most likely, in order:
+
+1. `pif.json` spoofs `google/tangorpro_beta/tangorpro:16/...` (**Android 16**)
+   while the device runs Android 11 (SDK 30), and `spoofVendingSdk` is
+   **false**.  Play Store checkin therefore reports a build/SDK combination
+   that does not exist; certification is refused.
+2. The checkin that set the flag happened before the props were spoofed, and
+   nothing has forced a new checkin since.
+
+Next actions (cheap to expensive):
+
+1. set `"spoofVendingSdk": true` in `pif.json` and/or switch to an
+   Android-11-era certified fingerprint, force-stop GMS + Play Store, and
+   re-read the certification line;
+2. if still uncertified, `pm clear com.android.vending` (light) and then, if
+   needed, `pm clear com.google.android.gms` (heavy: signs the account out)
+   to force a fresh checkin;
+3. official fallback: register GSF ID `4519678717799231446` at
+   google.com/android/uncertified with the account used on the device;
+4. only after the device is certified does the keybox matter again - and
+   then it must be a non-revoked **hardware** chain (a fresh user-supplied
+   keybox, since Megatron's leaf expires 2026-11-06).
+
 ## 8. Working hypotheses (in order of likelihood)
 
 0. **SELinux Permissive - CONFIRMED 2026-10-31 12:08.** `mali_kroot` flips
