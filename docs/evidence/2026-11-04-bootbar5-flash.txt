@@ -1,0 +1,55 @@
+﻿
+========================================================================
+boot_b test, 2026-11-04 13:41:19
+image : artifacts\kernel-build\boot_custom_magisk_bar5.img
+        67108864 bytes, sha256 B6623C712DF0F2DBFF7FBE074AF6635836A0FE9CDD89D76970C66DF3044CC947
+========================================================================
+--- pre-flight ---
+slot            : _b
+running kernel  : Linux version 4.14.199+-ab612c2 (debian@vm) (clang version 11.0.1 (https://github.com/llvm/llvm-project.git 76c0092665867a6defcd328ba0d0d976eb65d991), LLD 11.0.1 (https://github.com/llvm/llvm-project.git 76c0092665867a6defcd328ba0d0d976eb65d991)) #1 SMP PREEMPT Wed Nov 4 00:57:09 UTC 2026
+root uid        : 0
+SELinux         : Enforcing
+boot_a rescue   : fc3ca0efd6414d4f5d24c478b1592ea1ba9386f1476883a0bd8a1b8b1a3844c0
+--- stage one-attempt helper ---
+adb.exe : C:\Users\Creitin\moto-root-test\scripts\device\set_slot_b_tries1.sh: 1 file pushed, 0 skipped. 0.1 MB/s 
+(1981 bytes in 0.014s)
+At C:\Users\Creitin\moto-root-test\scripts\host\run_boot_b_test.ps1:143 char:16
++ ... lperPush = (& $Adb push $helperPath '/data/local/tmp/set_slot_b_tries ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\Creiti...ytes in 0.014s):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+helper sha256   : 547d157a7f4641c68b76fe093c13a2c2c25a5a6d199bc742f82a947c438a5450
+--- push ---
+pushed sha256   : b6623c712df0f2dbff7fbe074af6635836a0fe9cdd89d76970c66df3044cc947
+--- flash boot_b (root) ---
+attempt 1 : adb.exe : 64+0 records in | At C:\Users\Creitin\moto-root-test\scripts\host\run_boot_b_test.ps1:79 char:6 | +     (& $Adb shell $cmd 2>&1 | Out-String).Trim() | +      ~~~~~~~~~~~~~~~~~~~~~~ |     + CategoryInfo          : NotSpecified: (64+0 records in:String) [], RemoteException |     + FullyQualifiedErrorId : NativeCommandError |   | 64+0 records out | 67108864 bytes (64 M) copied, 0.939445 s, 68 M/s | b6623c712df0f2dbff7fbe074af6635836a0fe9cdd89d76970c66df3044cc947
+read-back match : YES
+cleaned staging : /data/local/tmp/boot_custom_magisk_bar5.img removed
+--- one-attempt slot b ---
+attempt 1 : uid=0 | before: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 9f 00 |  00 00 00 00 00 00 00 00 00 00 00 00 53 6d d6 a3 | block 32 bytes | after: |  5f 62 00 00 42 43 41 42 01 02 00 00 8e 00 1f 00 |  00 00 00 00 00 00 00 00 00 00 00 00 b1 82 a5 20 | AB_TRIES1_OK
+--- reboot ---
+reboot issued at 13:41:23
+
+skip-wait : image written, slot b has one attempt, reboot issued
+            not waiting: this is for images that boot to adb but never
+            reach boot_completed (e.g. a kernel without mali, where
+            surfaceflinger cannot start). Attach as soon as adb answers.
+
+--- result ---
+Booted the v5 kernel (portrait / stride 2160 geometry, commit
+d8067a1389cc) on the first attempt; no BROM needed.
+
+  /proc/version        Linux version 4.14.199+-ab612c2 (debian@vm)
+                       #1 SMP PREEMPT Wed Nov 4 16:40:46 UTC 2026
+  sys.boot_completed   1
+  ro.boot.slot_suffix  _b
+  root                 uid 0
+  /dev/kvm             crw------- root root 10, 232
+  SELinux              Enforcing
+  /data/local/tmp      98M, no staging image and no slot helper left
+                       behind (run_boot_b_test.ps1 now removes both)
+
+Expected on the panel (see docs/18 sec. 11): a 16-px track at rows
+24..39, columns 72..648, filling left to right in 12 segments of 48 px,
+with the same bar mirrored at rows 1560..1575.  Visual confirmation
+pending.

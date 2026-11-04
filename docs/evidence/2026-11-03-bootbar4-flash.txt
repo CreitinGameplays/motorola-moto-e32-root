@@ -35,18 +35,22 @@ skip-wait : image written, slot b has one attempt, reboot issued
             surfaceflinger cannot start). Attach as soon as adb answers.
 
 --- result ---
-The kernel booted and the progress bar rendered on the panel (user
-visual confirmation, 2026-11-03 ~22:00).  This is the first on-panel
-indicator that is actually visible: the track + 12-segment bar shows up
-along the physical top edge, exactly as the transposed-scanout mapping
-in include/linux/diag_stage.h predicts.
+The kernel booted and was visible on the panel, but NOT as designed
+(user report, 2026-11-03 ~22:00): instead of a horizontal bar the panel
+showed four vertical lines ("|  | |  |": one at the left edge, one at
+the right side, two spaced in between) whose segments grew downwards
+while boot progressed.
 
-Geometry summary that made it work:
-  memory buffer : 1600x720 landscape raster, stride 4800, 720 rows
-  panel         : rotated  ->  physical X = buffer row
-                                physical Y = buffer column
-  bar           : 8-px strip at buffer columns 0..7 (top edge) and
-                  1592..1599 (bottom edge), rows 8..704, 12 segments
+That observation refuted the transposed-scanout model this image was
+built for.  Re-rendering the exact v4 write pattern showed the model
+predicts two clean horizontal lines (which is not what appeared), while
+a PORTRAIT 720x1600 / stride 2160 buffer predicts a lattice of dotted
+vertical columns exactly like the report - so the 4800-byte stride,
+not the orientation, was the error.  See docs/18 sec. 11 for the
+corrected geometry and the v5 fix.
+
+What v4 did prove: the flash path worked, the custom kernel booted with
+the bar code running, and slot b recovered normally (no BROM needed).
 
 Device state after the flash:
   /proc/version          Linux version 4.14.199+-ab612c2 (debian@vm)
@@ -57,5 +61,6 @@ Device state after the flash:
   root                   uid 0
   /dev/kvm               crw------- root root 10, 232
   SELinux                Enforcing
+
 
 

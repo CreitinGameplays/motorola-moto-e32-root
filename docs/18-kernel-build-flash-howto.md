@@ -408,9 +408,9 @@ the boot logo while Android starts; the Android boot animation replaces
 the picture a few seconds later (`include/linux/diag_stage.h`,
 DIAG_BANNER):
 
-* an 8-px-thick gray bar along the **top edge** of the panel (mirrored
-  along the bottom edge, see below), divided into 12 segments that fill
-  as boot progresses:
+* a 16-px-tall gray bar near the **top edge** of the panel at rows 24-39
+  (mirrored at rows 1560-1575, see below), 12 segments of 48 px starting
+  at column 72, that fill left to right as boot progresses:
   * a dim track plus segments 0-2 in `head.S` (the pre-MMU milestones:
     `el2_setup`, page tables, `__cpu_setup`) - each one shade brighter,
     so a photo of a hang before the MMU names the last completed step
@@ -418,34 +418,39 @@ DIAG_BANNER):
   * segments 8-11 after `do_basic_setup()` in `init/main.c` (all
     initcalls done) - full width = kernel up, Android starting
 
-**Geometry - settled from vendor data** (trail in the `diag_stage.h`
+**Geometry - settled by experiment** (trail in the `diag_stage.h`
 comment): the logo partition (`/dev/block/by-name/logo`, sda12) holds
-gzip-compressed BMPs, all **720x1600 24-bpp**, and their *content* is
-drawn rotated 90 degrees inside the BMP (the battery-charging image is
-stored lying on its side).  The bootloader therefore transposes the
-picture on the way into `lcd_base`, so the memory buffer is a
-**1600x720 landscape raster, stride 4800 (1600 * 3), 720 rows**, and
-the panel displays it rotated:
+gzip-compressed BMPs that are **720x1600 24-bpp with the picture upright**
+in the canvas (content bounding boxes are taller than wide), and the
+panel's DRM mode is 720x1600.  The bootloader copies the BMP straight
+into `lcd_base`, so the framebuffer is **portrait: 720 columns x 1600
+rows, stride 2160 = 720 * 3, displayed 1:1**:
 
 ```
-physical X (0..719, across) = buffer row
-physical Y (0..1599, down)  = buffer column
+buffer row    = panel Y (down)
+buffer column = panel X (right)
 ```
 
-To place a shape on the panel, paint buffer row = physical X and buffer
-column = physical Y.  A bar on the panel's physical top edge is
-therefore an 8-px strip at buffer columns 0..7 running along the buffer
-rows; the code also paints columns 1592..1599, the same bar on the
-physical bottom edge, so the indicator reads the same whichever way
-the panel rotates or flips.
+Two traps that cost several boots, both confirmed the hard way:
 
-This mapping reproduces the first banner photo exactly (text painted at
-buffer rows 14..48 / columns 341..1259 appears as a vertical strip near
-the left edge, 21%..79% down the panel) and explains all three earlier
-versions: v1 used the right stride but painted horizontal text (it ran
-up the panel edge), v2's 2160-byte stride sheared every glyph row, and
-v3's "rows 0..1" bar was a 2-px dim sliver on the extreme left edge -
-invisible, which is why it looked like nothing had been painted.
+* the cmdline `lcd_size=1600x720` describes the panel in its *native
+  landscape* orientation - it is NOT the buffer layout.  Painting with a
+  4800-byte stride into the real 2160-byte buffer shears every row onto a
+  lattice of columns about 80 px apart: that is the **several vertical
+  dotted bars** v4 showed (it was reported as "4 vertical lines, one at
+  each edge, two in between" - see
+  `docs/evidence/2026-11-03-bootbar4-flash.txt`), and it also explains
+  the sheared text of v2 (which already used 2160 for painting but the
+  landscape row/column counts).
+* two of the charging BMPs are 720x800 with sideways content; that is
+  what made a "rotated scanout" theory look plausible for a while.
+
+How to check a candidate mapping without flashing: render the exact write
+pattern into a buffer of the proposed geometry and compare the picture
+with a photo of the panel.  For v4's pattern the landscape model predicts
+two clean horizontal lines, while the portrait model predicts the dotted
+vertical columns that were actually observed - that comparison, not the
+photo of v1 alone, is what settled it.
 
 Colors are byte-symmetric gray (white/black/gray only): the
 per-channel byte order of the scanout is unconfirmed - no colored
@@ -453,14 +458,15 @@ indicators until a known-color test is photographed.
 
 Turn it off with `#define DIAG_BANNER 0` in
 `include/linux/diag_stage.h`; the full multi-row diag console is
-`DIAG_SCREEN` (diag builds only).  Note that the diag console still
-draws its text in raster orientation, so its photos must be read
-rotated 90 degrees.
+`DIAG_SCREEN` (diag builds only), and it now paints in the same portrait
+geometry, so its photos read upright too.
 
-**Visual confirmation:** the v4 bar (kernel `663fee7b2d9d`, image
-`boot_custom_magisk_bar4.img`) is the first on-panel indicator seen on
-the panel - flash log and geometry summary in
-`docs/evidence/2026-11-03-bootbar4-flash.txt`.
+**History:** v1 (stride 4800, text) ran up the panel edge, v2 (2160 with
+landscape dimensions) sheared, v3 ("rows 0..1", stride 4800) was invisible,
+v4 (landscape model, stride 4800) produced the vertical dotted lattice,
+and v5 (kernel `HEAD`, portrait 2160) is the first bar drawn in real panel
+coordinates: track + 12 segments at rows 24-39, mirrored at rows
+1560-1575.
 
 **If a boot stops at the logo with the bar full**, the kernel reached
 `do_basic_setup()` and the problem is in Android userspace, not the
