@@ -105,14 +105,26 @@ requires - omit it and every `insmod` fails with a version-magic error.
 The CFI-ABI compat patches (section 8b) must be in the tree; the
 published branch already carries them.
 
+**Daily-driver path (recommended):** `bash build.sh` in the kernel tree
+(on the VPS) does all of the above in one go - it recovers the shipping
+`.config`, applies the vendor-module-compat + Mali/WLAN/BT/KVM options,
+builds `Image modules` together, and then **copies the boot-critical
+outputs into `~/kernel-out`** (Image, `mali_kbase.ko`, `sprdwl_ng.ko`,
+`sprdbt_tty.ko`, `Module.symvers`, `kernel.config`, plus a `SHA256SUMS`
+manifest).  The raw build dir `/tmp/kbuild` is RAM-backed and wiped on
+reboot, so `~/kernel-out` is the source of truth: Image and modules
+there are guaranteed to come from the same build, which is what keeps
+vermagic and `module_layout` CRC consistent.
+
 Outputs that matter:
 
-* `arch/arm64/boot/Image` - the kernel
-* `drivers/gpu/arm/midgard/mali_kbase.ko` - the GPU driver (staged via
-  the Magisk module)
-* `drivers/net/wireless/sprd_wlan/sprdwl_ng.ko` - the SC2355 WiFi driver
-  (the module must keep this exact name; the WiFi HAL gates on a
-  `/proc/modules` line starting with `sprdwl_ng`)
+* `Image` (from `~/kernel-out`, was `arch/arm64/boot/Image`) - the kernel
+* `mali_kbase.ko` - the GPU driver (staged via the Magisk module; the
+  kernel alone boots to the logo because SurfaceFlinger needs
+  `/dev/mali0`)
+* `sprdwl_ng.ko` - the SC2355 WiFi driver (the module must keep this
+  exact name; the WiFi HAL gates on a `/proc/modules` line starting with
+  `sprdwl_ng`)
 * the vendor modules (camera/BT/FM/SAR, and `incrementalfs`) are loaded
   by the vendor rc files themselves - nothing to stage
 
@@ -198,13 +210,19 @@ stale staged images before this was enforced):
 ## 6. Stage the Magisk modules (GPU, and WiFi when enabled)
 
 The kernel alone boots to the logo - SurfaceFlinger needs `/dev/mali0`.
-Stage the modules once (they survive reboots):
+`build.sh` already builds the modules with the Image; first copy them
+off the VPS (they are in `~/kernel-out`, one build together with the
+Image), then stage them (they survive reboots on the device):
 
 ```powershell
-# GPU
-.\scripts\host\install_mali_magisk_module.ps1 -Ko artifacts\kernel-build\mali_kbase_prod.ko
-# WiFi (SC2355)
-.\scripts\host\install_wlan_magisk_module.ps1 -Ko artifacts\kernel-build\sprd_wlan_combo.ko
+# 1) copy the fresh build's modules to the host (same build as the Image!)
+scp test-vps:kernel-out/mali_kbase.ko artifacts/kernel-build/mali_kbase.ko
+scp test-vps:kernel-out/sprdwl_ng.ko  artifacts/kernel-build/sprdwl_ng.ko
+scp test-vps:kernel-out/SHA256SUMS    artifacts/kernel-build/SHA256SUMS.last
+
+# 2) stage them as Magisk modules
+.\scripts\host\install_mali_magisk_module.ps1 -Ko artifacts\kernel-build\mali_kbase.ko
+.\scripts\host\install_wlan_magisk_module.ps1 -Ko artifacts\kernel-build\sprdwl_ng.ko
 ```
 
 Each installs `module.prop` + `post-fs-data.sh` (from the tracked
@@ -215,10 +233,14 @@ post-fs-data, `insmod`s the module, and logs to
 
 The `.ko` files must come from the **same kernel build** as the flashed
 Image (same vermagic `4.14.199+-ab612c2`, same `module_layout` CRC) -
-after every kernel rebuild, re-run both install scripts with the fresh
-`.ko` files before rebooting into it.  The vendor modules need no
-staging: `camera.rc` / `wcn.rc` insmod them from `/mnt/vendor/socko/`
-on every boot.
+that is why step 1 pulls them from `~/kernel-out`, whose `SHA256SUMS`
+binds Image and modules to one build.  After every kernel rebuild, redo
+steps 1-2 with the fresh files before rebooting into the new Image.  If
+the device runs an Image whose matching `.ko` was never staged, expect
+the boot to sit at the logo (kernel up, `system_server` waiting on
+SurfaceFlinger) - recover per `docs/14`, then stage the right `.ko`.
+The vendor modules need no staging: `camera.rc` / `wcn.rc` insmod them
+from `/mnt/vendor/socko/` on every boot.
 
 ## 7. Verify
 
@@ -364,6 +386,9 @@ kernel build needed):
 ```bash
 # one-time: save the production config somewhere persistent
 cp /path/to/stock_kernel_config.txt ~/kconfig_stock.txt
+# (a `build.sh` run also leaves the production config in
+#  ~/kernel-out/kernel.config and Module.symvers in ~/kernel-out/ -
+#  those survive reboots too and can seed the module-only tree)
 
 # fresh module-prepare tree
 mkdir -p /tmp/kbuild2 && cp ~/kconfig_stock.txt /tmp/kbuild2/.config
