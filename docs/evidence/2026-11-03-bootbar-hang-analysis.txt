@@ -1,0 +1,105 @@
+Bootbar kernel (2ad7f8a13667) - boot-failure analysis and recovery state
+========================================================================
+Date: 2026-11-03 (device clock -03)
+Image: artifacts/kernel-build/boot_custom_magisk_bar.img
+       sha256 7f625ac817a3c0c24c151b379c5f02ddfc06d87b563b0569d2bba8d0bd529d50
+
+Symptom
+-------
+The panel stayed at the boot logo ("stuck on boot logo"), no progress bar
+was visible, and recovering the phone needed a BROM session.
+
+1. What the kernel itself did (pstore)
+--------------------------------------
+/sys/fs/pstore/console-ramoops-0 holds the console log of the boot that
+ended immediately before the current one, and ro.boot.bootreason reads
+"reboot,shell", i.e. the current boot is the direct result of that log's
+last line.  Full record (1147 bytes):
+
+  [    0.032000] c0 sprd-sysdump: [kaslr_info_init]vmcore info init end!
+  [    1.646518] c6 sprd_wdh: func_addr = 0xffffff8008e4b6b8, pgd = 0x81ba5000
+  [    1.941433] c0 sprd-sysdump: section_native_hang in.
+  [    1.941446] c0 sprd-sysdump: section_native_hang out.
+  [    1.941688] c0 sprd-sysdump: scproc added successfully in minidump section:paddr_start=62010000,paddr_end=6205dfff
+  [    1.941696] c0 sprd-sysdump: vmcoreinfo added successfully in minidump section:paddr_start=17af9e000,paddr_end=17af9e5d3
+  [    2.096357] c6 run init
+  [   24.648602] c7 sprd-sysdump: sp_aon_iram added successfully ...
+  [   24.648628] c7 sprd-sysdump: sp_aon_dram added successfully ...
+  [   28.619015] c2 systemserver cmd , get para: ( 50)
+  [   58.620511] c0 systemserver cmd , get para: ( 50)
+  [   88.621394] c1 systemserver cmd , get para: ( 50)
+  [  118.622041] c4 systemserver cmd , get para: ( 50)
+  [  148.623119] c0 systemserver cmd , get para: ( 50)
+  [  169.875954] c0 sysrq: Kill All Tasks
+  [  170.265388] c0 reboot: Restarting system with command 'shell'
+
+Interpretation: the kernel booted normally ("run init" at 2.1 s), then
+Android's system_server stopped answering the vendor native-hang watchdog
+(five 30 s polls), and the watchdog killed all tasks and rebooted at
+170 s.  There is NO kernel panic record (no dmesg-ramoops-0) and no oops.
+The bootbar kernel did not hang the kernel; the failure was in Android
+userspace, and the reason the screen stayed on the boot logo is that
+SurfaceFlinger/bootanim never took over.
+
+pmsg-ramoops-0 (263 B of userspace logcat fragments) shows system_server
+was already starting providers:
+  account:Account {name=Phone, type=sprd.com.android.account.phone}
+  provider:com.android.contacts user:0 ... Malformed authority
+No stack trace of the hang was captured (the watchdog kill does not write
+a minidump; /data/minidump's newest entry is 19:18, before this boot).
+
+2. State after the BROM recovery
+--------------------------------
+  uname -r                 4.14.199+-ab612c2
+  /proc/version            Linux version 4.14.199+-ab612c2 (xscm@ontimbjlx020)
+                           ... #1 SMP PREEMPT Tue Feb 20 11:32:22 CST 2024
+                           -> stock vendor kernel (not a custom build)
+  sys.boot_completed       1
+  ro.boot.slot_suffix      _b
+  ro.boot.bootreason       reboot,shell
+  root                     uid=0, context u:r:magisk:s0
+  /dev/kvm                 ABSENT on this stock kernel (so it stays a
+                           valid marker that a custom KVM kernel is running)
+  boot_a sha256            fc3ca0efd6414d4f5d24c478b1592ea1ba9386f1476883a0bd8a1b8b1a3844c0
+                           (the known rescue image - intact)
+  boot_b sha256            90416c09f6359fdcc0711f36e214454421c42598518787f58c1916be6c5cad3c
+                           = artifacts/kernel-build/boot_b_pretest_20261101.img
+                           (Magisk-patched stock boot)
+
+So the custom kernel is gone from boot_b and the phone is back to the
+stock kernel with Magisk root; the boot_a rescue is untouched.
+
+3. Why no progress bar was visible - geometry, settled with vendor data
+-----------------------------------------------------------------------
+The logo partition (sda12) is a container of gzip-compressed BMPs; all
+boot/charge images are 720x1600, 24 bpp, and their *content* is drawn
+rotated 90 degrees inside the BMP (e.g. the battery-charging image is
+stored lying on its side).  The bootloader therefore transposes the
+picture on the way into lcd_base:
+
+  memory buffer = 1600x720 LANDSCAPE raster, stride 4800 B, 720 rows
+  panel         = 720x1600 portrait, displaying the raster ROTATED:
+                  physical X = buffer row, physical Y = buffer column
+
+This matches the cmdline (lcd_size=1600x720, logo_bpix=24) and explains
+the v1 photo exactly: v1 painted text at buffer rows 14..48 / columns
+341..1259, which shows up as a narrow vertical strip near the left edge,
+starting ~21% down the panel and ending ~79% - precisely what the photo
+shows.  The stride that v1 used (4800) was correct; the picture was
+simply rotated.
+
+Consequences:
+ * v2's change to a 2160-byte stride was wrong - it sheared every glyph
+   row (the "still rendering with visual artifacts" report of v2).
+ * v3's progress bar painted buffer rows 0..1 across columns 8..1592.
+   Under the transposition that is physical X = 0..1 (a 2-px sliver on
+   the extreme left edge) and physical Y = 8..1592 (its whole length).
+   Two dim gray pixels at the very edge of a blue logo are invisible,
+   which is why "no bar appeared" - nothing failed, the bar was simply
+   in the wrong place.
+
+Correct mapping for the new indicator: to place something on the panel,
+paint buffer row = physical X and buffer column = physical Y.  A bar
+along the physical top edge is an 8-px-wide strip at buffer columns
+0..7 across all 720 rows; the mirrored strip at columns 1592..1599 is
+the physical bottom edge.
