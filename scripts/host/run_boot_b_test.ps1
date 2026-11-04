@@ -184,6 +184,12 @@ if (-not $rb -or $rb.ToLower() -ne $imgHash.ToLower()) {
 }
 Log "read-back match : YES"
 
+# Do not leave the 64 MB staging copy (or the slot helper) on the phone: the
+# device /data/local/tmp directory must stay small (rescue image + mali_kroot
+# only). The image is always available on the host in artifacts/kernel-build/.
+Sh "rm -f /data/local/tmp/$bak.img" | Out-Null
+Log "cleaned staging : /data/local/tmp/$bak.img removed"
+
 Log "--- one-attempt slot b ---"
 # This step MUST succeed: it is what makes the SPL fall back to slot a when the
 # kernel hangs, i.e. what makes a hang recoverable without BROM. Retry until
@@ -201,6 +207,7 @@ if (-not $slotOk) {
     $lines | Out-File -Append -Encoding utf8 $Out
     throw "slot b one-attempt not set"
 }
+Sh "rm -f /data/local/tmp/set_slot_b_tries1.sh" | Out-Null
 
 Log "--- reboot ---"
 $t0 = Get-Date

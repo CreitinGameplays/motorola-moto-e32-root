@@ -35,6 +35,15 @@ The verified rescue currently on the device (and the canonical build):
 `boot_rescue_restore.img`, sha256
 `fc3ca0efd6414d4f5d24c478b1592ea1ba9386f1476883a0bd8a1b8b1a3844c0`.
 
+That exact blob is the one proven to boot and repair slot b, so the
+repository copy in `artifacts/rescue/` **is** that blob. Note (2026-11-04):
+the build is *not* bit-reproducible in practice - a rebuild on 2026-11-02
+produced `750ebd0cbf6fc6e4f0cff098396fd4b10665ee059838fbcfde371559fe6f6753`
+(kept as `artifacts/rescue/boot_rescue_restore_rebuild_750ebd0c.img`).
+Until the source of the difference is pinned down, treat `fc3ca0ef...44c0`
+as the only known-good rescue and verify the device copy against it; the
+rebuild variant has *not* been boot-tested.
+
 ## 1. Build it
 
 Prerequisites: the stock `boot_b` backup
@@ -55,9 +64,12 @@ python scripts/host/build_rescue.py restore artifacts/rescue/boot_rescue_restore
 ```
 
 `build_rescue.py` prints the blob/footer hashes it embedded and the
-final image hash - compare with the canonical values above (they must
-match: the embedded blob is the stock image, so the build is
-reproducible).
+final image hash - compare with the canonical values above.  The build
+is **not** bit-reproducible as of 2026-11-04 (a rebuild produced
+`750ebd0c...6753` instead of `fc3ca0ef...44c0`), so a hash mismatch does
+not automatically mean a broken build - but do **not** flash a variant
+that has not been boot-tested: the boot-tested blob is the one shipped
+in `artifacts/rescue/boot_rescue_restore.img`.
 
 Sanity checks the script performs itself: 64 MiB geometry, `ANDROID!`
 magic, footer offset `0x3ffffc0`, marker constants verified at runtime by

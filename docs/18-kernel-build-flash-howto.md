@@ -180,6 +180,21 @@ and reboots Android. Full runbook: `docs/14-brom-recovery-runbook.md`
 (BROM/FDL only if even the rescue is unreachable). Building and flashing
 the rescue itself: `docs/19-rescue-image-howto.md`.
 
+**Keep `/data/local/tmp` clean** (2026-11-04: it had grown to 1.7 GB of
+stale staged images before this was enforced):
+
+* the flash script pulls/copies the image it needs and deletes its own
+  staging copy afterwards - never leave a `boot_*.img` behind;
+* only two things belong there permanently: the proven rescue
+  (`boot_rescue_restore.img`, `fc3ca0ef...44c0`) and
+  `mali_kroot` (the CVE-2021-28663 launcher used when there is no
+  Magisk root yet);
+* kernel modules that are actively being tested may stay while a test
+  cycle is open, and must be removed once it closes;
+* every image a test produced lives on the host in
+  `artifacts/kernel-build/` - pull from there instead of re-uploading
+  and keep the device directory near 100 MB (rescue + modules).
+
 ## 6. Stage the Magisk modules (GPU, and WiFi when enabled)
 
 The kernel alone boots to the logo - SurfaceFlinger needs `/dev/mali0`.
