@@ -5,9 +5,12 @@ param(
     [switch]$AllowPresent,
     # Writing requires this switch. Without it the script only reports the plan.
     [switch]$ConfirmWrite,
-    [string]$FirmwareDir = "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\withcboot",
-    [string]$Fdl2Path = "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\candidate_fdl2_readonly.bin",
-    [string]$ReadDir = "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\readback_write"
+    # Path defaults are the author's layout; override per session with
+    # $env:HAWAII_FIRMWARE_DIR / HAWAII_FDL2 / HAWAII_READ_DIR / HAWAII_SPD_DIR
+    # or per run with -FirmwareDir / -Fdl2Path / -ReadDir.
+    [string]$FirmwareDir = $(if ($env:HAWAII_FIRMWARE_DIR) { $env:HAWAII_FIRMWARE_DIR } else { "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\withcboot" }),
+    [string]$Fdl2Path = $(if ($env:HAWAII_FDL2) { $env:HAWAII_FDL2 } else { "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\candidate_fdl2_readonly.bin" }),
+    [string]$ReadDir = $(if ($env:HAWAII_READ_DIR) { $env:HAWAII_READ_DIR } else { "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\readback_write" })
 )
 
 # Purpose: force the A/B metadata in `misc` to select one slot, then verify by
@@ -22,8 +25,9 @@ param(
 # unmodified misc image and `wof misc 0x800 <file>`.
 
 $ErrorActionPreference = "Stop"
-$spdDir = "D:\AndroidSDKTools\spd\spd_dump_LibUSB_Release"
-$exe = Join-Path $spdDir "spd_dump.exe"
+$spdDir = $(if ($env:HAWAII_SPD_DIR) { $env:HAWAII_SPD_DIR } else { "D:\AndroidSDKTools\spd\spd_dump_LibUSB_Release" })
+$spdCmd = $(Get-Command spd_dump -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source)
+$exe = if ($spdCmd) { $spdCmd } else { Join-Path $spdDir "spd_dump.exe" }
 $payload = Join-Path $FirmwareDir "custom_exec_no_verify_65015f08.bin"
 $fdl1 = Join-Path $FirmwareDir "fdl1-dl.bin"
 
@@ -73,7 +77,7 @@ if (-not $ConfirmWrite) {
 
 # Keep a copy of the current block so it can be restored byte for byte.
 # The hash is the verified live dump (18:25): a=0x008e, b=0x000f, suffix _b.
-$prevMisc = "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\readback\misc.bin"
+$prevMisc = $(if ($env:HAWAII_MISC_BACKUP) { $env:HAWAII_MISC_BACKUP } else { "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\readback\misc.bin" })
 $knownLive = "DFC266B5DD8975DEB176247B3A35189C2AA16209BBFE57386D2EF88941250E01"
 $backup = Join-Path $ReadDir "misc_before_setslot.bin"
 if (-not (Test-Path -LiteralPath $prevMisc)) {

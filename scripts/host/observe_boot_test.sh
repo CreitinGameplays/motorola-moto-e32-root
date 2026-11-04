@@ -2,10 +2,12 @@
 # Observe one boot of the CFI-fixed baseline kernel from boot_b.
 # Flash/arm must already be done and verified; this script only reboots,
 # watches adb, and captures the classification data.
-# Usage: observe_boot_test.sh [window-seconds]
+# Usage: observe_boot_test.sh [window-seconds] [log-prefix]
+# Toolchain: adb/fastboot are taken from PATH when present; the fallbacks
+# are the author's Windows layout (override with $ADB / $FASTBOOT).
 set -u
-ADB="D:/AndroidSDKTools/adb/adb.exe"
-FASTBOOT="D:/AndroidSDKTools/platform-tools/fastboot.exe"
+ADB="${ADB:-$(command -v adb || echo 'D:/AndroidSDKTools/adb/adb.exe')}"
+FASTBOOT="${FASTBOOT:-$(command -v fastboot || echo 'D:/AndroidSDKTools/platform-tools/fastboot.exe')}"
 [ -x "$FASTBOOT" ] || FASTBOOT=$(dirname "$ADB")/fastboot.exe
 WIN="${1:-900}"
 PREFIX="${2:-cfibase}"

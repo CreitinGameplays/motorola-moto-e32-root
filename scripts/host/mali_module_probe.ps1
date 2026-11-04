@@ -57,7 +57,8 @@
 param(
     [Parameter(Mandatory = $true)][string]$Ko,
     [string]$CrumbKo,
-    [string]$Adb = 'D:\AndroidSDKTools\adb\adb.exe',
+    # adb from PATH when available; the fallback is the author's layout
+    [string]$Adb = $(if (Get-Command adb -ErrorAction SilentlyContinue) { 'adb' } else { 'D:\AndroidSDKTools\adb\adb.exe' }),
     [int]$WaitSeconds = 300,
     [int]$ProbeSeconds = 90,
     [switch]$AfterReboot,

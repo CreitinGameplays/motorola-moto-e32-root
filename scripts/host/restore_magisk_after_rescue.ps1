@@ -12,14 +12,22 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Adb = 'D:\AndroidSDKTools\adb\adb.exe',
-    [string]$MagiskImage = 'D:\AndroidSDKTools\pi\boot_magisk_avb.img',
+    # adb from PATH when available; the fallback is the author's layout
+    [string]$Adb = $(if (Get-Command adb -ErrorAction SilentlyContinue) { 'adb' } else { 'D:\AndroidSDKTools\adb\adb.exe' }),
+    # the known-good Magisk-patched stock boot image; the repo copy is the
+    # default, override with -MagiskImage
+    [string]$MagiskImage = "artifacts\kernel-build\magisk_boot_b_2026-11-01.img",
     [int]$WaitSeconds = 300,
     [string]$Out
 )
 
 $ErrorActionPreference = 'Continue'
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+# repo-relative default resolves against the repo root; an absolute
+# -MagiskImage is taken as-is
+if (-not [System.IO.Path]::IsPathRooted($MagiskImage)) {
+    $MagiskImage = Join-Path $repoRoot $MagiskImage
+}
 $expectedMagisk = '90416c09f6359fdcc0711f36e214454421c42598518787f58c1916be6c5cad3c'
 $expectedStock = 'ccd0faff51ab24d921b2671c562f0fe08e7a1ba2b7f19bb93a5f2650eb4f7b18'
 $expectedRescue = 'fc3ca0efd6414d4f5d24c478b1592ea1ba9386f1476883a0bd8a1b8b1a3844c0'

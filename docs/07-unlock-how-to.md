@@ -20,12 +20,13 @@ and the state persists across reboots because the marker lives in `miscdata`.
 | low-4GiB page pinner | `scripts/device/sip_page.c` -> `artifacts/sip_page` |
 | SMC stub builder | `scripts/host/build_sip_ko.py` |
 | module template | `artifacts/trace_runqlat_bytedancy.ko` |
-| NDK clang (`aarch64-linux-android21`) | `D:\AndroidSDKTools\...` |
+| NDK clang (`aarch64-linux-android21`) | any Android NDK r27+ toolchain (`<NDK>` below) |
 
-Build the two device binaries once:
+Build the two device binaries once (set `NDK` to your NDK's prebuilt
+toolchain `bin` directory):
 
 ```sh
-NDK=D:/AndroidSDKTools/android-sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/windows-x86_64/bin
+NDK=<path-to-ndk>/toolchains/llvm/prebuilt/<host-tag>/bin
 $NDK/clang --target=aarch64-linux-android21 -O2 \
     -o artifacts/mali_kroot scripts/mali/mali_kroot.c
 $NDK/clang --target=aarch64-linux-android21 -O2 \

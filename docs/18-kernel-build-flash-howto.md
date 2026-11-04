@@ -106,15 +106,21 @@ The CFI-ABI compat patches (section 8b) must be in the tree; the
 published branch already carries them.
 
 **Daily-driver path (recommended):** `bash build.sh` in the kernel tree
-(on the VPS) does all of the above in one go - it recovers the shipping
-`.config`, applies the vendor-module-compat + Mali/WLAN/BT/KVM options,
+works from any fresh clone on any Linux build host (a laptop, a VM or a
+rented box - it does not need to be the machine that flashes; in this
+project it is a small VPS).  It does all of the above in one go: it
+recovers the shipping `.config` (`stock_kernel_config.txt` in the repo
+root), applies the vendor-module-compat + Mali/WLAN/BT/KVM options,
 builds `Image modules` together, and then **copies the boot-critical
-outputs into `~/kernel-out`** (Image, `mali_kbase.ko`, `sprdwl_ng.ko`,
-`sprdbt_tty.ko`, `Module.symvers`, `kernel.config`, plus a `SHA256SUMS`
-manifest).  The raw build dir `/tmp/kbuild` is RAM-backed and wiped on
-reboot, so `~/kernel-out` is the source of truth: Image and modules
-there are guaranteed to come from the same build, which is what keeps
-vermagic and `module_layout` CRC consistent.
+outputs into `$STABLE`** (default `~/kernel-out`: Image, `mali_kbase.ko`,
+`sprdwl_ng.ko`, `sprdbt_tty.ko`, `Module.symvers`, `kernel.config`, plus
+a `SHA256SUMS` manifest).  Everything is overridable via the
+environment: `TOOLCHAIN` (dir with clang/lld), `CONFIG` (starting
+.config), `OUT` (build dir, default `/tmp/kbuild` - it may be RAM-backed
+and wiped on reboot), `STABLE` (persistent output dir).  `~/kernel-out`
+is the source of truth: Image and modules there are guaranteed to come
+from the same build, which is what keeps vermagic and `module_layout`
+CRC consistent.
 
 Outputs that matter:
 
@@ -211,14 +217,16 @@ stale staged images before this was enforced):
 
 The kernel alone boots to the logo - SurfaceFlinger needs `/dev/mali0`.
 `build.sh` already builds the modules with the Image; first copy them
-off the VPS (they are in `~/kernel-out`, one build together with the
-Image), then stage them (they survive reboots on the device):
+off the build host (they are in `$STABLE`, default `~/kernel-out`, one
+build together with the Image), then stage them (they survive reboots
+on the device).  Replace `<build-host>` with however you reach your
+build box (in this project that is `test-vps`):
 
 ```powershell
 # 1) copy the fresh build's modules to the host (same build as the Image!)
-scp test-vps:kernel-out/mali_kbase.ko artifacts/kernel-build/mali_kbase.ko
-scp test-vps:kernel-out/sprdwl_ng.ko  artifacts/kernel-build/sprdwl_ng.ko
-scp test-vps:kernel-out/SHA256SUMS    artifacts/kernel-build/SHA256SUMS.last
+scp <build-host>:kernel-out/mali_kbase.ko artifacts/kernel-build/mali_kbase.ko
+scp <build-host>:kernel-out/sprdwl_ng.ko  artifacts/kernel-build/sprdwl_ng.ko
+scp <build-host>:kernel-out/SHA256SUMS    artifacts/kernel-build/SHA256SUMS.last
 
 # 2) stage them as Magisk modules
 .\scripts\host\install_mali_magisk_module.ps1 -Ko artifacts\kernel-build\mali_kbase.ko
@@ -233,9 +241,10 @@ post-fs-data, `insmod`s the module, and logs to
 
 The `.ko` files must come from the **same kernel build** as the flashed
 Image (same vermagic `4.14.199+-ab612c2`, same `module_layout` CRC) -
-that is why step 1 pulls them from `~/kernel-out`, whose `SHA256SUMS`
-binds Image and modules to one build.  After every kernel rebuild, redo
-steps 1-2 with the fresh files before rebooting into the new Image.  If
+that is why step 1 pulls them from the build host's `$STABLE`, whose
+`SHA256SUMS` binds Image and modules to one build.  After every kernel
+rebuild, redo steps 1-2 with the fresh files before rebooting into the
+new Image.  If
 the device runs an Image whose matching `.ko` was never staged, expect
 the boot to sit at the logo (kernel up, `system_server` waiting on
 SurfaceFlinger) - recover per `docs/14`, then stage the right `.ko`.
@@ -369,17 +378,17 @@ on-device work (`modules/`):
 Build against the kernel tree with a separate `O=` directory:
 
 ```bash
-cd ~/kernel-sprd
-export PATH=~/toolchains/clang+llvm-11.0.1-x86_64-linux-gnu-ubuntu-20.10/bin:$PATH
+cd /path/to/kernel-sprd          # any checkout of the kernel tree
+export PATH=/path/to/clang+llvm-11.0.1-*/bin:$PATH   # toolchain from step 1
 make -j$(nproc) O=/tmp/kbuild2 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
      CC="clang --target=arm64-linux-gnu-" LD=ld.lld LLVM_AR=llvm-ar \
      LLVM_NM=llvm-nm M=~/poker_build modules
 ```
 
-(put the module's .c + Makefile in `~/poker_build`; the result is
-`~/poker_build/<module>.ko`).
+(put the module's .c + Makefile in an out-of-tree dir like
+`~/poker_build`; the result is `~/poker_build/<module>.ko`).
 
-**Recovery after a /tmp wipe** (the RAM-backed `O=` tree disappears on
+**Recovery after a /tmp wipe** (a RAM-backed `O=` tree disappears on
 reboots - this rebuilds a module-only tree in ~2 minutes, no full
 kernel build needed):
 
@@ -387,13 +396,13 @@ kernel build needed):
 # one-time: save the production config somewhere persistent
 cp /path/to/stock_kernel_config.txt ~/kconfig_stock.txt
 # (a `build.sh` run also leaves the production config in
-#  ~/kernel-out/kernel.config and Module.symvers in ~/kernel-out/ -
+#  $STABLE/kernel.config and Module.symvers next to it -
 #  those survive reboots too and can seed the module-only tree)
 
 # fresh module-prepare tree
 mkdir -p /tmp/kbuild2 && cp ~/kconfig_stock.txt /tmp/kbuild2/.config
-cd ~/kernel-sprd
-export PATH=~/toolchains/clang+llvm-11.0.1-x86_64-linux-gnu-ubuntu-20.10/bin:$PATH
+cd /path/to/kernel-sprd
+export PATH=/path/to/clang+llvm-11.0.1-*/bin:$PATH
 make -j$(nproc) O=/tmp/kbuild2 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
      CC="clang --target=arm64-linux-gnu-" LD=ld.lld LLVM_AR=llvm-ar \
      LLVM_NM=llvm-nm olddefconfig

@@ -18,8 +18,8 @@ build is closed by a backport** (2026-10-29).
 Local copy (blobless clone, 17.5 GB of git objects, 63,927 files checked out):
 
 ```
-D:\AndroidSDKTools\kernel-sprd          # branch R-11-release-RORS
-                                         # + local/rors31.335-58-1-gap (backport)
+<your-workspace>/kernel-sprd          # branch R-11-release-RORS
+                                       # + local/rors31.335-58-1-gap (backport)
 ```
 
 Fetch it again with:
@@ -278,7 +278,7 @@ patches either.
 
 ### 1. Use the public tree as the base (done)
 
-`D:\AndroidSDKTools\kernel-sprd` @ `R-11-release-RORS` is the GPL source for
+`<your-workspace>/kernel-sprd` @ `R-11-release-RORS` is the GPL source for
 this platform and is verified against the phone on 5 axes (above).
 
 ### 2. Take the exact build inputs from the phone
@@ -404,8 +404,9 @@ images with `Please verify the signature!` (tested on `boot_b`, `misc`,
 `dtbo_a`; see [evidence/2026-10-30-flash-gate.txt](evidence/2026-10-30-flash-gate.txt)).
 A `dd` write from rooted Android works in principle but is a one-way trip,
 because nothing can be flashed back afterwards. The full boot-critical backup
-(25 partitions, hash-verified) is in
-`D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\`.
+(25 partitions, hash-verified) lives with your stock backups
+(`$TOOLS/backups/<backup-dir>/` in the author's layout - keep it safe, it is
+the only way back from a bad write).
 
 Known risk if it is flashed: the vendor modules (notably `mali_kbase.ko`) are
 built against the shipping tree, and 125 of 282 `__crc_` values differ, so they
@@ -449,8 +450,7 @@ phone.
   the git object store, so the comparison stays correct on Windows.
 * Clone with `--filter=blob:none --no-checkout` (blobless): the local clone
   holds 17.5 GB of git objects (the pack is not repacked) and a 0.8 GB
-  worktree.
-* C: is nearly full - keep the tree on `D:\AndroidSDKTools`.
+  worktree - put it on a drive with that much free space.
 
 ## Scripts and artifacts added
 

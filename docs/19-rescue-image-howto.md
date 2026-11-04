@@ -46,10 +46,10 @@ rebuild variant has *not* been boot-tested.
 
 ## 1. Build it
 
-Prerequisites: the stock `boot_b` backup
-(`D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\boot_b.img`,
-`ccd0faff...7b18`), python3, and the AVB key (already in
-`artifacts/kernel-build/avb-test-key.pem`).
+Prerequisites: the stock `boot_b` backup (sha256 `ccd0faff...7b18` - the
+same image docs/16 works from; pass its path via the `HAWAII_STOCK_BOOT_B`
+environment variable or edit the `STOCK` line in the script), python3, and
+the AVB key (already in `artifacts/kernel-build/avb-test-key.pem`).
 
 ```bash
 # 1. build the static init (restore mode) - needs any clang with lld

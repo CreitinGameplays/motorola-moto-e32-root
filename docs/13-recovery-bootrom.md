@@ -11,9 +11,8 @@ Consequence to remember: the rescue restores a **stock** `boot_b`, so the
 Magisk patch and any custom kernel in it are lost. Runtime root survives —
 `/data/local/tmp/mali_kroot` still gives `uid=0` on the stock kernel — so the
 kernel work can resume without re-rooting. To get the persistent Magisk root
-back afterwards, re-flash `D:\AndroidSDKTools\pi\boot_magisk_avb.img` to
-`boot_b` (the host copy is the reference; the device copy was removed in the
-2026-10-31 `/data/local/tmp` cleanup).
+back afterwards, re-flash the Magisk-patched boot image (docs/16, sha256
+`90416c09...cad3c`) to `boot_b`.
 
 Quick copy-paste procedure: [14-brom-recovery-runbook.md](14-brom-recovery-runbook.md).
 
@@ -225,8 +224,10 @@ UMS9230-UFS family (XT2227-4, same RORS31.335-58-1 build) reports:
 * Its attached `fdl2-cboot.bin` is a separate persistent-unlock payload and
   is **not** part of recovery. It must not be loaded or written in this plan.
 
-Those artifacts are staged under
-`D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\`. The guarded offline
+Those artifacts are staged under your firmware directory
+(`$TOOLS/firmware/hawaii_xt2227_fdl/` in the author's layout; the BROM
+scripts take `-FirmwareDir`, or `HAWAII_FIRMWARE_DIR` in the
+environment).  The guarded offline
 patcher verifies the known input bytes and writes a separate candidate
 `candidate_fdl2_readonly.bin`. The read runner verifies all hashes, loads
 only the CVE payload + FDL1-DL + FDL2-DL to RAM, then runs only `p` and

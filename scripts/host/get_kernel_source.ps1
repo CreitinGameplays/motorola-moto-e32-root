@@ -26,7 +26,8 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Dest = 'D:\AndroidSDKTools\kernel-sprd',
+    # repo-relative default; an absolute -Dest is taken as-is
+    [string]$Dest = 'kernel-sprd',
     [string]$Branch = 'R-11-release-RORS',
     [string]$Repo = 'https://github.com/MotorolaMobilityLLC/kernel-sprd.git',
     [switch]$Verify
@@ -46,7 +47,7 @@ function Invoke-Git {
 }
 
 $parent = Split-Path $Dest -Parent
-if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
+if ($parent -and -not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
 
 if (-not (Test-Path (Join-Path $Dest '.git'))) {
     Write-Host "[*] cloning $Repo (blobless) into $Dest ..."

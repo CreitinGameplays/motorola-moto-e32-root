@@ -18,9 +18,13 @@ Proven once, 2026-10-30: reset to Android in ~74 s, stock `boot_b` restored.
 |---|---|
 | Phone connected | enumerates as `USB\VID_1782&PID_4D00` in Windows |
 | Phone keys | Power + Vol Down, then cable in (only needed if it stops cycling by itself) |
-| Firmware dir | `D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\withcboot\` |
-| Tool | `D:\AndroidSDKTools\spd\spd_dump_LibUSB_Release\spd_dump.exe` |
-| Backups | `D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\` |
+| Firmware dir | `$TOOLS\firmware\hawaii_xt2227_fdl\withcboot\` (the scripts also accept `-FirmwareDir` / `$env:HAWAII_FIRMWARE_DIR`) |
+| Tool | spd_dump (from PATH, or `$TOOLS\spd\spd_dump_LibUSB_Release\spd_dump.exe`; overridable via `-HAWAII_SPD_DIR`/scripts) |
+| Backups | `$TOOLS\backups\<your-backup-dir>\` |
+| `adb` | from PATH, or wherever your platform-tools live |
+
+> `$TOOLS` is your big-tools directory (see README "Paths"); the author's
+> value is `D:\AndroidSDKTools`, used as the scripts' last-resort default.
 
 > **Note (2026-10-31):** `/data/local/tmp` on the test device was cleaned up
 > (2.67 GB -> 76 MB). The on-device scratch files used by the recovery path -
@@ -111,8 +115,9 @@ stock image and reboots.
 ## 3. Verify
 
 ```powershell
-& 'D:\AndroidSDKTools\adb\adb.exe' devices
-& 'D:\AndroidSDKTools\adb\adb.exe' shell "uname -a; getprop ro.boot.slot_suffix; getprop ro.boot.verifiedbootstate"
+$TOOLS = 'D:\AndroidSDKTools'          # <-- YOUR big-tools dir
+& "$TOOLS\adb\adb.exe" devices          # or just: adb devices
+adb shell "uname -a; getprop ro.boot.slot_suffix; getprop ro.boot.verifiedbootstate"
 ```
 
 Good state:
@@ -156,7 +161,7 @@ Run the read-only diagnostic instead of guessing:
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File scripts\host\brom_read_spl.ps1 -Parts "misc,uboot_a,uboot_b,sml_a,sml_b" `
   -MaxAttempts 20
-python scripts\host\misc_ab.py D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\readback\misc.bin
+python scripts\host\misc_ab.py "$TOOLS\firmware\hawaii_xt2227_fdl\readback\misc.bin"
 ```
 
 * A/B block decodes VALID but still no boot → look at `uboot_log`
@@ -169,9 +174,12 @@ python scripts\host\misc_ab.py D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\rea
 
 ## 6. Rollback
 
-`D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\readback_write\misc_before_setslot.bin`
-is the exact pre-write image (SHA-256
-`DFC266B5DD8975DEB176247B3A35189C2AA16209BBFE57386D2EF88941250E01`). The
+The exact pre-write image is kept as
+`$TOOLS\firmware\hawaii_xt2227_fdl\readback_write\misc_before_setslot.bin`
+(SHA-256
+`DFC266B5DD8975DEB176247B3A35189C2AA16209BBFE57386D2EF88941250E01`; the
+write script takes the rollback copy's path from `HAWAII_MISC_BACKUP`
+when set). The
 phone now carries a different, proven-good block, so rollback is only needed
 if you deliberately want the old counters back.
 

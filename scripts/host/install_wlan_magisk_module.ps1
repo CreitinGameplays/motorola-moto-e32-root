@@ -19,7 +19,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$Ko,
-    [string]$Adb = 'D:\AndroidSDKTools\adb\adb.exe',
+    # adb from PATH when available; the fallback is the author's layout
+    [string]$Adb = $(if (Get-Command adb -ErrorAction SilentlyContinue) { 'adb' } else { 'D:\AndroidSDKTools\adb\adb.exe' }),
     [string]$Src = "modules\sprd-wlan-combo"
 )
 

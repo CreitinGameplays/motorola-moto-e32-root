@@ -7,15 +7,19 @@ param(
     [int]$MaxAttempts = 0,
     # Partitions to read back (read-only). FDL2 `r <name>` per entry.
     # Comma-separated string so it survives `-File` invocation.
+    # Path defaults are the author's layout; override per session with
+    # $env:HAWAII_FIRMWARE_DIR / HAWAII_FDL2 / HAWAII_READ_DIR / HAWAII_SPD_DIR
+    # or per run with -FirmwareDir / -Fdl2Path / -ReadDir.
     [string]$Parts = 'splloader',
-    [string]$FirmwareDir = "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\withcboot",
-    [string]$Fdl2Path = "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\candidate_fdl2_readonly.bin",
-    [string]$ReadDir = "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\readback"
+    [string]$FirmwareDir = $(if ($env:HAWAII_FIRMWARE_DIR) { $env:HAWAII_FIRMWARE_DIR } else { "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\withcboot" }),
+    [string]$Fdl2Path = $(if ($env:HAWAII_FDL2) { $env:HAWAII_FDL2 } else { "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\candidate_fdl2_readonly.bin" }),
+    [string]$ReadDir = $(if ($env:HAWAII_READ_DIR) { $env:HAWAII_READ_DIR } else { "D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\readback" })
 )
 
 $ErrorActionPreference = "Stop"
-$spdDir = "D:\AndroidSDKTools\spd\spd_dump_LibUSB_Release"
-$exe = Join-Path $spdDir "spd_dump.exe"
+$spdDir = $(if ($env:HAWAII_SPD_DIR) { $env:HAWAII_SPD_DIR } else { "D:\AndroidSDKTools\spd\spd_dump_LibUSB_Release" })
+$spdCmd = $(Get-Command spd_dump -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source)
+$exe = if ($spdCmd) { $spdCmd } else { Join-Path $spdDir "spd_dump.exe" }
 $payload = Join-Path $FirmwareDir "custom_exec_no_verify_65015f08.bin"
 $fdl1 = Join-Path $FirmwareDir "fdl1-dl.bin"
 

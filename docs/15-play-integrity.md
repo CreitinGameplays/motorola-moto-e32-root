@@ -1,5 +1,9 @@
 # 15 - Play Integrity on the unlocked Moto E32 (no bootloader relock)
 
+> **Path variable:** `$TOOLS` below is the big-tools directory on the host
+> (adb, backups, sideload zips, screenshots) - the author's value is
+> `$TOOLS`.  Substitute your own.
+
 
 Shells: bash blocks = Git Bash on Windows (the doc uses
 `MSYS_NO_PATHCONV=1`, equivalent to `MSYS2_ARG_CONV_EXCL="*"`); device-side
@@ -160,7 +164,7 @@ re-signed with the throwaway `SHA256_RSA4096` key exactly like
 - Before any write, slot `b` is set to one attempt (`0x001f` = prio 15,
   tries 1, not successful) so the fallback happens after one power cycle and
   does not need the Vol-Down timing.
-- Full partition backup: `D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\`
+- Full partition backup: `$TOOLS\backups\hawaii-2026-10-30\backup\`
   (`boot_b.img` sha256 `ccd0faff51ab...4f7b18`).
 
 ## 7. Work log
@@ -170,7 +174,7 @@ re-signed with the throwaway `SHA256_RSA4096` key exactly like
 - Confirmed device state (table above), GMS 26.43.30, Google account present.
 - Read the current (2026) approaches: HackTricks Play-Integrity skill,
   onehourroot/privacyportal 2026 guides, T.A.K.R. keybox repository.
-- Tooling downloaded to `D:\AndroidSDKTools\pi\` (kept off C:):
+- Tooling downloaded to `$TOOLS\pi\` (kept off C:):
   - `Magisk-v31.1.apk` (10,679,283 B)
   - `TEESimulator.zip` (canary 76, v4.0)
   - `TrickyAddon.zip` (v4.4)
@@ -202,7 +206,7 @@ re-signed with the throwaway `SHA256_RSA4096` key exactly like
 - `BOOTMODE=true sh boot_patch.sh stock_boot_b.img` ->
   `new-boot.img` (64 MiB; Magisk keeps the stock OEM vbmeta footer, which
   is now stale).
-- Pulled to `D:\AndroidSDKTools\pi\magisk_patched_raw.img`
+- Pulled to `$TOOLS\pi\magisk_patched_raw.img`
   (sha256 `77597e34803de41186b002fd39591cb513734b9ef317bc18640bf58fccccbcca`).
   `avbtool info_image`: Original image size 34,932,736; the preserved OEM
   vbmeta hash describes the old payload -> must be replaced.
@@ -210,7 +214,7 @@ re-signed with the throwaway `SHA256_RSA4096` key exactly like
   `avbtool add_hash_footer --partition_name boot --partition_size 67108864
   --key artifacts/kernel-build/avb-test-key.pem --algorithm SHA256_RSA4096
   --rollback_index 2 --salt f83b9936...af0991`
-  -> `D:\AndroidSDKTools\pi\boot_magisk_avb.img`
+  -> `$TOOLS\pi\boot_magisk_avb.img`
   (sha256 `90416c09f6359fdcc0711f36e214454421c42598518787f58c1916be6c5cad3c`,
   64 MiB, kernel size unchanged 25,358,352, ramdisk 9,393,149).
 
@@ -218,7 +222,7 @@ re-signed with the throwaway `SHA256_RSA4096` key exactly like
 
 Procedure used (repeatable, matches `docs/12-slot-b-testing-channel.md`):
 
-1. push `D:\AndroidSDKTools\pi\boot_magisk_avb.img` to
+1. push `$TOOLS\pi\boot_magisk_avb.img` to
    `/data/local/tmp/pi/boot_magisk_avb.img`, verify sha256 on device
    (`90416c09...cad3c`).
 2. single root shell (`mali_kroot`), then in the same invocation:
@@ -257,7 +261,7 @@ fails with **"Incomplete Magisk install"**. Fix: install
 `Magisk-v31.1.apk`, open it, accept "Requires additional setup" -> the app
 reboots once and populates `/data/adb/magisk` (binaries + config).
 
-Tooling installed from `D:\AndroidSDKTools\pi\` (all three sideloaded):
+Tooling installed from `$TOOLS\pi\` (all three sideloaded):
 
 | apk | package | purpose |
 |---|---|---|
@@ -284,7 +288,7 @@ KeyAttestation's activity is `.home.HomeActivity`; the CHECK button is at
   needed (it only affects the daemon's own logging).
 - Configuration dir `/data/adb/tricky_store/`:
   - `keybox.xml` - replaced with the decoded `Megatron` keybox
-    (`D:\AndroidSDKTools\pi\keybox_meow.xml`, 5903 B; the module's default
+    (`$TOOLS\pi\keybox_meow.xml`, 5903 B; the module's default
     software keybox was backed up as `keybox.xml.default`).
   - `target.txt` - package list, one per line; `?` suffix = "leaf hack" mode,
     `!` suffix = force generate, `#` starts a comment.
@@ -385,7 +389,7 @@ After Magisk + TrickyStore, every configuration tried so far returns
 | 4 | target with `?` suffixes | absent | fail | fail | fail |
 | 5 | target = `# none` + Zygisk + DenyList (gms, gms.unstable, vending, gsf) | absent | **fail** | fail | fail |
 
-Screenshots: `D:\AndroidSDKTools\pi\s1.png` (baseline, pre-Magisk: BASIC
+Screenshots: `$TOOLS\pi\s1.png` (baseline, pre-Magisk: BASIC
 green), `s3/s5/s6.png` (TrickyStore active), `s7.png` (inert), `s8.png`
 (inert + Zygisk/DenyList). Raw logcat dumps: `log_all.txt`. Cleaned-up
 evidence transcript:
@@ -669,7 +673,7 @@ genuinely needed.
   (PIFork v18, Shamiko 1.2.5, TrickyStore) and
   `modules_snapshot_2026-10-31.tar` (the live module dirs, also on the host)
 - the on-device `.sh` toolset (the ones not in the repo were also pulled to
-  `D:\AndroidSDKTools\device-tmp-backup\scripts\`)
+  `$TOOLS\device-tmp-backup\scripts\`)
 
 **Deleted** (every candidate was first md5-checked against a host copy):
 - `siparena.bin` (1.6 GB), 24 x 64 MB boot/partition images (`boot_*.img`,
@@ -677,13 +681,13 @@ genuinely needed.
   partition backup), `fb_boot_probe/`, `dt/`, `dalvik-cache/`, the u-boot /
   sysdump / misc dumps, the SIP experiment artifacts (`sip31*.ko`, `sip_page`,
   `sipplain.bin`), `ksud`, `zygisk-ptrace64`, and the small logs/lists (pulled
-  to `D:\AndroidSDKTools\device-tmp-backup\{logs,pkgs\}`).
+  to `$TOOLS\device-tmp-backup\{logs,pkgs\}`).
 
 **Backup locations (host + cloud):**
-- `D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\` (partition backup +
+- `$TOOLS\backups\hawaii-2026-10-30\backup\` (partition backup +
   `SHA256SUMS`)
-- `D:\AndroidSDKTools\backups\hawaii-moto-e32-2026-10-30-backup.7z` and
-  `D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl.7z` - both also uploaded to
+- `$TOOLS\backups\hawaii-moto-e32-2026-10-30-backup.7z` and
+  `$TOOLS\firmware\hawaii_xt2227_fdl.7z` - both also uploaded to
   Google Drive
 - repo `artifacts/` (rescue image, slot-probe dumps, kernel `Image.*`,
   `mali_kroot`, device tree)
@@ -919,30 +923,30 @@ magisk --sqlite "SELECT * FROM denylist"
 # UI: run checker and read verdicts
 adb shell am start -n gr.nikolasspyr.integritycheck/.MainActivity
 adb shell input tap 360 1056          # CHECK
-adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png D:/AndroidSDKTools/pi/
+adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png $TOOLS/pi/
 
 # SPIC (raw verdict labels, the authoritative readout)
 adb shell am start -n com.henrikherzig.playintegritychecker/.MainActivity
 adb shell input tap 383 596           # CHECK
-adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png D:/AndroidSDKTools/pi/
+adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png $TOOLS/pi/
 ```
 
 ## 11. File inventory for this work
 
 | path | what |
 |---|---|
-| `D:\AndroidSDKTools\pi\Magisk-v31.1.apk` | Magisk manager |
-| `D:\AndroidSDKTools\pi\TrickyStore.zip` | TrickyStore 1.4.1 module |
-| `D:\AndroidSDKTools\pi\PlayIntegrityFork-v18.zip` | PIFork v18 (osm0sis) - the props module used 12:45-13:05 |
-| `D:\AndroidSDKTools\pi\Shamiko-1.2.5.zip` | Shamiko 1.2.5 (installed; **not loaded** under Zygisk Next) |
-| `D:\AndroidSDKTools\pi\modules_snapshot_2026-10-31.tar` | snapshot of the live module dirs (PIF-NEXT v3.0, TrickyStore, Shamiko, Zygisk Next 1.5.2) |
-| `D:\AndroidSDKTools\pi\keybox_pifnext.xml` | **current** keybox, PIF-NEXT's bundled one (md5 `0a5e6a23...`) |
-| `D:\AndroidSDKTools\pi\keybox_meow.xml` | decoded `Megatron` keybox (leaf expires 2026-11-06), the previous keybox |
-| `D:\AndroidSDKTools\pi\magisk_patched_raw.img` | Magisk `boot_patch.sh` output, stale OEM footer |
-| `D:\AndroidSDKTools\pi\boot_magisk_avb.img` | **flashed to `boot_b`** (sha256 `90416c09...`) |
-| `D:\AndroidSDKTools\pi\KeyAttestation.apk`, `checker.apk` | verification apps |
-| `D:\AndroidSDKTools\pi\s1..s29.png`, `log_all.txt` | evidence |
-| `D:\AndroidSDKTools\device-tmp-backup\` | logs, package lists and non-repo scripts pulled off the device before the 2026-10-31 cleanup |
-| `D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\boot_b.img` | stock `boot_b` (sha256 `ccd0faff...`) |
-| `D:\AndroidSDKTools\backups\hawaii-moto-e32-2026-10-30-backup.7z` | full partition backup (also uploaded to Google Drive) |
-| `D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl.7z` | FDL set for the bootROM route (also uploaded to Google Drive) |
+| `$TOOLS\pi\Magisk-v31.1.apk` | Magisk manager |
+| `$TOOLS\pi\TrickyStore.zip` | TrickyStore 1.4.1 module |
+| `$TOOLS\pi\PlayIntegrityFork-v18.zip` | PIFork v18 (osm0sis) - the props module used 12:45-13:05 |
+| `$TOOLS\pi\Shamiko-1.2.5.zip` | Shamiko 1.2.5 (installed; **not loaded** under Zygisk Next) |
+| `$TOOLS\pi\modules_snapshot_2026-10-31.tar` | snapshot of the live module dirs (PIF-NEXT v3.0, TrickyStore, Shamiko, Zygisk Next 1.5.2) |
+| `$TOOLS\pi\keybox_pifnext.xml` | **current** keybox, PIF-NEXT's bundled one (md5 `0a5e6a23...`) |
+| `$TOOLS\pi\keybox_meow.xml` | decoded `Megatron` keybox (leaf expires 2026-11-06), the previous keybox |
+| `$TOOLS\pi\magisk_patched_raw.img` | Magisk `boot_patch.sh` output, stale OEM footer |
+| `$TOOLS\pi\boot_magisk_avb.img` | **flashed to `boot_b`** (sha256 `90416c09...`) |
+| `$TOOLS\pi\KeyAttestation.apk`, `checker.apk` | verification apps |
+| `$TOOLS\pi\s1..s29.png`, `log_all.txt` | evidence |
+| `$TOOLS\device-tmp-backup\` | logs, package lists and non-repo scripts pulled off the device before the 2026-10-31 cleanup |
+| `$TOOLS\backups\hawaii-2026-10-30\backup\boot_b.img` | stock `boot_b` (sha256 `ccd0faff...`) |
+| `$TOOLS\backups\hawaii-moto-e32-2026-10-30-backup.7z` | full partition backup (also uploaded to Google Drive) |
+| `$TOOLS\firmware\hawaii_xt2227_fdl.7z` | FDL set for the bootROM route (also uploaded to Google Drive) |

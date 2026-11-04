@@ -14,6 +14,7 @@ Usage:
 import gzip
 import hashlib
 import io
+import os
 import pathlib
 import struct
 import subprocess
@@ -21,7 +22,12 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RESCUE = ROOT / "artifacts" / "rescue"
-STOCK = pathlib.Path(r"D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\boot_b.img")
+# The stock boot_b image the rescue embeds.  Resolution order:
+#   1. $HAWAII_STOCK_BOOT_B (env var)
+#   2. the author's backup layout (see README "Host" prerequisites)
+STOCK = pathlib.Path(os.environ.get(
+    "HAWAII_STOCK_BOOT_B",
+    r"D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\boot_b.img"))
 PACKER = ROOT / "scripts" / "host" / "pack_and_sign_boot.py"
 PART_SIZE = 0x4000000
 FOOTER_OFF = PART_SIZE - 64
@@ -92,7 +98,12 @@ def main():
 
     init = RESCUE / ("rescue_init_dry" if mode == "dry" else "rescue_init_restore")
     if not init.exists():
-        sys.exit("missing %s (compile on test-vps first)" % init)
+        sys.exit("missing %s (build the rescue init first - "
+                 "docs/19-rescue-image-howto.md section 1)" % init)
+    if not STOCK.exists():
+        sys.exit("stock boot_b image not found: %s\n"
+                 "  set HAWAII_STOCK_BOOT_B=<path to your stock boot_b backup>"
+                 % STOCK)
 
     d = STOCK.read_bytes()
     if len(d) != PART_SIZE or d[FOOTER_OFF:FOOTER_OFF + 4] != b"AVBf":

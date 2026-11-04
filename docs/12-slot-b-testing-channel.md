@@ -61,8 +61,8 @@ remaining 32.3 MB are zeros and are regenerated at restore time.
    `CONFIG_DEVTMPFS` is not set, so nothing creates these for us.
 2. Write `/blob/boot_b` verbatim to `boot_b` (34,789,632 B).
 3. Write zeros up to offset `0x3ffffc0`, then `/blob/footer` (64 B).
-   Result is byte-identical to the stock backup at
-   `D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\boot_b.img`.
+   Result is byte-identical to the stock `boot_b` backup (sha256
+   `ccd0faff...4f7b18`, see docs/16 for where that backup lives).
 4. Zero `misc+0..32` (clears the stale `bootonce-bootloader` command) and
    write the known-good A/B block at `misc+0x800`: suffix `_b`, slot a
    priority 14, **slot b priority 15** (`0x00ef`), CRC32 over bytes 0..27.
@@ -202,8 +202,8 @@ Evidence: [evidence/2026-10-30-slot-b-channel-working.txt](evidence/2026-10-30-s
 
 The same channel now runs **persistent root** instead of a test kernel:
 Magisk v31.1 patched the *stock* `boot_b` ramdisk (kernel untouched), the
-image was re-signed with the throwaway AVB key
-(`D:\AndroidSDKTools\pi\boot_magisk_avb.img`, sha256 `90416c09...cad3c`),
+image was re-signed with the throwaway AVB key (the Magisk-patched boot
+image from docs/16, sha256 `90416c09...cad3c`),
 written with `dd`, read back hash-identical, slot b set to one attempt
 (`0x001f`), and Android booted on `_b` in ~50 s with `magiskd` running and
 `ro.boot.verifiedbootstate` still `orange`.

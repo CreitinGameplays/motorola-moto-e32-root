@@ -99,9 +99,8 @@ firmware. Other builds need their symbols re-derived - see
 - **Magisk apk** (only for the initial patched image; the repo then works
   from the known-good patched base) - see
   [16](docs/16-magisk-root-how-to.md)
-- the stock partition backups under
-  `D:\AndroidSDKTools\backups\hawaii-2026-10-30\backup\` (boot images,
-  misc) - the packers refuse to run without the exact stock base
+- the stock partition backups (boot images, misc) under your `$TOOLS`
+  backups dir - the packers refuse to run without the exact stock base
 
 **Host (kernel build)**
 - a Linux machine/VM: `clang`/`lld` **11.0.1** (same toolchain as the
@@ -110,11 +109,10 @@ firmware. Other builds need their symbols re-derived - see
   [18](docs/18-kernel-build-flash-howto.md)
 
 **Host (BootROM/FDL recovery, optional)**
-- `spd_dump.exe` (Unisoc BROM tool, LibUSB build) in
-  `D:\AndroidSDKTools\spd\spd_dump_LibUSB_Release`
-- the UMS9230 FDL images in
-  `D:\AndroidSDKTools\firmware\hawaii_xt2227_fdl\` (fdl1/fdl2 + the
-  patched fdl2)
+- `spd_dump` (Unisoc BROM tool, LibUSB build) - on `PATH` or under
+  `$TOOLS/spd/`
+- the UMS9230 FDL images under `$TOOLS/firmware/hawaii_xt2227_fdl/`
+  (fdl1/fdl2 + the patched fdl2)
 - runbook: [14](docs/14-brom-recovery-runbook.md)
 
 **Host (reverse engineering, optional)**
@@ -127,10 +125,15 @@ firmware. Other builds need their symbols re-derived - see
 - Bootloader: the exploit works whether it is locked or unlocked (this unit has
   since been unlocked in software - see `docs/07-unlock-how-to.md`)
 
-Paths: this project keeps the big binary dependencies off C:
-`D:\AndroidSDKTools\` holds adb/platform-tools, avbtool, backups,
-firmware/FDL images and spd_dump; build outputs land in
-`artifacts/` (gitignored).
+Paths: this project keeps the big binary dependencies out of the repo.
+The docs use **`$TOOLS`** as a variable for wherever you keep them - the
+author's value is `D:\AndroidSDKTools` (adb/platform-tools, avbtool,
+backups, firmware/FDL images, spd_dump, sideload zips) - and
+`<build-host>` for the Linux box that builds the kernel (any machine;
+the author uses a small VPS).  Build outputs land in `artifacts/`
+(gitignored).  Scripts resolve their tools in this order: explicit
+parameter > environment variable (`HAWAII_*`) > `PATH` > the author's
+layout as a last resort.
 
 ## Repository layout
 
@@ -219,12 +222,12 @@ Gotchas that otherwise break the bash blocks on Windows:
   (`MSYS_NO_PATHCONV=1` - used in a few older doc snippets - is the
   Git-for-Windows equivalent and works too.)
 
-* Use forward-slash Windows paths in bash blocks (`D:/AndroidSDKTools/...`),
+* Use forward-slash Windows paths in bash blocks (`C:/dir/...` style),
   never backslashes; and for `adb push`/`adb pull` local paths use
   `C:/Users/...` style, not MSYS `/c/Users/...` (adb.exe does not
   understand `/c/`).
-* `adb` below means `D:/AndroidSDKTools/adb/adb.exe` (or `adb` if it is on
-  your `PATH`).
+* `adb` below means whatever `adb` resolves to on your machine
+  (`D:/AndroidSDKTools/adb/adb.exe` for the author).
 * The build VM / any Linux box: plain bash, no Windows paths, no MSYS
   variables.
 
@@ -453,7 +456,7 @@ The device runs the Motorola/Unisoc **4.14.199 "Petit Gorille"** kernel
 (qogirl6 / UMS9230 = T606). The GPL source is public:
 
 ```powershell
-.\scripts\host\get_kernel_source.ps1     # -> D:\AndroidSDKTools\kernel-sprd
+.\scripts\host\get_kernel_source.ps1     # -> .\kernel-sprd (or pass -Dest)
 ```
 
 It is verified against the phone on five axes (build config, Kconfig symbol
