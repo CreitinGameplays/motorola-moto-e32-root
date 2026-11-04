@@ -3,6 +3,14 @@
 Status: **public source found and verified; the measured gap to the shipping
 build is closed by a backport** (2026-10-29).
 
+> **2026-11-04 update:** the working tree is now the published orphan-import
+> repo (https://github.com/CreitinGameplays/motorola-moto-e32-kernel -
+> vendor drop as root commit + our commits, complete and buildable on its
+> own; see docs/18 sec. 0).  The 17.5 GB upstream mega-clone described
+> below is no longer kept around - this document is the record of how the
+> source was found and verified against the phone.
+
+
 ## TL;DR
 
 | question | answer |

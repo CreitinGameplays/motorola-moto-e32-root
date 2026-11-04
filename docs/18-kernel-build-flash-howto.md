@@ -18,20 +18,27 @@ install packages.
 
 Two options.
 
-**Option A - use our published branch** (recommended; it has all fixes):
+**Option A - clone the published repo** (this is now the *working* repo;
+commit and push there directly):
 
 ```bash
-git clone --depth 1 https://github.com/CreitinGameplays/motorola-moto-e32-kernel.git kernel-sprd
+git clone https://github.com/CreitinGameplays/motorola-moto-e32-kernel.git kernel-sprd
+cd kernel-sprd && bash build.sh      # self-contained: config ships in the tree
 ```
 
-That repo is an orphan-import of the working branch `hawaii-diag`: one
-commit holding the Motorola/Unisoc vendor OSS drop, then our real commits
-as normal diffs. Kernel version `4.14.199` ("Petit Gorille", qogirl6 /
-UMS9230 = T606).
+That repo is an orphan-import of the old working branch: one commit
+holding the Motorola/Unisoc vendor OSS drop, then our real commits as
+normal diffs.  It is complete and buildable on its own - `build.sh`
+resolves everything relative to the checkout - so **the 17.5 GB vendor
+mega-clone is not needed anymore** (2026-11-04: retired from the build
+host; the old export script that produced the orphan branch is retired
+too).  Kernel version `4.14.199` ("Petit Gorille", qogirl6 / UMS9230 =
+T606).
 
 **Option B - vendor drop + our patch series** (reproduces the same tree
 byte-for-byte, `git am` of the 17-patch series; see
-`patches/kernel-sprd/branch-hawaii-diag/README.md` in the analysis repo):
+`patches/kernel-sprd/branch-hawaii-diag/README.md` in the analysis repo)
+- only if you need to re-derive the tree from upstream yourself:
 
 ```bash
 git clone https://github.com/MotorolaMobilityLLC/kernel-sprd.git
