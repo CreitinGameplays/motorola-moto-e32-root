@@ -18,7 +18,7 @@ install packages.
 
 Two options.
 
-**Option A - clone the published repo** (this is now the *working* repo;
+**Option A - clone the published repo (Recommended)** (this is now the *working* repo;
 commit and push there directly):
 
 ```bash

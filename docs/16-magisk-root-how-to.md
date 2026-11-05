@@ -120,6 +120,7 @@ stage in `$TOOLS/pi/stage/`, or extract it from the APK
 
 ```bash
 TOOLS="D:/AndroidSDKTools"     # <-- YOUR big-tools dir (see the top of this doc)
+# PowerShell: $TOOLS="D:/AndroidSDKTools"
 adb push "$TOOLS/pi/stage" /data/local/tmp/pi/stage
 adb push "$TOOLS/backups/hawaii-2026-10-30/backup/boot_b.img" /data/local/tmp/pi/stock_boot_b.img
 adb shell chmod 755 /data/local/tmp/pi/stage/*
