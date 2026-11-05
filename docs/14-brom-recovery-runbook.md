@@ -82,7 +82,7 @@ enumerates as `1782:4D00` — that means the SPL, not the kernel, failed.
 ## 2. Fix: force slot `a`
 
 ```powershell
-cd C:\Users\Creitin\moto-root-test
+cd C:\Users\<YourUser>\moto-root-test
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File scripts\host\brom_set_slot.ps1 -Slot a -ConfirmWrite `
   -WaitMinutes 45 -MaxAttempts 20
