@@ -30,7 +30,13 @@ if (-not [System.IO.Path]::IsPathRooted($MagiskImage)) {
 }
 $expectedMagisk = '90416c09f6359fdcc0711f36e214454421c42598518787f58c1916be6c5cad3c'
 $expectedStock = 'ccd0faff51ab24d921b2671c562f0fe08e7a1ba2b7f19bb93a5f2650eb4f7b18'
-$expectedRescue = 'fc3ca0efd6414d4f5d24c478b1592ea1ba9386f1476883a0bd8a1b8b1a3844c0'
+# the verified boot_a rescue images - either one is a safe safety net:
+# v2 (fc3ca0ef..., boot-tested 2026-10-30) and v3 (46519e13..., live
+# since 2026-11-05 - adds the H71RING1 pstore-ring save; see docs/19)
+$expectedRescues = @(
+    'fc3ca0efd6414d4f5d24c478b1592ea1ba9386f1476883a0bd8a1b8b1a3844c0',
+    '46519e13b79cf532880f6ee080cc69b3859ea32195c393dda7a9742170c23a87'
+)
 $helperPath = Join-Path $repoRoot 'scripts\device\set_slot_b_tries1.sh'
 
 if (-not $Out) {
@@ -103,7 +109,10 @@ chmod 755 /data/local/tmp/mali_kroot
 boot_a_hash=$(sha256sum /dev/block/by-name/boot_a | awk '{print $1}')
 boot_b_hash=$(sha256sum /dev/block/by-name/boot_b | awk '{print $1}')
 echo "boot_a=$boot_a_hash boot_b=$boot_b_hash"
-[ "$boot_a_hash" = "__RESCUE_HASH__" ] || { echo "ABORT: rescue hash mismatch"; exit 22; }
+case "$boot_a_hash" in
+  __RESCUE_HASH__) ;;
+  *) echo "ABORT: rescue hash mismatch"; exit 22 ;;
+esac
 case "$boot_b_hash" in
   "__STOCK_HASH__")
     image_hash=$(sha256sum /data/local/tmp/boot_magisk_avb.img | awk '{print $1}')
@@ -124,7 +133,7 @@ case "$boot_b_hash" in
 esac
 sh /data/local/tmp/set_slot_b_tries1.sh
 '@
-    $rootCommand = $rootCommand.Replace('__RESCUE_HASH__', $expectedRescue).
+    $rootCommand = $rootCommand.Replace('__RESCUE_HASH__', ($expectedRescues -join '|')).
         Replace('__STOCK_HASH__', $expectedStock).
         Replace('__MAGISK_HASH__', $expectedMagisk)
     Log 'Running the single-shell CVE re-root/write; the next reboot restores SELinux Enforcing.'
