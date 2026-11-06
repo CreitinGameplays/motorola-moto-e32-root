@@ -40,6 +40,7 @@
 #include <sys/mount.h>
 #include <sys/reboot.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 
 #ifndef BLKSSZGET
 #define BLKSSZGET _IO(0x12, 104)
@@ -47,6 +48,9 @@
 
 #define LOG_OFF1	0x100000UL	/* primary copy, 1 MiB in */
 #define LOG_OFF2	0x200000UL	/* backup copy, 2 MiB in */
+#define LOG_OFF3	0x800000UL	/* merged DTB capture, 8 MiB in */
+#define DTB_MAGIC	"H71DTB01"
+#define DTB_MAX		0x100000UL	/* 1 MiB cap, the DTB is ~200 KB */
 #define WAIT_SECONDS	30
 
 static const char magic[8] = "H71LOG01";
@@ -366,6 +370,59 @@ int main(void)
 			free(blob);
 		} else {
 			kmsg("<3>H71-INIT: ring read failed (%d)", errno);
+		}
+		/* ground truth for every DT question: the merged DTB
+		 * exactly as the kernel consumed it (the LK dtbo merge
+		 * output), from /sys/firmware/fdt -> sysdumpdb +8 MiB */
+		{
+			int ffd = open("/sys/firmware/fdt", O_RDONLY);
+			struct stat st;
+
+			if (ffd < 0) {
+				kmsg("<3>H71-INIT: /sys/firmware/fdt open "
+				     "failed (%d)", errno);
+			} else if (fstat(ffd, &st) != 0 || st.st_size <= 0 ||
+				   st.st_size > (off_t)DTB_MAX) {
+				kmsg("<3>H71-INIT: fdt stat failed (%d, %ld)",
+				     errno, ffd >= 0 ? (long)st.st_size : -1);
+				close(ffd);
+			} else {
+				size_t dtotal = ((size_t)st.st_size + 16 + 4095) &
+					~(size_t)4095;
+				unsigned char *dblb = calloc(1, dtotal);
+
+				if (!dblb) {
+					close(ffd);
+				} else if (read(ffd, dblb + 16,
+					       (size_t)st.st_size) !=
+					   (ssize_t)st.st_size) {
+					kmsg("<3>H71-INIT: fdt read failed "
+					     "(%d)", errno);
+					free(dblb);
+					close(ffd);
+				} else {
+					memcpy(dblb, DTB_MAGIC, 8);
+					dblb[8] = (st.st_size >> 24) & 0xff;
+					dblb[9] = (st.st_size >> 16) & 0xff;
+					dblb[10] = (st.st_size >> 8) & 0xff;
+					dblb[11] = st.st_size & 0xff;
+					dblb[12] = dblb[13] = dblb[14] =
+						dblb[15] = 0;
+					if (pwrite(logfd, dblb, dtotal,
+						   LOG_OFF3) == (off_t)dtotal) {
+						kmsg("<6>H71-INIT: merged dtb "
+						     "%ld bytes to sysdumpdb "
+						     "+0x%x",
+						     (long)st.st_size,
+						     (unsigned)LOG_OFF3);
+					} else {
+						kmsg("<3>H71-INIT: fdt write "
+						     "failed (%d)", errno);
+					}
+					free(dblb);
+					close(ffd);
+				}
+			}
 		}
 		close(logfd);
 	}
