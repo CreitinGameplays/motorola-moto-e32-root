@@ -553,6 +553,8 @@ static void gadget_setup(void)
 	struct dirent *de;
 	DIR *d;
 
+	/* the mount point does not exist until we make it */
+	mkdir("/sys/kernel/config", 0755);
 	if (mount("configfs", "/sys/kernel/config", "configfs", 0, "")) {
 		if (errno != EBUSY) {
 			kmsg("<3>H71-INIT: configfs mount failed (%d)", errno);
@@ -607,6 +609,52 @@ static void gadget_setup(void)
 	snprintf(path, sizeof(path), "%s/UDC", base);
 	write_file(path, name);
 	kmsg("<6>H71-INIT: gadget bound to UDC %s - CDC-ACM live", name);
+}
+
+/*
+ * USB bring-up forensics: dump the musb controller, the ANLG phy and the
+ * AON APB OTG registers right after the gadget binds, so the exact
+ * electrical state reaches the ring (save #1 fires a second later).
+ * Comparison reference on the vendor side: 4.14 musb_sprd.c +
+ * drivers/usb/phy/phy-sprd-qogirl6.c (vddusb33 LDO 0x19e8 via the PMIC
+ * regmap - the one thing the 7.1 stack cannot reach yet).
+ */
+static void dump_region(const char *tag, unsigned long addr,
+			unsigned off, unsigned len)
+{
+	unsigned char buf[128];
+	char line[64];
+	unsigned i, n;
+	int fd, p;
+
+	fd = open("/dev/mem", O_RDONLY | O_SYNC);
+	if (fd < 0)
+		return;
+	if (len > sizeof(buf))
+		len = sizeof(buf);
+	if (pread(fd, buf, len, (off_t)(addr + off)) != (off_t)len) {
+		close(fd);
+		return;
+	}
+	close(fd);
+	for (i = 0; i < len; i += 16) {
+		p = 0;
+		for (n = 0; n < 16 && i + n < len; n++)
+			p += snprintf(line + p, sizeof(line) - p, "%02x ",
+				      buf[i + n]);
+		kmsg("<6>H71-INIT: %s+%02x %s", tag, off + i, line);
+	}
+}
+
+static void usb_regs_dump(void)
+{
+	/* musb-hdrc common regs: POWER at +0x01, DEVCTL at +0x60 */
+	dump_region("musb", 0x64900000UL, 0, 0x80);
+	/* ANLG PHY G2 USB20: utmi_ctl1 +4, pd +8, utmi_ctl2 +0xc,
+	 * trimming +0x10, pll +0x1c, reg_sel +0x20 */
+	dump_region("anlg", 0x64570000UL, 0, 0x30);
+	/* AON APB OTG: otg_test +0x204, otg_ctrl +0x208 */
+	dump_region("aonapb", 0x64000000UL, 0x200, 0x10);
 }
 
 /*
@@ -815,6 +863,7 @@ int main(void)
 
 	wdt_init();
 	gadget_setup();
+	usb_regs_dump();
 	logfd = open_log_partition();
 	if (logfd < 0)
 		logfd = open("/dev/block/by-name/sysdumpdb", O_WRONLY);
