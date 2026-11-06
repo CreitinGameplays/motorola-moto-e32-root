@@ -48,6 +48,8 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <dirent.h>
+#include <signal.h>
 #include <termios.h>
 
 #ifndef BLKSSZGET
@@ -71,7 +73,18 @@ static int ser_fd = -1;
 static char *ring_copy;		/* kept copy of the kernel ring */
 static int ring_len;
 static int ring_save_errno;	/* errno of the last failed flash save */
+static int ring_save_phase;	/* 1 pwrite copy1, 2 pwrite copy2, 3 fsync */
+static volatile sig_atomic_t save_phase;
 static unsigned long irq_last;	/* previous /proc/interrupts sum */
+
+/* SIGALRM just interrupts the blocked write/fsync (EINTR): the second
+ * block write to the UFS device wedges the queue (tests 46/47: first
+ * save fine, then a hang), and the saver child must survive that to
+ * keep reporting - see docs/23-7.1-flash-bringup.md */
+static void save_alarm_handler(int sig)
+{
+	(void)sig;
+}
 
 static void kmsg(const char *fmt, ...)
 {
@@ -387,19 +400,51 @@ static int save_ring(int logfd, int verbose)
 	hdr[12] = hdr[13] = hdr[14] = hdr[15] = 0;
 	memcpy(blob, hdr, sizeof(hdr));
 	memcpy(blob + sizeof(hdr), ring_copy, ring_len);
-	if (pwrite(logfd, blob, total, LOG_OFF1) == (off_t)total &&
-	    pwrite(logfd, blob, total, LOG_OFF2) == (off_t)total) {
-		fsync(logfd);
-		ok = 1;
-		if (verbose)
-			kmsg("<6>H71-INIT: saved %d bytes to sysdumpdb "
-			     "+0x%x and +0x%x", ring_len,
-			     (unsigned)LOG_OFF1, (unsigned)LOG_OFF2);
-	} else {
+	save_phase = 1;
+	alarm(5);
+	if (pwrite(logfd, blob, total, LOG_OFF1) != (off_t)total) {
+		alarm(0);
+		save_phase = 0;
 		ring_save_errno = errno ? errno : EIO;
+		ring_save_phase = 1;
 		if (verbose)
-			kmsg("<3>H71-INIT: sysdumpdb write failed (%d)", errno);
+			kmsg("<3>H71-INIT: sysdumpdb write 1 failed (%d)",
+			     errno);
+		free(blob);
+		return 0;
 	}
+	save_phase = 2;
+	alarm(5);
+	if (pwrite(logfd, blob, total, LOG_OFF2) != (off_t)total) {
+		alarm(0);
+		save_phase = 0;
+		ring_save_errno = errno ? errno : EIO;
+		ring_save_phase = 2;
+		if (verbose)
+			kmsg("<3>H71-INIT: sysdumpdb write 2 failed (%d)",
+			     errno);
+		free(blob);
+		return 0;
+	}
+	save_phase = 3;
+	alarm(5);
+	if (fsync(logfd) != 0) {
+		alarm(0);
+		save_phase = 0;
+		ring_save_errno = errno ? errno : EIO;
+		ring_save_phase = 3;
+		if (verbose)
+			kmsg("<3>H71-INIT: sysdumpdb fsync failed (%d)", errno);
+		free(blob);
+		return 0;
+	}
+	alarm(0);
+	save_phase = 0;
+	ok = 1;
+	if (verbose)
+		kmsg("<6>H71-INIT: saved %d bytes to sysdumpdb "
+		     "+0x%x and +0x%x", ring_len,
+		     (unsigned)LOG_OFF1, (unsigned)LOG_OFF2);
 	free(blob);
 	return ok;
 }
@@ -475,6 +520,93 @@ static int monitor_ring(int seconds, int logfd)
 static int have(const char *path)
 {
 	return access(path, F_OK) == 0;
+}
+
+static void write_file(const char *path, const char *value)
+{
+	int fd = open(path, O_WRONLY);
+	int n = strlen(value);
+
+	if (fd < 0) {
+		kmsg("<3>H71-INIT: write %s failed (%d)", path, errno);
+		return;
+	}
+	if (write(fd, value, n) != n)
+		kmsg("<3>H71-INIT: write %s short (%d)", path, errno);
+	close(fd);
+}
+
+/*
+ * Build the debug gadget from configfs: the legacy composite gadget
+ * (g_acm_ms) fails to bind on this UDC (-22, its mass-storage function
+ * wants a backing file) and the vendor-class g_serial never gets a
+ * Windows driver.  configfs + the acm function give a real class-
+ * compliant CDC-ACM port the PC enumerates natively, and logsave can
+ * do the whole dance with plain syscalls.  The UDC is bound LAST, so
+ * the host sees the device only when everything is in place.
+ */
+static void gadget_setup(void)
+{
+	char base[64] = "/sys/kernel/config/usb_gadget/h71";
+	char path[128];
+	char name[64];
+	struct dirent *de;
+	DIR *d;
+
+	if (mount("configfs", "/sys/kernel/config", "configfs", 0, "")) {
+		if (errno != EBUSY) {
+			kmsg("<3>H71-INIT: configfs mount failed (%d)", errno);
+			return;
+		}
+	}
+	if (mkdir(base, 0755)) {
+		kmsg("<3>H71-INIT: gadget mkdir failed (%d)", errno);
+		return;
+	}
+	write_file("/sys/kernel/config/usb_gadget/h71/idVendor", "0x0525");
+	write_file("/sys/kernel/config/usb_gadget/h71/idProduct", "0xa4a4");
+	write_file("/sys/kernel/config/usb_gadget/h71/bcdUSB", "0x0200");
+	write_file("/sys/kernel/config/usb_gadget/h71/bcdDevice", "0x0100");
+	snprintf(path, sizeof(path), "%s/strings/0x409", base);
+	mkdir(path, 0755);
+	write_file("/sys/kernel/config/usb_gadget/h71/strings/0x409/product",
+		   "H71 7.1 debug console");
+	write_file("/sys/kernel/config/usb_gadget/h71/strings/0x409/serialnumber",
+		   "h71serial0");
+	snprintf(path, sizeof(path), "%s/functions/acm.0", base);
+	if (mkdir(path, 0755)) {
+		kmsg("<3>H71-INIT: acm.0 mkdir failed (%d)", errno);
+		return;
+	}
+	snprintf(path, sizeof(path), "%s/configs/c.1", base);
+	mkdir(path, 0755);
+	snprintf(path, sizeof(path), "%s/configs/c.1/maxpower", base);
+	write_file(path, "100");
+	snprintf(path, sizeof(path), "/sys/kernel/config/usb_gadget/h71/functions/acm.0");
+	if (symlink(path, "/sys/kernel/config/usb_gadget/h71/configs/c.1/acm0")) {
+		kmsg("<3>H71-INIT: function symlink failed (%d)", errno);
+		return;
+	}
+	d = opendir("/sys/class/udc");
+	if (!d) {
+		kmsg("<3>H71-INIT: no /sys/class/udc (%d)", errno);
+		return;
+	}
+	name[0] = '\0';
+	while ((de = readdir(d))) {
+		if (de->d_name[0] == '.')
+			continue;
+		snprintf(name, sizeof(name), "%s", de->d_name);
+		break;
+	}
+	closedir(d);
+	if (!name[0]) {
+		kmsg("<3>H71-INIT: no UDC in /sys/class/udc - musb did not probe");
+		return;
+	}
+	snprintf(path, sizeof(path), "%s/UDC", base);
+	write_file(path, name);
+	kmsg("<6>H71-INIT: gadget bound to UDC %s - CDC-ACM live", name);
 }
 
 /*
@@ -632,8 +764,10 @@ static void run_saver(int logfd)
 				kmsg("<6>H71-INIT: saver ok (%d B/s)",
 				     ring_len);
 			else
-				kmsg("<3>H71-INIT: saver FAILING (%d)",
-				     ring_save_errno);
+				kmsg("<3>H71-INIT: saver FAILING (errno %d "
+				     "at phase %d: 1 pwrite, 2 pwrite2, "
+				     "3 fsync)",
+				     ring_save_errno, ring_save_phase);
 			ok = now;
 		}
 		sleep(1);
@@ -643,6 +777,14 @@ static void run_saver(int logfd)
 int main(void)
 {
 	int logfd;
+	struct sigaction sa;
+
+	/* SIGALRM interrupts a wedged UFS write instead of hanging the
+	 * (parent or child) caller for ever - the second block write to
+	 * the device reliably wedges the queue (tests 46/47) */
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = save_alarm_handler;
+	sigaction(SIGALRM, &sa, NULL);
 
 	kmsg("<6>H71-INIT: logsave up (pid %d, waiting %d s, ring monitor on)",
 	     (int)getpid(), WAIT_SECONDS);
@@ -672,6 +814,7 @@ int main(void)
 		kmsg("<6>H71-INIT: proc mounted on /proc");
 
 	wdt_init();
+	gadget_setup();
 	logfd = open_log_partition();
 	if (logfd < 0)
 		logfd = open("/dev/block/by-name/sysdumpdb", O_WRONLY);
