@@ -23,17 +23,49 @@ if [ ! -x gen_init_cpio ]; then
 	gcc -O2 -o gen_init_cpio "$KROOT/usr/gen_init_cpio.c"
 fi
 
+# static aarch64 busybox: gives the /init a real shell on the USB serial
+# line once the g_serial gadget binds (busybox-static apk from Alpine;
+# musl static-pie, runs fine as an initramfs binary).
+BB="$WORK/bin/busybox.static"
+if [ ! -x "$BB" ]; then
+	mkdir -p "$WORK/bin" "$WORK/bb"
+	curl -s -o "$WORK/bb/busybox.apk" \
+		https://dl-cdn.alpinelinux.org/alpine/latest-stable/main/aarch64/busybox-static-1.37.0-r31.apk
+	tar -xzf "$WORK/bb/busybox.apk" -C "$WORK/bb"
+	cp "$WORK/bb/bin/busybox.static" "$BB"
+	chmod +x "$BB"
+fi
+ls -l "$BB"
+
 aarch64-linux-gnu-gcc -static -Os -Wall -o init "$HERE/logsave.c"
 aarch64-linux-gnu-strip init
 ls -l init
 
-cat > cpio.list <<EOF
+# applet symlinks the debug shell gets out of the box (deliberately no
+# reboot/poweroff: the 7.1 reset paths are broken and logsave must park)
+APPLETS="sh ash echo printf cat ls ln rm cp mv mkdir rmdir touch mount
+umount dmesg grep sed head tail cut wc hexdump od dd devmem sleep ps kill
+uname id sync chmod find vi less"
+
+{
+	cat <<EOF
 dir /dev 0755 0 0
 nod /dev/console 0600 0 0 c 5 1
 nod /dev/kmsg 0600 0 0 c 1 11
+nod /dev/null 0666 0 0 c 1 3
+nod /dev/zero 0666 0 0 c 1 5
+nod /dev/tty 0666 0 0 c 5 0
+nod /dev/mem 0600 0 0 c 1 1
 dir /sys 0755 0 0
+dir /proc 0755 0 0
+dir /bin 0755 0 0
 file /init $PWD/init 0755 0 0
+file /bin/busybox $BB 0755 0 0
 EOF
+	for a in $APPLETS; do
+		printf 'slink /bin/%s busybox 0777 0 0\n' "$a"
+	done
+} > cpio.list
 
 ./gen_init_cpio cpio.list > 71_logramfs.cpio
 gzip -9 -c 71_logramfs.cpio > 71_logramfs.cpio.gz

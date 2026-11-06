@@ -20,6 +20,11 @@
  * lives, so the panel alone shows how far boot got even if init never
  * runs.
  *
+ * Once the kernel's musb + g_serial gadget bind, the whole ring is also
+ * dumped to /dev/ttyGS0 (a CDC-ACM port on the PC) and the initramfs'
+ * static busybox gets an interactive shell on the same line - the 7.1
+ * test boot has no adb, so that shell is the only live debug console.
+ *
  * The sysdumpdb node is located by parsing the GPT of /dev/sda (the
  * initramfs devtmpfs has no /dev/block/by-name - those symlinks come
  * from Android's init, which is not running here).
@@ -37,10 +42,13 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <sys/klog.h>
+#include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/reboot.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <termios.h>
 
 #ifndef BLKSSZGET
 #define BLKSSZGET _IO(0x12, 104)
@@ -62,6 +70,7 @@ static const char magic[8] = "H71LOG01";
 static int ser_fd = -1;
 static char *ring_copy;		/* kept copy of the kernel ring */
 static int ring_len;
+static unsigned long irq_last;	/* previous /proc/interrupts sum */
 
 static void kmsg(const char *fmt, ...)
 {
@@ -122,6 +131,234 @@ static void serial_printf(const char *fmt, ...)
 	va_end(ap);
 	if (n > 0)
 		(void)write(ser_fd, buf, (size_t)n);
+}
+
+/*
+ * Interactive debug console on the USB serial line: g_serial gives the
+ * PC a CDC-ACM port, and busybox (static, in the initramfs) gives us a
+ * shell on it.  The 7.1 kernel has no usable reset path and no adb, so
+ * this is the only way to poke at a live test boot (mount things, cat
+ * /proc/device-tree, read /sys/firmware, poke registers with devmem...).
+ * Started lazily: the gadget may bind after /init.
+ */
+static int shell_started;
+
+static void shell_try(void)
+{
+	pid_t pid;
+	int fd;
+
+	if (shell_started || access("/bin/busybox", X_OK) != 0)
+		return;
+	fd = open("/dev/ttyGS0", O_RDWR | O_NOCTTY);
+	if (fd < 0)
+		return;
+	shell_started = 1;
+	pid = fork();
+	if (pid == 0) {
+		int c;
+
+		setsid();
+		c = open("/dev/ttyGS0", O_RDWR);
+		if (c >= 0) {
+			ioctl(c, TIOCSCTTY, 0);
+			dup2(c, 0);
+			dup2(c, 1);
+			dup2(c, 2);
+			if (c > 2)
+				close(c);
+		}
+		execl("/bin/sh", "sh", "-i", (char *)NULL);
+		_exit(127);
+	}
+	close(fd);
+	if (pid > 0)
+		kmsg("<6>H71-INIT: serial shell spawned (pid %d)", (int)pid);
+}
+
+/*
+ * Feed the Unisoc FIQ watchdog (sprd,wdt-r2p0-fiq) while this boot is
+ * alive.  The 4.14 daily driver arms it from hang_debug and feeds it
+ * with per-CPU threads; the 7.1 port has neither, so if the bootloader
+ * leaves the counter armed nobody would feed it here.  A kernel-side
+ * early_initcall (arch/arm64/kernel/diag_wdt.c) prints the state it
+ * found at kernel entry; logsave rewrites the original LOAD value every
+ * few seconds - alive boots park forever, and a boot that hangs before
+ * /init stops feeding, so the bite recovers the phone without a power
+ * hold.
+ *
+ * Register map per 4.14 drivers/watchdog/sprd_wdt_fiq.c; the base is
+ * the one of the vendor DTB's watchdog@644e0000 (the kernel-side
+ * H71-WDT line cross-checks it at boot).
+ */
+#define WDT_BASE		0x644e0000UL
+#define WDT_LOAD_LOW		0x0
+#define WDT_LOAD_HIGH		0x4
+#define WDT_CTRL		0x8
+#define WDT_INT_CLR		0xc
+#define WDT_INT_RAW		0x10
+#define WDT_CNT_LOW		0x18
+#define WDT_CNT_HIGH		0x1c
+#define WDT_LOCK		0x20
+#define WDT_LOCK_KEY		0xe551
+#define WDT_LDBUSY_BIT		0x10u	/* INT_RAW: load busy */
+#define WDT_INT_CLR_BIT		0x1u	/* INT_CLR: clear bark */
+#define WDT_RST_CLR_BIT		0x8u	/* INT_CLR: clear bite */
+
+static volatile unsigned int *wdt_regs;
+static unsigned int wdt_load_lo, wdt_load_hi;
+
+static void wdt_init(void)
+{
+	int fd = open("/dev/mem", O_RDWR | O_SYNC);
+
+	if (fd < 0) {
+		kmsg("<3>H71-INIT: /dev/mem open failed (%d), "
+		     "watchdog not fed", errno);
+		return;
+	}
+	wdt_regs = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED,
+			fd, WDT_BASE & ~4095UL);
+	close(fd);
+	if (wdt_regs == MAP_FAILED) {
+		kmsg("<3>H71-INIT: wdt mmap failed (%d)", errno);
+		wdt_regs = NULL;
+		return;
+	}
+	wdt_regs += (WDT_BASE & 4095) / 4;
+	wdt_load_lo = wdt_regs[WDT_LOAD_LOW / 4];
+	wdt_load_hi = wdt_regs[WDT_LOAD_HIGH / 4];
+	kmsg("<6>H71-INIT: wdt ctrl=%#x load=%#x cnt=%#x raw=%#x",
+	     wdt_regs[WDT_CTRL / 4], (wdt_load_hi << 16) | wdt_load_lo,
+	     wdt_regs[WDT_CNT_LOW / 4] |
+		     (wdt_regs[WDT_CNT_HIGH / 4] << 16),
+	     wdt_regs[WDT_INT_RAW / 4]);
+}
+
+static void wdt_pet(void)
+{
+	unsigned busy = 0;
+
+	if (!wdt_regs)
+		return;
+	if ((wdt_regs[WDT_CTRL / 4] & 0xfu) == 0)
+		return;		/* counter disarmed: nothing to feed */
+	wdt_regs[WDT_LOCK / 4] = WDT_LOCK_KEY;
+	wdt_regs[WDT_LOAD_LOW / 4] = wdt_load_lo;
+	wdt_regs[WDT_LOAD_HIGH / 4] = wdt_load_hi;
+	while ((wdt_regs[WDT_INT_RAW / 4] & WDT_LDBUSY_BIT) &&
+	       busy++ < 1000)
+		;
+	wdt_regs[WDT_INT_CLR / 4] = WDT_INT_CLR_BIT | WDT_RST_CLR_BIT;
+	wdt_regs[WDT_LOCK / 4] = 0;
+}
+
+/*
+ * IRQ-storm detector: sum every numeric field of /proc/interrupts.
+ * A level interrupt nobody handles (the LK-armed watchdog's bark, a
+ * PMIC line with no irqchip driver) pins the CPU and freezes the boot
+ * with no message at all - that is the current best theory for the
+ * 7.1 park-screen freeze.  The sum over one 10 s tick tells us: a
+ * storm is > 100k interrupts per tick, a quiet park is a few thousand.
+ */
+static unsigned long irq_sum(void)
+{
+	static char buf[32768];
+	unsigned long sum = 0, v = 0;
+	int i, n, fd;
+
+	fd = open("/proc/interrupts", O_RDONLY);
+	if (fd < 0)
+		return 0;
+	n = (int)read(fd, buf, sizeof(buf) - 1);
+	close(fd);
+	if (n <= 0)
+		return 0;
+	buf[n] = '\0';
+	for (i = 0; i < n; i++) {
+		if (buf[i] >= '0' && buf[i] <= '9') {
+			v = 0;
+			while (i < n && buf[i] >= '0' && buf[i] <= '9') {
+				v = v * 10 + (unsigned)(buf[i] - '0');
+				i++;
+			}
+			sum += v;
+		}
+	}
+	return sum;
+}
+
+/*
+ * Collect the whole kernel ring and write it to sysdumpdb (+1 MiB and
+ * +2 MiB).  Called once after the wait and then again on every park
+ * tick: the re-saves mean the copy on flash holds the LAST state of the
+ * ring, so whatever the kernel printed right before a freeze (or the
+ * watchdog's bark, or an IRQ-storm message) is on flash even though the
+ * phone later reset.
+ */
+static int save_ring(int logfd, int verbose)
+{
+	unsigned char hdr[16];
+	unsigned char *blob;
+	char *buf = NULL;
+	size_t total;
+	int len = 0, size, n, ok = 0;
+
+	size = klogctl(10 /* size of the ring */, NULL, 0);
+	if (size > 0)
+		buf = malloc(size + 1);
+	if (buf) {
+		n = klogctl(3 /* read all */, buf, size);
+		if (n > 0) {
+			len = n;
+			if (verbose)
+				kmsg("<6>H71-INIT: ring is %d bytes", len);
+			if (!ring_copy) {
+				ring_copy = buf;
+				ring_len = len;
+				buf = NULL;	/* kept for the serial dump */
+			}
+		} else {
+			free(buf);
+			buf = NULL;
+		}
+	} else if (verbose) {
+		kmsg("<3>H71-INIT: ring read failed (%d)", errno);
+	}
+	if (!ring_copy)
+		return 0;
+
+	/* one sector-aligned write per copy: the header (16 B) and the
+	 * ring together, zero-padded to a 4096 multiple - valid on 512-
+	 * and 4096-byte disks alike (LOG_OFF1/2 are 1/2 MiB, aligned) */
+	total = ((size_t)ring_len + sizeof(hdr) + 4095) & ~(size_t)4095;
+	blob = calloc(1, total);
+	if (!blob) {
+		if (verbose)
+			kmsg("<3>H71-INIT: blob alloc failed");
+		return 0;
+	}
+	memcpy(hdr, magic, 8);
+	hdr[8] = (ring_len >> 24) & 0xff;
+	hdr[9] = (ring_len >> 16) & 0xff;
+	hdr[10] = (ring_len >> 8) & 0xff;
+	hdr[11] = ring_len & 0xff;
+	hdr[12] = hdr[13] = hdr[14] = hdr[15] = 0;
+	memcpy(blob, hdr, sizeof(hdr));
+	memcpy(blob + sizeof(hdr), ring_copy, ring_len);
+	if (pwrite(logfd, blob, total, LOG_OFF1) == (off_t)total &&
+	    pwrite(logfd, blob, total, LOG_OFF2) == (off_t)total) {
+		fsync(logfd);
+		ok = 1;
+		if (verbose)
+			kmsg("<6>H71-INIT: saved %d bytes to sysdumpdb "
+			     "+0x%x and +0x%x", ring_len,
+			     (unsigned)LOG_OFF1, (unsigned)LOG_OFF2);
+	} else if (verbose) {
+		kmsg("<3>H71-INIT: sysdumpdb write failed (%d)", errno);
+	}
+	free(blob);
+	return ok;
 }
 
 /*
@@ -206,14 +443,14 @@ static void xray(void)
 	     have("/sys/bus/platform/devices/20200000.ufs") ? "EXISTS" : "absent");
 	kmsg("<6>H71-XRAY: driver bound %s",
 	     have("/sys/bus/platform/devices/20200000.ufs/driver") ? "YES" : "NO");
-	kmsg("<6>H71-XRAY: ufs-sprd driver dir %s",
-	     have("/sys/bus/platform/drivers/ufs-sprd") ? "EXISTS" : "absent");
+	kmsg("<6>H71-XRAY: ufshcd-sprd driver dir %s",
+	     have("/sys/bus/platform/drivers/ufshcd-sprd") ? "EXISTS" : "absent");
 	n = 0;
-	fd = open("/sys/bus/platform/drivers/ufs-sprd", O_RDONLY);
+	fd = open("/sys/bus/platform/drivers/ufshcd-sprd", O_RDONLY);
 	if (fd >= 0) {
 		while ((n = read(fd, buf, sizeof(buf) - 1)) > 0) {
 			buf[n] = '\0';
-			kmsg("<6>H71-XRAY: ufs-sprd binds: %s", buf);
+			kmsg("<6>H71-XRAY: ufshcd-sprd binds: %s", buf);
 			break;
 		}
 		close(fd);
@@ -327,8 +564,7 @@ static int open_log_partition(void)
 
 int main(void)
 {
-	char *buf = NULL;
-	int logfd, len = 0, n, saved = 0;
+	int logfd, saved = 0;
 
 	kmsg("<6>H71-INIT: logsave up (pid %d, waiting %d s, ring monitor on)",
 	     (int)getpid(), WAIT_SECONDS);
@@ -353,6 +589,10 @@ int main(void)
 			kmsg("<3>H71-INIT: sysfs mount failed (%d), "
 			     "trying anyway", errno);
 	}
+	/* /proc for the serial debug shell (dmesg, cmdline, partitions) */
+	if (access("/proc/cmdline", F_OK) != 0 &&
+	    mount("proc", "/proc", "proc", 0, "") == 0)
+		kmsg("<6>H71-INIT: proc mounted on /proc");
 
 	logfd = open_log_partition();
 	if (logfd < 0)
@@ -361,62 +601,7 @@ int main(void)
 		kmsg("<3>H71-INIT: sysdumpdb not found - ring not saved "
 		     "to flash");
 	} else {
-		len = klogctl(10 /* size of the ring */, NULL, 0);
-		if (len > 0)
-			buf = malloc(len + 1);
-		if (buf) {
-			n = klogctl(3 /* read all */, buf, len);
-			if (n > 0) {
-				len = n;
-				kmsg("<6>H71-INIT: ring is %d bytes", len);
-				ring_copy = buf;
-				ring_len = len;
-			} else {
-				free(buf);
-				buf = NULL;
-			}
-		}
-		if (buf) {
-			unsigned char hdr[16];
-			/* one sector-aligned write per copy: the header
-			 * (16 B) and the ring together, zero-padded to a
-			 * 4096 multiple - valid on 512- and 4096-byte
-			 * disks alike (LOG_OFF1/2 are 1/2 MiB, aligned) */
-			size_t total = ((size_t)len + sizeof(hdr) + 4095) &
-				~(size_t)4095;
-			unsigned char *blob = calloc(1, total);
-
-			memcpy(hdr, magic, 8);
-			hdr[8] = (len >> 24) & 0xff;
-			hdr[9] = (len >> 16) & 0xff;
-			hdr[10] = (len >> 8) & 0xff;
-			hdr[11] = len & 0xff;
-			hdr[12] = hdr[13] = hdr[14] = hdr[15] = 0;
-
-			if (blob) {
-				memcpy(blob, hdr, sizeof(hdr));
-				memcpy(blob + sizeof(hdr), buf, len);
-				if (pwrite(logfd, blob, total, LOG_OFF1) ==
-					    (off_t)total &&
-				    pwrite(logfd, blob, total, LOG_OFF2) ==
-					    (off_t)total) {
-					fsync(logfd);
-					saved = 1;
-					kmsg("<6>H71-INIT: saved %d bytes to "
-					     "sysdumpdb +0x%x and +0x%x", len,
-					     (unsigned)LOG_OFF1,
-					     (unsigned)LOG_OFF2);
-				} else {
-					kmsg("<3>H71-INIT: sysdumpdb write "
-					     "failed (%d)", errno);
-				}
-			} else {
-				kmsg("<3>H71-INIT: blob alloc failed");
-			}
-			free(blob);
-		} else {
-			kmsg("<3>H71-INIT: ring read failed (%d)", errno);
-		}
+		saved = save_ring(logfd, 1);
 		/* ground truth for every DT question: the merged DTB
 		 * exactly as the kernel consumed it (the LK dtbo merge
 		 * output), from /sys/firmware/fdt -> sysdumpdb +8 MiB */
@@ -474,19 +659,35 @@ int main(void)
 	}
 
 	/* no reboot: every 7.1 reset path on this phone is broken (ADI
-	 * powers it off, PSCI darkens it).  Report the storage story on
-	 * the panel tail, then park - the user power-holds, the SPL takes
-	 * slot a and the rescue restores Android. */
+	 * powers it off, PSCI darkens it).  Keep the LK-armed watchdog
+	 * fed while parked; the user power-holds, the SPL takes slot a
+	 * and the rescue restores Android. */
+	wdt_init();
 	xray();
 	kmsg("<6>H71-INIT: PARKED - power-hold to recover");
 	serial_try();
+	shell_try();
 	for (;;) {
+		unsigned long isum;
+
 		sleep(10);
 		serial_try();		/* the gadget may bind late */
+		shell_try();
+		wdt_pet();		/* keep the LK-armed WDT fed */
+		if (logfd >= 0)
+			saved = save_ring(logfd, 0);
 		kmsg("<4>H71-INIT: parked, ring %s",
 		     saved ? "SAVED to sysdumpdb" : "NOT saved");
-		serial_printf("H71-INIT: parked, ring %s\r\n",
-			      saved ? "SAVED to sysdumpdb" : "NOT saved");
+		isum = irq_sum();
+		if (isum && irq_last && isum > irq_last + 100000)
+			kmsg("<3>H71-INIT: IRQ STORM +%lu in 10 s",
+			     isum - irq_last);
+		irq_last = isum;
+		/* once the shell runs, keep the wire quiet for it */
+		if (!shell_started)
+			serial_printf("H71-INIT: parked, ring %s\r\n",
+				      saved ? "SAVED to sysdumpdb"
+					    : "NOT saved");
 	}
 	return 0;
 }
