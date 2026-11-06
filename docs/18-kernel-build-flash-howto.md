@@ -515,3 +515,34 @@ kernel: after the next boot, `/sys/fs/pstore/console-ramoops-0` will
 show `run init` followed by the vendor native-hang watchdog's
 `systemserver cmd` polls and `sysrq: Kill All Tasks` instead of a
 panic (see `docs/evidence/2026-11-03-bootbar-hang-analysis.txt`).
+
+### 11.1 Boot-progress lines only (2026-11-06)
+
+The panel console (`diagfb`) is a production progress display now: it
+paints **only** explicitly marked boot-progress lines and drops every
+other printk record before the painter.  The full-log variant was a
+bring-up channel, and an expensive one - every record painted 40-90
+glyphs and every glyph flushed the whole text band through the cache.
+
+* Mark a line with `DIAG_PROGRESS("...")` (`include/linux/diag_stage.h`).
+  It prints at `KERN_EMERG` with the `diag: ` tag - the bootloader's
+  cmdline carries `loglevel=1`, so anything above emerg is suppressed
+  before it can reach any console (measured: the first quiet image used
+  KERN_INFO and the panel stayed blank while the ring had the lines).
+  The console strips the tag and the `[time] [cpu]` printk prefix before
+  painting.
+* The boot core emits: `kernel: start_kernel`, `kernel: setup_arch done`,
+  `kernel: memory initialized`, `kernel: drivers initialized`,
+  `kernel: starting /init` (and the init path that is about to run).
+* Turned off with it: the per-initcall `DIAG: initcall ...` emergency
+  print (one printk plus kallsyms lookup per initcall - the dominant
+  logging cost of a normal boot) and the seven `DIAG: setup ...` prints
+  in `do_basic_setup()`.
+* `diag_txt_glyph()` now flushes just the glyph cell instead of the
+  whole 36-row band (~103 KB) per glyph.
+* `CON_PRINTBUFFER` stays, so progress lines printed before the console
+  registers still appear through the replay.
+
+To get the full kernel log back on the panel for a debug boot, restore
+`.write = diag_txt_puts(s, n)` in `arch/arm64/kernel/setup.c` (the
+initcall trace is separately gated by `DIAG_SCREEN`).

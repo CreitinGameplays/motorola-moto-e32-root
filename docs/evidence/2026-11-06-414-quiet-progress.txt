@@ -1,0 +1,79 @@
+Quiet 4.14 daily driver: panel progress lines only
+==================================================
+Date: 2026-11-06
+Device: Moto E32 (XT2227-1), boot_b, slot _b, Magisk persistent root
+
+Goal
+----
+Keep the on-panel boot progress on the 4.14 daily driver but stop the
+full kernel-log mirror: the panel console (diagfb) painted every printk
+record, and every glyph flushed the whole text band (~103 KB), which is
+pure overhead on a normal boot.
+
+Changes (kernel 4.14 branch)
+----------------------------
+* diagfb paints only lines carrying the "diag: " tag (DIAG_PROGRESS());
+  all other records are dropped before the painter.  CON_PRINTBUFFER is
+  kept, so progress lines printed before registration still replay.
+* progress lines: start_kernel, setup_arch done, memory initialized,
+  drivers initialized, starting /init.
+* DIAG_INITCALL_LOG() is off in production (it printed one pr_emerg plus
+  a kallsyms lookup per initcall).
+* the seven "DIAG: setup ..." emergency prints in do_basic_setup() are
+  gone.
+* diag_txt_glyph() flushes only its own glyph cell, not the whole band.
+
+Build: Image sha256 efda5fb324abdf550ba7..., built 2026-11-06 01:17 UTC,
+module_layout CRC unchanged 0x89b5c3ef.
+
+Attempt 1 - KERN_INFO progress lines: panel stayed blank
+--------------------------------------------------------
+Boot image: boot_414_quiet_magisk.img sha256
+85a3998d1be39a8f026808a63958edea7c6d0ed692cabb7402ec9f149be238a6
+(Image c82f973c..., packed over the Magisk base 90416c09...).
+
+The phone booted (custom kernel, Magisk su uid=0, SELinux Enforcing),
+but the panel showed only the boot bar.  /proc/cmdline explains it:
+
+  console=null ... loglevel=1 ...
+
+KERN_INFO (6) is suppressed by the console layer before diagfb's .write
+can filter it, so no progress text is ever offered to the painter.
+(The lines are still stored in the ring; dmesg showed only the last two
+because the 1 MB ring had already wrapped by the time it was read.)
+
+Attempt 2 - KERN_EMERG progress lines: works
+--------------------------------------------
+Boot image: boot_414_quiet_magisk.img sha256
+77b0e63104575b4e8a33f4373e625c594eb251994866f4f284ceccef2a1c8e8f
+(Image efda5fb3..., same Magisk base).
+
+Flash: pushed image + a one-shot root script, dd to boot_b, readback
+sha256 matched, misc armed for one slot-b attempt, reboot.
+boot_b after boot: 77b0e631... (unchanged, slot successful).
+
+Boot result: boot_completed=1, kernel "4.14.199+-ab612c2 #2 SMP PREEMPT
+Fri Nov 6 01:17:33 UTC 2026", SELinux Enforcing, Magisk su uid=0.
+dmesg (su) contains exactly the five progress records:
+
+  [    0.000000] diag: kernel: start_kernel
+  [    0.000000] diag: kernel: setup_arch done
+  [    0.000000] diag: kernel: memory initialized
+  [    2.079180] diag: kernel: drivers initialized
+  [    2.080076] diag: kernel: starting /init
+
+and no "DIAG: initcall" / "DIAG: setup" records remain.  User-confirmed
+that the panel paints these lines.
+
+Harness note
+------------
+run_boot_b_test.ps1 -RuntimeRoot prefixes every adb command with
+/data/local/tmp/mali_kroot, i.e. it runs the exploit once per command.
+On the 2026-11-06 attempt the pre-flight reached the helper syntax check
+and got an empty result (the repeated exploit runs destabilise the adb
+shell), so the flash aborted before touching boot_b.  The flash was done
+with a single elevated session instead: one mali_kroot call, then image
+write + misc arming + verification in the same shell.  With Magisk su
+present the same script runs under `su -c` with no exploit at all.
+
+Kernel commits: db5e94f74 (quiet console) and fb18b900c (KERN_EMERG).
