@@ -39,6 +39,11 @@
 #include <sys/klog.h>
 #include <sys/mount.h>
 #include <sys/reboot.h>
+#include <sys/ioctl.h>
+
+#ifndef BLKSSZGET
+#define BLKSSZGET _IO(0x12, 104)
+#endif
 
 #define LOG_OFF1	0x100000UL	/* primary copy, 1 MiB in */
 #define LOG_OFF2	0x200000UL	/* backup copy, 2 MiB in */
@@ -174,36 +179,68 @@ static void xray(void)
 }
 
 /* Find the sysdumpdb partition by parsing the GPT of the first SCSI
- * disk (the UFS device, /dev/sda). Returns an open O_WRONLY fd, or -1. */
+ * disk (the UFS device, /dev/sda). Returns an open O_WRONLY fd, or -1.
+ *
+ * UFS disks have 4096-byte logical sectors: every access on the raw
+ * block device must be sector-aligned in offset AND length, or it
+ * fails outright (test 41: the 512-byte read at byte offset 512 died
+ * and the save failed with the partition plainly there - the X-ray
+ * showed /dev/sda EXISTS while this function returned -1). */
 static int open_log_partition(void)
 {
-	unsigned char hdr[512], ent[512];
 	static const unsigned char zero[16];
+	unsigned char hdr[4096];
+	unsigned char *ents;
 	uint64_t ent_lba, first_lba, last_lba;
 	uint32_t nent, esz;
-	int fd, i, n;
+	size_t total;
+	unsigned int ssize;
+	int fd, i, n, out = -1;
 	char name[40];
 
 	fd = open("/dev/sda", O_RDONLY);
-	if (fd < 0)
+	if (fd < 0) {
+		kmsg("<3>H71-INIT: open /dev/sda failed (%d)", errno);
 		return -1;
-	if (pread(fd, hdr, sizeof(hdr), 512) != (ssize_t)sizeof(hdr) ||
+	}
+	if (ioctl(fd, BLKSSZGET, &ssize) != 0 || ssize < 512 ||
+	    ssize > sizeof(hdr)) {
+		kmsg("<3>H71-INIT: BLKSSZGET failed (%d), assuming 512",
+		     errno);
+		ssize = 512;
+	}
+	/* GPT header is LBA 1 - one sector-aligned read */
+	if (pread(fd, hdr, ssize, (off_t)ssize) != (off_t)ssize ||
 	    memcmp(hdr, "EFI PART", 8)) {
+		kmsg("<3>H71-INIT: GPT header read failed (%d)", errno);
 		close(fd);
 		return -1;
 	}
 	memcpy(&ent_lba, hdr + 72, 8);
 	memcpy(&nent, hdr + 80, 4);
 	memcpy(&esz, hdr + 84, 4);
-	if (!nent || esz < 128 || esz > sizeof(ent)) {
+	if (!nent || esz < 128 || esz > sizeof(hdr) || nent > 512) {
+		kmsg("<3>H71-INIT: GPT shape invalid (nent %u esz %u)",
+		     nent, esz);
+		close(fd);
+		return -1;
+	}
+	total = ((size_t)nent * esz + ssize - 1) & ~(size_t)(ssize - 1);
+	ents = malloc(total);
+	if (!ents) {
+		close(fd);
+		return -1;
+	}
+	/* the whole entry array in one sector-aligned read */
+	if (pread(fd, ents, total, (off_t)ent_lba * ssize) != (off_t)total) {
+		kmsg("<3>H71-INIT: GPT entries read failed (%d)", errno);
+		free(ents);
 		close(fd);
 		return -1;
 	}
 	for (i = 0; i < (int)nent; i++) {
-		off_t off = (off_t)ent_lba * 512 + (off_t)i * esz;
+		const unsigned char *ent = ents + (size_t)i * esz;
 
-		if (pread(fd, ent, esz, off) != (ssize_t)esz)
-			break;
 		if (!memcmp(ent, zero, 16))	/* unused entry */
 			continue;
 		memcpy(&first_lba, ent + 32, 8);
@@ -217,23 +254,27 @@ static int open_log_partition(void)
 			name[n] = lo;		/* UTF16LE, ASCII names */
 		}
 		name[n] = '\0';
+		while (n > 0 && name[n - 1] == ' ')	/* GPT space padding */
+			name[--n] = '\0';
 		if (!strcmp(name, "sysdumpdb") && last_lba > first_lba) {
 			char node[32];
-			int out;
 
 			snprintf(node, sizeof(node), "/dev/sda%d", i + 1);
-			close(fd);
 			out = open(node, O_WRONLY);
 			if (out >= 0)
 				kmsg("<6>H71-INIT: sysdumpdb is %s "
 				     "(%llu blocks)", node,
 				     (unsigned long long)(last_lba -
 							 first_lba + 1));
-			return out;
+			else
+				kmsg("<3>H71-INIT: open %s failed (%d)",
+				     node, errno);
+			break;
 		}
 	}
+	free(ents);
 	close(fd);
-	return -1;
+	return out;
 }
 
 int main(void)
@@ -287,6 +328,13 @@ int main(void)
 		}
 		if (buf) {
 			unsigned char hdr[16];
+			/* one sector-aligned write per copy: the header
+			 * (16 B) and the ring together, zero-padded to a
+			 * 4096 multiple - valid on 512- and 4096-byte
+			 * disks alike (LOG_OFF1/2 are 1/2 MiB, aligned) */
+			size_t total = ((size_t)len + sizeof(hdr) + 4095) &
+				~(size_t)4095;
+			unsigned char *blob = calloc(1, total);
 
 			memcpy(hdr, magic, 8);
 			hdr[8] = (len >> 24) & 0xff;
@@ -295,15 +343,27 @@ int main(void)
 			hdr[11] = len & 0xff;
 			hdr[12] = hdr[13] = hdr[14] = hdr[15] = 0;
 
-			pwrite(logfd, hdr, sizeof(hdr), LOG_OFF1);
-			pwrite(logfd, buf, len, LOG_OFF1 + sizeof(hdr));
-			pwrite(logfd, hdr, sizeof(hdr), LOG_OFF2);
-			pwrite(logfd, buf, len, LOG_OFF2 + sizeof(hdr));
-			fsync(logfd);
-			saved = 1;
-			kmsg("<6>H71-INIT: saved %d bytes to sysdumpdb "
-			     "+0x%x and +0x%x", len,
-			     (unsigned)LOG_OFF1, (unsigned)LOG_OFF2);
+			if (blob) {
+				memcpy(blob, hdr, sizeof(hdr));
+				memcpy(blob + sizeof(hdr), buf, len);
+				if (pwrite(logfd, blob, total, LOG_OFF1) ==
+					    (off_t)total &&
+				    pwrite(logfd, blob, total, LOG_OFF2) ==
+					    (off_t)total) {
+					fsync(logfd);
+					saved = 1;
+					kmsg("<6>H71-INIT: saved %d bytes to "
+					     "sysdumpdb +0x%x and +0x%x", len,
+					     (unsigned)LOG_OFF1,
+					     (unsigned)LOG_OFF2);
+				} else {
+					kmsg("<3>H71-INIT: sysdumpdb write "
+					     "failed (%d)", errno);
+				}
+			} else {
+				kmsg("<3>H71-INIT: blob alloc failed");
+			}
+			free(blob);
 		} else {
 			kmsg("<3>H71-INIT: ring read failed (%d)", errno);
 		}
