@@ -74,6 +74,7 @@ static char *ring_copy;		/* kept copy of the kernel ring */
 static int ring_len;
 static int ring_save_errno;	/* errno of the last failed flash save */
 static int ring_save_phase;	/* 1 pwrite copy1, 2 pwrite copy2, 3 fsync */
+static int ring_last_len;	/* size of the last ring actually saved */
 static volatile sig_atomic_t save_phase;
 static unsigned long irq_last;	/* previous /proc/interrupts sum */
 
@@ -377,7 +378,15 @@ static int save_ring(int logfd, int verbose)
 	} else if (verbose) {
 		kmsg("<3>H71-INIT: ring read failed (%d)", errno);
 	}
-	if (!ring_copy) {
+	/* write the FRESHEST read: the kept first snapshot is only a
+	 * fallback for the serial dump (test 54's live shell showed
+	 * every flash copy stuck at the boot snapshot - the old code
+	 * rewrote ring_copy forever) */
+	if (!buf) {
+		buf = ring_copy;
+		len = ring_len;
+	}
+	if (!buf) {
 		ring_save_errno = errno ? errno : EIO;
 		return 0;
 	}
@@ -385,21 +394,25 @@ static int save_ring(int logfd, int verbose)
 	/* one sector-aligned write per copy: the header (16 B) and the
 	 * ring together, zero-padded to a 4096 multiple - valid on 512-
 	 * and 4096-byte disks alike (LOG_OFF1/2 are 1/2 MiB, aligned) */
-	total = ((size_t)ring_len + sizeof(hdr) + 4095) & ~(size_t)4095;
+	total = ((size_t)len + sizeof(hdr) + 4095) & ~(size_t)4095;
 	blob = calloc(1, total);
 	if (!blob) {
 		if (verbose)
 			kmsg("<3>H71-INIT: blob alloc failed");
+		if (buf != ring_copy)
+			free(buf);
 		return 0;
 	}
 	memcpy(hdr, magic, 8);
-	hdr[8] = (ring_len >> 24) & 0xff;
-	hdr[9] = (ring_len >> 16) & 0xff;
-	hdr[10] = (ring_len >> 8) & 0xff;
-	hdr[11] = ring_len & 0xff;
+	hdr[8] = (len >> 24) & 0xff;
+	hdr[9] = (len >> 16) & 0xff;
+	hdr[10] = (len >> 8) & 0xff;
+	hdr[11] = len & 0xff;
 	hdr[12] = hdr[13] = hdr[14] = hdr[15] = 0;
 	memcpy(blob, hdr, sizeof(hdr));
-	memcpy(blob + sizeof(hdr), ring_copy, ring_len);
+	memcpy(blob + sizeof(hdr), buf, len);
+	if (buf != ring_copy)
+		free(buf);
 	save_phase = 1;
 	alarm(5);
 	if (pwrite(logfd, blob, total, LOG_OFF1) != (off_t)total) {
@@ -441,9 +454,10 @@ static int save_ring(int logfd, int verbose)
 	alarm(0);
 	save_phase = 0;
 	ok = 1;
+	ring_last_len = len;
 	if (verbose)
 		kmsg("<6>H71-INIT: saved %d bytes to sysdumpdb "
-		     "+0x%x and +0x%x", ring_len,
+		     "+0x%x and +0x%x", len,
 		     (unsigned)LOG_OFF1, (unsigned)LOG_OFF2);
 	free(blob);
 	return ok;
@@ -504,11 +518,10 @@ static int monitor_ring(int seconds, int logfd)
 				kmsg("<6>H71-UFS[%d]: %.*s", n, (int)r, line);
 			}
 		}
-		/* save the ring every second: if the kernel freezes in
-		 * this window, the copy on flash holds the last second
-		 * of kernel output - the freeze moment itself */
-		if (logfd >= 0 && t % 5 == 4)
-			save_ring(logfd, 0);
+		/* no flash saves inside the wait: the second block write to
+		 * the UFS device wedges its queue (tests 46-51), so the
+		 * first save after the boot dump must be the park snapshot
+		 * - the most valuable one */
 		usleep(200000);
 	}
 	close(fd);
@@ -622,21 +635,37 @@ static void gadget_setup(void)
 static void dump_region(const char *tag, unsigned long addr,
 			unsigned off, unsigned len)
 {
+	volatile unsigned char *map;
 	unsigned char buf[128];
 	char line[64];
-	unsigned i, n;
+	unsigned i, n, span;
 	int fd, p;
 
-	fd = open("/dev/mem", O_RDONLY | O_SYNC);
-	if (fd < 0)
-		return;
 	if (len > sizeof(buf))
 		len = sizeof(buf);
-	if (pread(fd, buf, len, (off_t)(addr + off)) != (off_t)len) {
-		close(fd);
+	span = (unsigned)(((addr + off + len) + 4095) & ~4095UL) -
+	       (unsigned)(addr & ~4095UL);
+	fd = open("/dev/mem", O_RDONLY | O_SYNC);
+	if (fd < 0) {
+		kmsg("<3>H71-INIT: %s /dev/mem open failed (%d)", tag, errno);
 		return;
 	}
-	close(fd);
+	/* mmap, not pread: pread on /dev/mem fails on this kernel while
+	 * the WDT feed proves the mmap path works (test 50) */
+	{
+		void *m = mmap(NULL, span, PROT_READ, MAP_SHARED, fd,
+				addr & ~4095UL);
+
+		close(fd);
+		if (m == MAP_FAILED) {
+			kmsg("<3>H71-INIT: %s mmap failed (%d)", tag, errno);
+			return;
+		}
+		map = (volatile unsigned char *)m + (addr & 4095) + off;
+		for (i = 0; i < len; i++)
+			buf[i] = map[i];
+		munmap(m, span);
+	}
 	for (i = 0; i < len; i += 16) {
 		p = 0;
 		for (n = 0; n < 16 && i + n < len; n++)
@@ -653,8 +682,44 @@ static void usb_regs_dump(void)
 	/* ANLG PHY G2 USB20: utmi_ctl1 +4, pd +8, utmi_ctl2 +0xc,
 	 * trimming +0x10, pll +0x1c, reg_sel +0x20 */
 	dump_region("anlg", 0x64570000UL, 0, 0x30);
-	/* AON APB OTG: otg_test +0x204, otg_ctrl +0x208 */
+	/* AON APB OTG: otg_test +0x204, otg_ctrl +0x208, and CGM_REG1
+	 * +0x138 (OTG_REF_EN bit 12 - the phy reference clock) */
+	dump_region("aonapb", 0x64000000UL, 0x130, 0x10);
 	dump_region("aonapb", 0x64000000UL, 0x200, 0x10);
+}
+
+/*
+ * Print the musb interrupt line from /proc/interrupts: test 51 proved
+ * the bus comes up (POWER.HSMODE set - the host reset us and the
+ * high-speed chirp succeeded) yet no COM port appears, which points at
+ * EP0 control transfers never being answered - a dead musb IRQ shows
+ * here as a zero/stuck counter.
+ */
+static void print_musb_irq(void)
+{
+	static char buf[32768];
+	char line[256];
+	int fd, n, i = 0, j;
+
+	fd = open("/proc/interrupts", O_RDONLY);
+	if (fd < 0)
+		return;
+	n = (int)read(fd, buf, sizeof(buf) - 1);
+	close(fd);
+	if (n <= 0)
+		return;
+	buf[n] = '\0';
+	while (i < n) {
+		j = 0;
+		while (i < n && buf[i] != '\n' && j < (int)sizeof(line) - 1)
+			line[j++] = buf[i++];
+		line[j] = '\0';
+		if (i < n)
+			i++;
+		if (strstr(line, "musb") || strstr(line, "64900000") ||
+		    strstr(line, "ufshcd") || strstr(line, "20200000"))
+			kmsg("<6>H71-INIT: irqs: %s", line);
+	}
 }
 
 /*
@@ -810,7 +875,7 @@ static void run_saver(int logfd)
 		if (now != ok) {
 			if (now)
 				kmsg("<6>H71-INIT: saver ok (%d B/s)",
-				     ring_len);
+				     ring_last_len);
 			else
 				kmsg("<3>H71-INIT: saver FAILING (errno %d "
 				     "at phase %d: 1 pwrite, 2 pwrite2, "
@@ -864,6 +929,7 @@ int main(void)
 	wdt_init();
 	gadget_setup();
 	usb_regs_dump();
+	print_musb_irq();
 	logfd = open_log_partition();
 	if (logfd < 0)
 		logfd = open("/dev/block/by-name/sysdumpdb", O_WRONLY);
@@ -897,31 +963,55 @@ int main(void)
 
 				if (!dblb) {
 					close(ffd);
-				} else if (read(ffd, dblb + 16,
-					       (size_t)st.st_size) !=
-					   (ssize_t)st.st_size) {
-					kmsg("<3>H71-INIT: fdt read failed "
-					     "(%d)", errno);
-					free(dblb);
-					close(ffd);
 				} else {
-					memcpy(dblb, DTB_MAGIC, 8);
-					dblb[8] = (st.st_size >> 24) & 0xff;
-					dblb[9] = (st.st_size >> 16) & 0xff;
-					dblb[10] = (st.st_size >> 8) & 0xff;
-					dblb[11] = st.st_size & 0xff;
-					dblb[12] = dblb[13] = dblb[14] =
-						dblb[15] = 0;
-					if (pwrite(logfd, dblb, dtotal,
-						   LOG_OFF3) == (off_t)dtotal) {
-						kmsg("<6>H71-INIT: merged dtb "
-						     "%ld bytes to sysdumpdb "
-						     "+0x%x",
-						     (long)st.st_size,
-						     (unsigned)LOG_OFF3);
+					/* sysfs bin attributes return
+					 * PAGE_SIZE at a time - loop until
+					 * the whole fdt is read (test 54:
+					 * the one-shot read came up short
+					 * with a stale errno) */
+					size_t done = 0;
+
+					while (done < (size_t)st.st_size) {
+						ssize_t r = read(ffd,
+							dblb + 16 + done,
+							(size_t)st.st_size -
+								done);
+
+						if (r < 0) {
+							kmsg("<3>H71-INIT: "
+							     "fdt read failed "
+							     "(%d, %zu/%ld)",
+							     errno, done,
+							     (long)st.st_size);
+							break;
+						}
+						if (r == 0)
+							break;
+						done += (size_t)r;
+					}
+					if (done == (size_t)st.st_size) {
+						memcpy(dblb, DTB_MAGIC, 8);
+						dblb[8] = (st.st_size >> 24) & 0xff;
+						dblb[9] = (st.st_size >> 16) & 0xff;
+						dblb[10] = (st.st_size >> 8) & 0xff;
+						dblb[11] = st.st_size & 0xff;
+						dblb[12] = dblb[13] = dblb[14] =
+							dblb[15] = 0;
+						if (pwrite(logfd, dblb, dtotal,
+							   LOG_OFF3) == (off_t)dtotal) {
+							kmsg("<6>H71-INIT: merged dtb "
+							     "%ld bytes to sysdumpdb "
+							     "+0x%x",
+							     (long)st.st_size,
+							     (unsigned)LOG_OFF3);
+						} else {
+							kmsg("<3>H71-INIT: fdt write "
+							     "failed (%d)", errno);
+						}
 					} else {
-						kmsg("<3>H71-INIT: fdt write "
-						     "failed (%d)", errno);
+						kmsg("<3>H71-INIT: fdt short read "
+						     "(%zu of %ld)",
+						     done, (long)st.st_size);
 					}
 					free(dblb);
 					close(ffd);
@@ -936,6 +1026,8 @@ int main(void)
 	 * board, the SPL takes slot a and the rescue restores Android
 	 * without a power hold. */
 	xray();
+	usb_regs_dump();
+	print_musb_irq();
 	kmsg("<6>H71-INIT: PARKED - power-hold to recover");
 	serial_try();
 	shell_try();
