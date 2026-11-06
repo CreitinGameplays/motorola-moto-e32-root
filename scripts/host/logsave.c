@@ -272,7 +272,9 @@ static void wdt_pet(void)
 	while ((wdt_regs[WDT_INT_RAW / 4] & WDT_LDBUSY_BIT) &&
 	       busy++ < 1000)
 		;
-	wdt_regs[WDT_INT_CLR / 4] = WDT_INT_CLR_BIT | WDT_RST_CLR_BIT;
+	/* no INT_CLR write: the vendor feed (start()) reloads LOAD and
+	 * re-enables CTRL only - test 46 also wrote RST_CLR here and the
+	 * board then never bit, so stick to the proven protocol */
 	wdt_regs[WDT_CTRL / 4] = WDT_CTRL_RUN;
 	wdt_regs[WDT_LOCK / 4] = 0;
 }
