@@ -70,6 +70,7 @@ static const char magic[8] = "H71LOG01";
 static int ser_fd = -1;
 static char *ring_copy;		/* kept copy of the kernel ring */
 static int ring_len;
+static int ring_save_errno;	/* errno of the last failed flash save */
 static unsigned long irq_last;	/* previous /proc/interrupts sum */
 
 static void kmsg(const char *fmt, ...)
@@ -205,8 +206,9 @@ static void shell_try(void)
 #define WDT_INT_CLR_BIT		0x1u	/* INT_CLR: clear bark */
 #define WDT_RST_CLR_BIT		0x8u	/* INT_CLR: clear bite */
 
+static void wdt_pet(void);
+
 static volatile unsigned int *wdt_regs;
-static unsigned int wdt_load_lo, wdt_load_hi;
 
 static void wdt_init(void)
 {
@@ -226,14 +228,37 @@ static void wdt_init(void)
 		return;
 	}
 	wdt_regs += (WDT_BASE & 4095) / 4;
-	wdt_load_lo = wdt_regs[WDT_LOAD_LOW / 4];
-	wdt_load_hi = wdt_regs[WDT_LOAD_HIGH / 4];
-	kmsg("<6>H71-INIT: wdt ctrl=%#x load=%#x cnt=%#x raw=%#x",
-	     wdt_regs[WDT_CTRL / 4], (wdt_load_hi << 16) | wdt_load_lo,
-	     wdt_regs[WDT_CNT_LOW / 4] |
-		     (wdt_regs[WDT_CNT_HIGH / 4] << 16),
-	     wdt_regs[WDT_INT_RAW / 4]);
+	{
+		/* print everything the LK side left behind - test 46's
+		 * LOAD value is what the old pet fed back, and it made
+		 * the watchdog near-infinite (no bite in 901 s) */
+		unsigned int lo = wdt_regs[WDT_LOAD_LOW / 4];
+		unsigned int hi = wdt_regs[WDT_LOAD_HIGH / 4];
+
+		kmsg("<6>H71-INIT: wdt ctrl=%#x load=%#x cnt=%#x raw=%#x",
+		     wdt_regs[WDT_CTRL / 4], (hi << 16) | lo,
+		     wdt_regs[WDT_CNT_LOW / 4] |
+			     (wdt_regs[WDT_CNT_HIGH / 4] << 16),
+		     wdt_regs[WDT_INT_RAW / 4]);
+	}
+	wdt_pet();
 }
+
+
+/*
+ * Pet: re-arm with a deterministic 30 s timeout (the same protocol the
+ * 4.14 hang_debug feed threads use via start(): rewrite LOAD, wait for
+ * the load to land, clear pending reset, re-enable counter+reset).
+ * The LOAD value LK left behind is NOT reused: test 46 fed it back and
+ * the board then survived 901 s frozen with no bite, so whatever was in
+ * the register made the timeout near-infinite.  30 s with 1 s pets
+ * gives a wide margin while alive and a fast automatic rescue when a
+ * freeze stops the feeding (bite -> reset -> SPL slot a -> rescue ->
+ * adb back, no power hold needed).
+ */
+#define WDT_FEED_SECONDS	30u
+#define WDT_FEED_STEPS		(WDT_FEED_SECONDS * 32768u)
+#define WDT_CTRL_RUN		0xeu	/* CNT_EN | NEW_VER_EN | RST_EN */
 
 static void wdt_pet(void)
 {
@@ -241,16 +266,27 @@ static void wdt_pet(void)
 
 	if (!wdt_regs)
 		return;
-	if ((wdt_regs[WDT_CTRL / 4] & 0xfu) == 0)
-		return;		/* counter disarmed: nothing to feed */
 	wdt_regs[WDT_LOCK / 4] = WDT_LOCK_KEY;
-	wdt_regs[WDT_LOAD_LOW / 4] = wdt_load_lo;
-	wdt_regs[WDT_LOAD_HIGH / 4] = wdt_load_hi;
+	wdt_regs[WDT_LOAD_LOW / 4] = WDT_FEED_STEPS & 0xffffu;
+	wdt_regs[WDT_LOAD_HIGH / 4] = WDT_FEED_STEPS >> 16;
 	while ((wdt_regs[WDT_INT_RAW / 4] & WDT_LDBUSY_BIT) &&
 	       busy++ < 1000)
 		;
 	wdt_regs[WDT_INT_CLR / 4] = WDT_INT_CLR_BIT | WDT_RST_CLR_BIT;
+	wdt_regs[WDT_CTRL / 4] = WDT_CTRL_RUN;
 	wdt_regs[WDT_LOCK / 4] = 0;
+}
+
+/* seconds until the bite, for the park heartbeat */
+static unsigned wdt_timeleft(void)
+{
+	unsigned int cnt;
+
+	if (!wdt_regs)
+		return 0;
+	cnt = wdt_regs[WDT_CNT_LOW / 4] |
+	      (wdt_regs[WDT_CNT_HIGH / 4] << 16);
+	return cnt / 32768u;
 }
 
 /*
@@ -304,6 +340,7 @@ static int save_ring(int logfd, int verbose)
 	size_t total;
 	int len = 0, size, n, ok = 0;
 
+	ring_save_errno = 0;
 	size = klogctl(10 /* size of the ring */, NULL, 0);
 	if (size > 0)
 		buf = malloc(size + 1);
@@ -325,8 +362,10 @@ static int save_ring(int logfd, int verbose)
 	} else if (verbose) {
 		kmsg("<3>H71-INIT: ring read failed (%d)", errno);
 	}
-	if (!ring_copy)
+	if (!ring_copy) {
+		ring_save_errno = errno ? errno : EIO;
 		return 0;
+	}
 
 	/* one sector-aligned write per copy: the header (16 B) and the
 	 * ring together, zero-padded to a 4096 multiple - valid on 512-
@@ -354,8 +393,10 @@ static int save_ring(int logfd, int verbose)
 			kmsg("<6>H71-INIT: saved %d bytes to sysdumpdb "
 			     "+0x%x and +0x%x", ring_len,
 			     (unsigned)LOG_OFF1, (unsigned)LOG_OFF2);
-	} else if (verbose) {
-		kmsg("<3>H71-INIT: sysdumpdb write failed (%d)", errno);
+	} else {
+		ring_save_errno = errno ? errno : EIO;
+		if (verbose)
+			kmsg("<3>H71-INIT: sysdumpdb write failed (%d)", errno);
 	}
 	free(blob);
 	return ok;
@@ -395,7 +436,7 @@ static int interesting(const char *line)
  * own history still showed the deferred-probe messages).  Reading as
  * they arrive has no eviction window.
  */
-static int monitor_ring(int seconds)
+static int monitor_ring(int seconds, int logfd)
 {
 	char line[512];
 	int fd, n = 0, t;
@@ -416,6 +457,11 @@ static int monitor_ring(int seconds)
 				kmsg("<6>H71-UFS[%d]: %.*s", n, (int)r, line);
 			}
 		}
+		/* save the ring every second: if the kernel freezes in
+		 * this window, the copy on flash holds the last second
+		 * of kernel output - the freeze moment itself */
+		if (logfd >= 0 && t % 5 == 4)
+			save_ring(logfd, 0);
 		usleep(200000);
 	}
 	close(fd);
@@ -562,16 +608,45 @@ static int open_log_partition(void)
 	return out;
 }
 
+/*
+ * Continuous saver: a forked child re-saves the ring every second so
+ * the copy on flash holds the LAST second of kernel output before any
+ * freeze.  It is a separate process on purpose - test 46 showed a
+ * re-save failing once and the boot freezing shortly after; if the UFS
+ * write itself hangs, the parent keeps petting the watchdog, painting
+ * the park screen and serving the serial shell, and the failure mode
+ * (kernel-wide freeze vs. storage wedge) becomes distinguishable.
+ * Prints only on state change, so a healthy saver is silent.
+ */
+static void run_saver(int logfd)
+{
+	int ok = -1;
+
+	for (;;) {
+		int now = save_ring(logfd, 0);
+
+		if (now != ok) {
+			if (now)
+				kmsg("<6>H71-INIT: saver ok (%d B/s)",
+				     ring_len);
+			else
+				kmsg("<3>H71-INIT: saver FAILING (%d)",
+				     ring_save_errno);
+			ok = now;
+		}
+		sleep(1);
+	}
+}
+
 int main(void)
 {
-	int logfd, saved = 0;
+	int logfd;
 
 	kmsg("<6>H71-INIT: logsave up (pid %d, waiting %d s, ring monitor on)",
 	     (int)getpid(), WAIT_SECONDS);
-	monitor_ring(WAIT_SECONDS);
-	kmsg("<6>H71-INIT: wait done, collecting the kernel ring");
 
-	/* make sure devtmpfs nodes exist (kernel may not automount it) */
+	/* mounts first: the monitor's 1 s ring saves and the watchdog
+	 * feed both need them */
 	if (access("/dev/sda", F_OK) != 0) {
 		if (mount("devtmpfs", "/dev", "devtmpfs", 0, "") == 0)
 			kmsg("<6>H71-INIT: devtmpfs mounted on /dev");
@@ -594,14 +669,18 @@ int main(void)
 	    mount("proc", "/proc", "proc", 0, "") == 0)
 		kmsg("<6>H71-INIT: proc mounted on /proc");
 
+	wdt_init();
 	logfd = open_log_partition();
 	if (logfd < 0)
 		logfd = open("/dev/block/by-name/sysdumpdb", O_WRONLY);
-	if (logfd < 0) {
+	if (logfd < 0)
 		kmsg("<3>H71-INIT: sysdumpdb not found - ring not saved "
 		     "to flash");
-	} else {
-		saved = save_ring(logfd, 1);
+
+	monitor_ring(WAIT_SECONDS, logfd);
+	kmsg("<6>H71-INIT: wait done, collecting the kernel ring");
+	if (logfd >= 0) {
+		save_ring(logfd, 1);
 		/* ground truth for every DT question: the merged DTB
 		 * exactly as the kernel consumed it (the LK dtbo merge
 		 * output), from /sys/firmware/fdt -> sysdumpdb +8 MiB */
@@ -655,39 +734,51 @@ int main(void)
 				}
 			}
 		}
-		close(logfd);
 	}
 
 	/* no reboot: every 7.1 reset path on this phone is broken (ADI
 	 * powers it off, PSCI darkens it).  Keep the LK-armed watchdog
-	 * fed while parked; the user power-holds, the SPL takes slot a
-	 * and the rescue restores Android. */
-	wdt_init();
+	 * fed while parked; if the kernel freezes the bite resets the
+	 * board, the SPL takes slot a and the rescue restores Android
+	 * without a power hold. */
 	xray();
 	kmsg("<6>H71-INIT: PARKED - power-hold to recover");
 	serial_try();
 	shell_try();
-	for (;;) {
-		unsigned long isum;
+	if (logfd >= 0) {
+		pid_t sp = fork();
 
-		sleep(10);
-		serial_try();		/* the gadget may bind late */
-		shell_try();
-		wdt_pet();		/* keep the LK-armed WDT fed */
-		if (logfd >= 0)
-			saved = save_ring(logfd, 0);
-		kmsg("<4>H71-INIT: parked, ring %s",
-		     saved ? "SAVED to sysdumpdb" : "NOT saved");
-		isum = irq_sum();
-		if (isum && irq_last && isum > irq_last + 100000)
-			kmsg("<3>H71-INIT: IRQ STORM +%lu in 10 s",
-			     isum - irq_last);
-		irq_last = isum;
+		if (sp == 0) {
+			if (ser_fd >= 0)
+				close(ser_fd);
+			run_saver(logfd);
+			_exit(0);
+		}
+		if (sp > 0)
+			kmsg("<6>H71-INIT: saver pid %d (1 s ring saves)",
+			     (int)sp);
+	}
+	for (;;) {
+		int tick;
+
+		for (tick = 0; tick < 10; tick++) {
+			unsigned long isum;
+
+			sleep(1);
+			serial_try();	/* the gadget may bind late */
+			shell_try();
+			wdt_pet();
+			isum = irq_sum();
+			if (isum && irq_last && isum > irq_last + 100000)
+				kmsg("<3>H71-INIT: IRQ STORM +%lu in 1 s",
+				     isum - irq_last);
+			irq_last = isum;
+		}
+		kmsg("<4>H71-INIT: parked, wdt %u s left", wdt_timeleft());
 		/* once the shell runs, keep the wire quiet for it */
 		if (!shell_started)
-			serial_printf("H71-INIT: parked, ring %s\r\n",
-				      saved ? "SAVED to sysdumpdb"
-					    : "NOT saved");
+			serial_printf("H71-INIT: parked, wdt %u s left\r\n",
+				      wdt_timeleft());
 	}
 	return 0;
 }
