@@ -1,6 +1,6 @@
 <6>[    0.000000] Booting Linux on physical CPU 0x0000000000 [0x412fd050]
 <6>[    0.000000] diag: kernel: start_kernel
-<5>[    0.000000] Linux version 7.1.0-rc1-sprd+ (debian@vm) (Debian clang version 19.1.7 (3+b1), Debian LLD 19.1.7) #32 SMP PREEMPT Fri Nov  6 12:02:48 UTC 2026
+<5>[    0.000000] Linux version 7.1.0-rc1-sprd+ (debian@vm) (Debian clang version 19.1.7 (3+b1), Debian LLD 19.1.7) #33 SMP PREEMPT Fri Nov  6 13:57:53 UTC 2026
 <4>[    0.000000] KASLR disabled due to lack of seed
 <6>[    0.000000] Machine model: Spreadtrum UMS9230 4H10 Board
 <4>[    0.000000] [Firmware Bug]: Kernel image misaligned at boot, please fix your bootloader!
@@ -56,8 +56,8 @@
 <6>[    0.000000] CPU features: detected: ARM errata 1165522, 1319367, or 1530923
 <6>[    0.000000] alternatives: applying boot alternatives
 <5>[    0.000000] Kernel command line:  console=null loop.max_part=7 loglevel=1 init=/init root=/dev/ram0 rw printk.devkmsg=on swiotlb=1 androidboot.hardware=ums9230_4h10 androidboot.dtbo_idx=0 lcd_id=ID36525 lcd_name=lcd_nt36525c_boe_mipi_fhd lcd_base=9e000000 lcd_size=1600x720 logo_bpix=24 cit_tp=0x00 androidboot.ddrsize=4096M androidboot.ddrsize.range=[4096,5120) androidboot.lwfq.type=1 androidboot.auto.efuse=T606 androidboot.auto.chipid=UMS9230-AB  sysdump_magic=80001000 sysdump_re_flag=1  androidboot.wdten=0  androidboot.usbmux=0x0 modem=shutdown ltemode=lcsfb rfboard.id=0 rfhw.id=32816 crystal=6 32k.less=1 marlin.clktype=1 androidboot.pmic.chipid=2730  androidboot.verifiedbootstate=orange androidboot.flash.locked=0  androidboot.serialno=ZF523X9NXW  androidboot.carrier=retbr_brmanaus  androidboot.securefuse=true  androidboot.psn=ZF523X9NXW  androidboot.bootloader=ums9230_4h10_Natv_nv-0bc803f-20220927141356-20240220112928  band_id=XT2227-1 buildvariant=user androidboot.vbmeta.device=PARTUUID=1.0 \
-<5>[    0.000000] Kernel command line: androidboot.vbmeta.avb_version=1.1 androidboot.vbmeta.device_state=unlocked androidboot.vbmeta.hash_alg=sha256 androidboot.vbmeta.size=45696 androidboot.vbmeta.digest=5be4907d2b2ed483060c8eaaea357aee938333374643cd9ecdc76dc6433ea599 androidboot.vbmeta.invalidate_on_error=yes androidboot.veritymode=enforcing androidboot.slot_suffix=_b androidboot.force_normal_boot=1 androidboot.boot_devices=soc/soc:ap-apb/20200000.ufs bootcause="Reboot into normal" sensor_name=ltr569, tspl=534ms tsml=131ms tuboot=5676ms 
-<5>[    0.000000] Unknown kernel command line parameters "lcd_id=ID36525 lcd_name=lcd_nt36525c_boe_mipi_fhd lcd_base=9e000000 lcd_size=1600x720 logo_bpix=24 cit_tp=0x00 sysdump_magic=80001000 sysdump_re_flag=1 modem=shutdown ltemode=lcsfb crystal=6 band_id=XT2227-1 buildvariant=user bootcause=Reboot into normal sensor_name=ltr569, tspl=534ms tsml=131ms tuboot=5676ms", will be passed to user space.
+<5>[    0.000000] Kernel command line: androidboot.vbmeta.avb_version=1.1 androidboot.vbmeta.device_state=unlocked androidboot.vbmeta.hash_alg=sha256 androidboot.vbmeta.size=45696 androidboot.vbmeta.digest=b61a7a6087325d2211c4026935be5808683f98a88d9f26ff30d479b9a32afc77 androidboot.vbmeta.invalidate_on_error=yes androidboot.veritymode=enforcing androidboot.slot_suffix=_b androidboot.force_normal_boot=1 androidboot.boot_devices=soc/soc:ap-apb/20200000.ufs bootcause="Reboot into normal" sensor_name=ltr569, tspl=538ms tsml=132ms tuboot=5463ms 
+<5>[    0.000000] Unknown kernel command line parameters "lcd_id=ID36525 lcd_name=lcd_nt36525c_boe_mipi_fhd lcd_base=9e000000 lcd_size=1600x720 logo_bpix=24 cit_tp=0x00 sysdump_magic=80001000 sysdump_re_flag=1 modem=shutdown ltemode=lcsfb crystal=6 band_id=XT2227-1 buildvariant=user bootcause=Reboot into normal sensor_name=ltr569, tspl=538ms tsml=132ms tuboot=5463ms", will be passed to user space.
 <6>[    0.000000] printk: log buffer data + meta data: 1048576 + 3670016 = 4718592 bytes
 <6>[    0.000000] Dentry cache hash table entries: 524288 (order: 10, 4194304 bytes, linear)
 <6>[    0.000000] Inode-cache hash table entries: 262144 (order: 9, 2097152 bytes, linear)
@@ -90,589 +90,587 @@
 <6>[    0.000000] arch_timer: cp15 timer running at 26.00MHz (phys).
 <6>[    0.000000] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0x5ff13d5a9, max_idle_ns: 440795202370 ns
 <6>[    0.000000] sched_clock: 56 bits at 26MHz, resolution 38ns, wraps every 4398046511088ns
-<6>[    0.024178] HAWAII-BOOTWDT: selfreset=150s, armed at early
-<6>[    0.024478] Console: colour dummy device 80x25
-<6>[    0.031909] Calibrating delay loop (skipped), value calculated using timer frequency.. 52.00 BogoMIPS (lpj=104000)
-<6>[    0.031936] pid_max: default: 32768 minimum: 301
-<6>[    0.032267] Mount-cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
-<6>[    0.032286] Mountpoint-cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
-<6>[    0.032627] VFS: Finished mounting rootfs on nullfs
-<4>[    0.034046] cacheinfo: Unable to detect cache hierarchy for CPU 0
-<6>[    0.035004] rcu: Hierarchical SRCU implementation.
-<6>[    0.035011] rcu: 	Max phase no-delay instances is 1000.
-<6>[    0.035198] Timer migration: 1 hierarchy levels; 8 children per group; 1 crossnode level
-<6>[    0.036464] smp: Bringing up secondary CPUs ...
-<6>[    0.037386] Detected VIPT I-cache on CPU1
-<6>[    0.037457] GICv3: CPU1: found redistributor 100 region 0:0x0000000010060000
-<6>[    0.037516] CPU1: Booted secondary processor 0x0000000100 [0x412fd050]
-<6>[    0.038459] Detected VIPT I-cache on CPU2
-<6>[    0.038516] GICv3: CPU2: found redistributor 200 region 0:0x0000000010080000
-<6>[    0.038565] CPU2: Booted secondary processor 0x0000000200 [0x412fd050]
-<6>[    0.039456] Detected VIPT I-cache on CPU3
-<6>[    0.039514] GICv3: CPU3: found redistributor 300 region 0:0x00000000100a0000
-<6>[    0.039558] CPU3: Booted secondary processor 0x0000000300 [0x412fd050]
-<6>[    0.040434] Detected VIPT I-cache on CPU4
-<6>[    0.040487] GICv3: CPU4: found redistributor 400 region 0:0x00000000100c0000
-<6>[    0.040525] CPU4: Booted secondary processor 0x0000000400 [0x412fd050]
-<6>[    0.041403] Detected VIPT I-cache on CPU5
-<6>[    0.041455] GICv3: CPU5: found redistributor 500 region 0:0x00000000100e0000
-<6>[    0.041496] CPU5: Booted secondary processor 0x0000000500 [0x412fd050]
-<6>[    0.042273] CPU features: detected: Spectre-v4
-<6>[    0.042282] CPU features: detected: Spectre-BHB
-<6>[    0.042290] Detected VIPT I-cache on CPU6
-<6>[    0.042331] GICv3: CPU6: found redistributor 600 region 0:0x0000000010100000
-<6>[    0.042367] CPU6: Booted secondary processor 0x0000000600 [0x413fd0a1]
-<6>[    0.043100] Detected VIPT I-cache on CPU7
-<6>[    0.043146] GICv3: CPU7: found redistributor 700 region 0:0x0000000010120000
-<6>[    0.043182] CPU7: Booted secondary processor 0x0000000700 [0x413fd0a1]
-<6>[    0.043276] smp: Brought up 1 node, 8 CPUs
-<6>[    0.043286] SMP: Total of 8 processors activated.
-<6>[    0.043290] CPU: All CPU(s) started at EL2
-<6>[    0.043295] CPU features: detected: 32-bit EL0 Support
-<6>[    0.043298] CPU features: detected: 32-bit EL1 Support
-<6>[    0.043304] CPU features: detected: Data cache clean to the PoU not required for I/D coherence
-<6>[    0.043309] CPU features: detected: Common not Private translations
-<6>[    0.043313] CPU features: detected: CRC32 instructions
-<6>[    0.043321] CPU features: detected: RCpc load-acquire (LDAPR)
-<6>[    0.043326] CPU features: detected: LSE atomic instructions
-<6>[    0.043330] CPU features: detected: Privileged Access Never
-<6>[    0.043334] CPU features: detected: RAS Extension Support
-<6>[    0.043341] CPU features: detected: XNX
-<6>[    0.043406] alternatives: applying system-wide alternatives
-<6>[    0.047442] CPU features: detected: ICV_DIR_EL1 trapping
-<6>[    0.047452] CPU features: detected: Hardware dirty bit management on CPU6-7
-<6>[    0.047892] Memory: 3550460K/4194300K available (14016K kernel code, 4618K rwdata, 5148K rodata, 1088K init, 1474K bss, 606448K reserved, 32768K cma-reserved)
-<6>[    0.049554] devtmpfs: initialized
-<6>[    0.287448] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
-<6>[    0.287478] posixtimers hash table entries: 4096 (order: 4, 65536 bytes, linear)
-<6>[    0.287543] futex hash table entries: 2048 (131072 bytes on 1 NUMA nodes, total 128 KiB, linear).
-<6>[    0.287831] 26128 pages in range for non-PLT usage
-<6>[    0.287836] 517648 pages in range for PLT usage
-<6>[    0.289926] NET: Registered PF_NETLINK/PF_ROUTE protocol family
-<6>[    0.321760] DMA: preallocated 512 KiB GFP_KERNEL pool for atomic allocations
-<6>[    0.321882] DMA: preallocated 512 KiB GFP_KERNEL|GFP_DMA pool for atomic allocations
-<6>[    0.321923] audit: initializing netlink subsys (disabled)
-<5>[    0.322086] audit: type=2000 audit(0.296:1): state=initialized audit_enabled=0 res=1
-<6>[    0.322340] thermal_sys: Registered thermal governor 'step_wise'
-<6>[    0.322345] thermal_sys: Registered thermal governor 'power_allocator'
-<6>[    0.322379] cpuidle: using governor menu
-<6>[    0.355679] hw-breakpoint: found 6 breakpoint and 4 watchpoint registers.
-<6>[    0.355900] ASID allocator initialised with 65536 entries
-<6>[    0.356098] Serial: AMBA PL011 UART driver
-<6>[    0.356480] pstore: Using crash dump compression: deflate
-<6>[    0.356488] printk: legacy console [ramoops-1] enabled
-<6>[    0.356775] pstore: Registered ramoops as persistent store backend
-<6>[    0.356779] ramoops: using 0x40000@0xfff80000, ecc: 0
-<3>[    0.362010] OF: /soc/aon/usb@64900000: could not find phandle 2013265920
-<6>[    0.363237] /soc/ap-ahb/dpu@31000000: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000
-<6>[    0.363263] /soc/ap-ahb/dsi@31100000: Fixed dependency cycle(s) with /soc/ap-ahb/dpu@31000000
-<6>[    0.363273] /soc/ap-ahb/dsi@31100000: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
-<6>[    0.363291] /soc/ap-ahb/dsi@31100000/panel: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
-<6>[    0.363311] /soc/ap-ahb/dphy: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000
-<6>[    0.363321] /soc/ap-ahb/dphy: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000/panel
-<6>[    0.363547] /soc/interrupt-controller@10000000: Fixed dependency cycle(s) with /soc/interrupt-controller@10000000
-<6>[    0.363584] /soc/funnel@7c002000: Fixed dependency cycle(s) with /soc/funnel@7e004000
-<6>[    0.363595] /soc/funnel@7c002000: Fixed dependency cycle(s) with /soc/etb@7c003000
-<6>[    0.363621] /soc/etb@7c003000: Fixed dependency cycle(s) with /soc/funnel@7c002000
-<6>[    0.363634] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f740000
-<6>[    0.363645] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f540000
-<6>[    0.363653] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f440000
-<6>[    0.363664] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f340000
-<6>[    0.363681] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etf@7e002000
-<6>[    0.363699] /soc/etf@7e002000: Fixed dependency cycle(s) with /soc/funnel@7e001000
-<6>[    0.363718] /soc/etf@7e002000: Fixed dependency cycle(s) with /soc/funnel@7e004000
-<6>[    0.363733] /soc/etf@7e003000: Fixed dependency cycle(s) with /soc/funnel@7e005000
-<6>[    0.363751] /soc/etf@7e003000: Fixed dependency cycle(s) with /soc/funnel@7e004000
-<6>[    0.363770] /soc/funnel@7e004000: Fixed dependency cycle(s) with /soc/etf@7e003000
-<6>[    0.363787] /soc/funnel@7e004000: Fixed dependency cycle(s) with /soc/etf@7e002000
-<6>[    0.363794] /soc/funnel@7e004000: Fixed dependency cycle(s) with /soc/funnel@7c002000
-<6>[    0.363805] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f640000
-<6>[    0.363813] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f240000
-<6>[    0.363821] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f140000
-<6>[    0.363829] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f040000
-<6>[    0.363848] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etf@7e003000
-<6>[    0.363877] /soc/etm@7f040000: Fixed dependency cycle(s) with /soc/funnel@7e005000
-<6>[    0.363904] /soc/etm@7f140000: Fixed dependency cycle(s) with /soc/funnel@7e005000
-<6>[    0.363931] /soc/etm@7f240000: Fixed dependency cycle(s) with /soc/funnel@7e005000
-<6>[    0.363956] /soc/etm@7f340000: Fixed dependency cycle(s) with /soc/funnel@7e001000
-<6>[    0.363983] /soc/etm@7f440000: Fixed dependency cycle(s) with /soc/funnel@7e001000
-<6>[    0.364008] /soc/etm@7f540000: Fixed dependency cycle(s) with /soc/funnel@7e001000
-<6>[    0.364036] /soc/etm@7f640000: Fixed dependency cycle(s) with /soc/funnel@7e005000
-<6>[    0.364063] /soc/etm@7f740000: Fixed dependency cycle(s) with /soc/funnel@7e001000
-<6>[    0.366445] /soc/ap-ahb/dpu@31000000: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000
-<6>[    0.366471] /soc/ap-ahb/dsi@31100000: Fixed dependency cycle(s) with /soc/ap-ahb/dpu@31000000
-<6>[    0.366484] /soc/ap-ahb/dsi@31100000: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
-<6>[    0.366501] /soc/ap-ahb/dsi@31100000/panel: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
-<6>[    0.366522] /soc/ap-ahb/dphy: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000
-<6>[    0.366532] /soc/ap-ahb/dphy: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000/panel
-<6>[    0.366655] /soc/ap-ahb/dpu@31000000: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000
-<6>[    0.366822] /soc/ap-ahb/dpu@31000000: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000
-<6>[    0.366871] /soc/ap-ahb/dsi@31100000: Fixed dependency cycle(s) with /soc/ap-ahb/dpu@31000000
-<6>[    0.366910] /soc/ap-ahb/dsi@31100000: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
-<6>[    0.366927] /soc/ap-ahb/dsi@31100000/panel: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
-<6>[    0.366991] /soc/ap-ahb/dsi@31100000/panel: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
-<6>[    0.367031] /soc/ap-ahb/dsi@31100000: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
-<6>[    0.367079] /soc/ap-ahb/dphy: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000/panel
-<6>[    0.370515] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/rfctl16
-<6>[    0.370528] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/rfctl3
-<6>[    0.370539] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/rfctl5
-<6>[    0.370551] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/rfctl6
-<6>[    0.370560] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/rfctl7
-<6>[    0.370570] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/keyin0
-<6>[    0.370579] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/bt_rfctl2
-<6>[    0.370588] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/keyout0
-<6>[    0.375057] /soc/funnel@7c002000: Fixed dependency cycle(s) with /soc/funnel@7e004000
-<6>[    0.375070] /soc/funnel@7c002000: Fixed dependency cycle(s) with /soc/etb@7c003000
-<6>[    0.375148] /soc/funnel@7c002000: Fixed dependency cycle(s) with /soc/etb@7c003000
-<6>[    0.375203] /soc/etb@7c003000: Fixed dependency cycle(s) with /soc/funnel@7c002000
-<6>[    0.375314] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f740000
-<6>[    0.375323] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f540000
-<6>[    0.375333] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f440000
-<6>[    0.375342] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f340000
-<6>[    0.375357] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etf@7e002000
-<6>[    0.375452] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etf@7e002000
-<6>[    0.375490] /soc/etf@7e002000: Fixed dependency cycle(s) with /soc/funnel@7e001000
-<6>[    0.375531] /soc/etf@7e002000: Fixed dependency cycle(s) with /soc/funnel@7e004000
-<6>[    0.375608] /soc/etf@7e003000: Fixed dependency cycle(s) with /soc/funnel@7e005000
-<6>[    0.375624] /soc/etf@7e003000: Fixed dependency cycle(s) with /soc/funnel@7e004000
-<6>[    0.375699] /soc/etf@7e003000: Fixed dependency cycle(s) with /soc/funnel@7e004000
-<6>[    0.375741] /soc/etf@7e002000: Fixed dependency cycle(s) with /soc/funnel@7e004000
-<6>[    0.375785] /soc/funnel@7c002000: Fixed dependency cycle(s) with /soc/funnel@7e004000
-<6>[    0.375822] /soc/funnel@7e004000: Fixed dependency cycle(s) with /soc/etf@7e003000
-<6>[    0.375855] /soc/funnel@7e004000: Fixed dependency cycle(s) with /soc/etf@7e002000
-<6>[    0.375891] /soc/funnel@7e004000: Fixed dependency cycle(s) with /soc/funnel@7c002000
-<6>[    0.376004] /soc/etf@7e003000: Fixed dependency cycle(s) with /soc/funnel@7e005000
-<6>[    0.376042] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f640000
-<6>[    0.376050] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f240000
-<6>[    0.376059] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f140000
-<6>[    0.376067] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f040000
-<6>[    0.376081] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etf@7e003000
-<6>[    0.376179] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f040000
-<6>[    0.376223] /soc/etm@7f040000: Fixed dependency cycle(s) with /soc/funnel@7e005000
-<6>[    0.376393] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f140000
-<6>[    0.376437] /soc/etm@7f140000: Fixed dependency cycle(s) with /soc/funnel@7e005000
-<6>[    0.376579] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f240000
-<6>[    0.376622] /soc/etm@7f240000: Fixed dependency cycle(s) with /soc/funnel@7e005000
-<6>[    0.376759] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f340000
-<6>[    0.376797] /soc/etm@7f340000: Fixed dependency cycle(s) with /soc/funnel@7e001000
-<6>[    0.376949] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f440000
-<6>[    0.376985] /soc/etm@7f440000: Fixed dependency cycle(s) with /soc/funnel@7e001000
-<6>[    0.377134] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f540000
-<6>[    0.377178] /soc/etm@7f540000: Fixed dependency cycle(s) with /soc/funnel@7e001000
-<6>[    0.377320] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f640000
-<6>[    0.377365] /soc/etm@7f640000: Fixed dependency cycle(s) with /soc/funnel@7e005000
-<6>[    0.377507] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f740000
-<6>[    0.377549] /soc/etm@7f740000: Fixed dependency cycle(s) with /soc/funnel@7e001000
-<6>[    1.022852] HugeTLB: registered 1.00 GiB page size, pre-allocated 0 pages
-<6>[    1.022861] HugeTLB: 0 KiB vmemmap can be freed for a 1.00 GiB page
-<6>[    1.022866] HugeTLB: registered 32.0 MiB page size, pre-allocated 0 pages
-<6>[    1.022869] HugeTLB: 0 KiB vmemmap can be freed for a 32.0 MiB page
-<6>[    1.022873] HugeTLB: registered 2.00 MiB page size, pre-allocated 0 pages
-<6>[    1.022877] HugeTLB: 0 KiB vmemmap can be freed for a 2.00 MiB page
-<6>[    1.022881] HugeTLB: registered 64.0 KiB page size, pre-allocated 0 pages
-<6>[    1.022884] HugeTLB: 0 KiB vmemmap can be freed for a 64.0 KiB page
-<6>[    1.024908] iommu: Default domain type: Translated
-<6>[    1.024915] iommu: DMA domain TLB invalidation policy: strict mode
-<5>[    1.025496] SCSI subsystem initialized
-<7>[    1.025608] libata version 3.00 loaded.
-<6>[    1.025738] usbcore: registered new interface driver usbfs
-<6>[    1.025762] usbcore: registered new interface driver hub
-<6>[    1.025783] usbcore: registered new device driver usb
-<6>[    1.026077] pps_core: LinuxPPS API ver. 1 registered
-<6>[    1.026081] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
-<6>[    1.026091] PTP clock support registered
-<6>[    1.026162] scmi_core: SCMI protocol bus registered
-<6>[    1.026376] Advanced Linux Sound Architecture Driver Initialized.
-<6>[    1.094917] clocksource: Switched to clocksource arch_sys_counter
-<5>[    1.095117] VFS: Disk quotas dquot_6.6.0
-<6>[    1.095134] VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
-<6>[    1.100860] NET: Registered PF_INET protocol family
-<6>[    1.101047] IP idents hash table entries: 65536 (order: 7, 524288 bytes, linear)
-<6>[    1.103116] tcp_listen_portaddr_hash hash table entries: 2048 (order: 3, 32768 bytes, linear)
-<6>[    1.103137] Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
-<6>[    1.103146] TCP established hash table entries: 32768 (order: 6, 262144 bytes, linear)
-<6>[    1.103237] TCP bind hash table entries: 32768 (order: 8, 1048576 bytes, linear)
-<6>[    1.103618] TCP: Hash tables configured (established 32768 bind 32768)
-<6>[    1.103701] UDP hash table entries: 2048 (order: 5, 131072 bytes, linear)
-<6>[    1.103862] NET: Registered PF_UNIX/PF_LOCAL protocol family
-<6>[    1.104210] RPC: Registered named UNIX socket transport module.
-<6>[    1.104215] RPC: Registered udp transport module.
-<6>[    1.104218] RPC: Registered tcp transport module.
-<6>[    1.104221] RPC: Registered tcp-with-tls transport module.
-<6>[    1.104225] RPC: Registered tcp NFSv4.1 backchannel transport module.
-<6>[    1.104423] Unpacking initramfs...
-<6>[    1.112061] Freeing initrd memory: 256K
-<6>[    1.192522] kvm [1]: nv: 570 coarse grained trap handlers
-<6>[    1.192637] kvm [1]: nv: 710 fine grained trap handlers
-<6>[    1.192841] kvm [1]: IPA Size Limit: 40 bits
-<6>[    1.192876] kvm [1]: GICv3: no GICV resource entry
-<6>[    1.192881] kvm [1]: disabling GICv2 emulation
-<6>[    1.192921] kvm [1]: GIC system register CPU interface enabled
-<6>[    1.192944] kvm [1]: vgic interrupt IRQ9
-<6>[    1.193001] kvm [1]: VHE mode initialized successfully
-<5>[    1.194312] Initialise system trusted keyrings
-<6>[    1.194523] workingset: timestamp_bits=42 (anon: 38) max_order=20 bucket_order=0 (anon: 0)
-<6>[    1.194808] squashfs: version 4.0 (2009/01/31) Phillip Lougher
-<5>[    1.195083] NFS: Registering the id_resolver key type
-<5>[    1.195099] Key type id_resolver registered
-<5>[    1.195104] Key type id_legacy registered
-<6>[    1.195120] nfs4filelayout_init: NFSv4 File Layout Driver Registering...
-<6>[    1.195129] nfs4flexfilelayout_init: NFSv4 Flexfile Layout Driver Registering...
-<6>[    1.195277] fuse: init (API version 7.45)
-<6>[    1.195405] 9p: Installing v9fs 9p2000 file system support
-<5>[    1.218939] Key type asymmetric registered
-<5>[    1.218944] Asymmetric key parser 'x509' registered
-<6>[    1.218981] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 243)
-<6>[    1.218987] io scheduler mq-deadline registered
-<6>[    1.218993] io scheduler kyber registered
-<6>[    1.219020] io scheduler bfq registered
-<6>[    1.223402] ledtrig-cpu: registered to indicate activity on CPUs
-<6>[    1.233949] Serial: 8250/16550 driver, 4 ports, IRQ sharing enabled
-<6>[    1.236731] 200a0000.serial: ttyS0 at MMIO 0x200a0000 (irq = 15, base_baud = 1625000) is a SPX
-<4>[    1.236829] sysfs: cannot create duplicate filename '/class/tty/ttyS0'
-<4>[    1.236836] CPU: 7 UID: 0 PID: 1 Comm: swapper/0 Not tainted 7.1.0-rc1-sprd+ #32 PREEMPT 
-<4>[    1.236842] Hardware name: Spreadtrum UMS9230 4H10 Board (DT)
-<4>[    1.236846] Call trace:
-<4>[    1.236848]  show_stack+0x18/0x24 (C)
-<4>[    1.236861]  dump_stack_lvl+0x40/0x84
-<4>[    1.236869]  dump_stack+0x18/0x24
-<4>[    1.236875]  sysfs_warn_dup+0x68/0x84
-<4>[    1.236883]  sysfs_do_create_link_sd+0x94/0xd8
-<4>[    1.236891]  sysfs_create_link+0x34/0x48
-<4>[    1.236896]  device_add_class_symlinks+0xb4/0x12c
-<4>[    1.236905]  device_add+0x1b4/0x4b0
-<4>[    1.236910]  device_register+0x20/0x30
-<4>[    1.236915]  tty_register_device_attr+0x15c/0x274
-<4>[    1.236925]  tty_port_register_device_attr_serdev+0x84/0xac
-<4>[    1.236931]  serial_core_register_port+0x348/0x724
-<4>[    1.236936]  serial_ctrl_register_port+0x10/0x1c
-<4>[    1.236942]  uart_add_one_port+0x10/0x1c
-<4>[    1.236947]  sprd_probe+0x280/0x320
-<4>[    1.236955]  platform_probe+0x5c/0x9c
-<4>[    1.236962]  really_probe+0x154/0x450
-<4>[    1.236967]  __driver_probe_device+0xcc/0x1b0
-<4>[    1.236971]  driver_probe_device+0x40/0x238
-<4>[    1.236976]  __driver_attach+0xec/0x288
-<4>[    1.236981]  bus_for_each_dev+0xec/0x144
-<4>[    1.236988]  driver_attach+0x24/0x30
-<4>[    1.236992]  bus_add_driver+0x14c/0x2a4
-<4>[    1.236999]  driver_register+0x68/0x100
-<4>[    1.237003]  __platform_driver_register+0x20/0x2c
-<4>[    1.237009]  sprd_platform_driver_init+0x1c/0x28
-<4>[    1.237016]  do_one_initcall+0xfc/0x27c
-<4>[    1.237022]  do_initcall_level+0xa0/0xd4
-<4>[    1.237029]  do_initcalls+0x54/0x9c
-<4>[    1.237034]  do_basic_setup+0x20/0x2c
-<4>[    1.237039]  kernel_init_freeable+0x144/0x31c
-<4>[    1.237044]  kernel_init+0x20/0x258
-<4>[    1.237052]  ret_from_fork+0x10/0x20
-<3>[    1.237069] sprd_serial 200a0000.serial: Cannot register tty device on line 0
-<6>[    1.237454] 200c0000.serial: ttyS2 at MMIO 0x200c0000 (irq = 16, base_baud = 1625000) is a SPX
-<4>[    1.237541] sysfs: cannot create duplicate filename '/class/tty/ttyS2'
-<4>[    1.237546] CPU: 7 UID: 0 PID: 1 Comm: swapper/0 Not tainted 7.1.0-rc1-sprd+ #32 PREEMPT 
-<4>[    1.237552] Hardware name: Spreadtrum UMS9230 4H10 Board (DT)
-<4>[    1.237556] Call trace:
-<4>[    1.237557]  show_stack+0x18/0x24 (C)
-<4>[    1.237566]  dump_stack_lvl+0x40/0x84
-<4>[    1.237572]  dump_stack+0x18/0x24
-<4>[    1.237577]  sysfs_warn_dup+0x68/0x84
-<4>[    1.237584]  sysfs_do_create_link_sd+0x94/0xd8
-<4>[    1.237589]  sysfs_create_link+0x34/0x48
-<4>[    1.237595]  device_add_class_symlinks+0xb4/0x12c
-<4>[    1.237602]  device_add+0x1b4/0x4b0
-<4>[    1.237608]  device_register+0x20/0x30
-<4>[    1.237613]  tty_register_device_attr+0x15c/0x274
-<4>[    1.237620]  tty_port_register_device_attr_serdev+0x84/0xac
-<4>[    1.237627]  serial_core_register_port+0x348/0x724
-<4>[    1.237631]  serial_ctrl_register_port+0x10/0x1c
-<4>[    1.237637]  uart_add_one_port+0x10/0x1c
-<4>[    1.237642]  sprd_probe+0x280/0x320
-<4>[    1.237648]  platform_probe+0x5c/0x9c
-<4>[    1.237654]  really_probe+0x154/0x450
-<4>[    1.237658]  __driver_probe_device+0xcc/0x1b0
-<4>[    1.237663]  driver_probe_device+0x40/0x238
-<4>[    1.237667]  __driver_attach+0xec/0x288
-<4>[    1.237671]  bus_for_each_dev+0xec/0x144
-<4>[    1.237678]  driver_attach+0x24/0x30
-<4>[    1.237682]  bus_add_driver+0x14c/0x2a4
-<4>[    1.237688]  driver_register+0x68/0x100
-<4>[    1.237693]  __platform_driver_register+0x20/0x2c
-<4>[    1.237698]  sprd_platform_driver_init+0x1c/0x28
-<4>[    1.237704]  do_one_initcall+0xfc/0x27c
-<4>[    1.237710]  do_initcall_level+0xa0/0xd4
-<4>[    1.237716]  do_initcalls+0x54/0x9c
-<4>[    1.237721]  do_basic_setup+0x20/0x2c
-<4>[    1.237727]  kernel_init_freeable+0x144/0x31c
-<4>[    1.237732]  kernel_init+0x20/0x258
-<4>[    1.237738]  ret_from_fork+0x10/0x20
-<3>[    1.237754] sprd_serial 200c0000.serial: Cannot register tty device on line 2
-<6>[    1.238260] printk: legacy console [ttynull0] enabled
-<3>[    1.239207] simple-framebuffer chosen:framebuffer0: probe with driver simple-framebuffer failed with error -22
-<6>[    1.244571] loop: module loaded
-<3>[    1.246044] sprd-spi 20120000.spi: error -ENODEV: request RX DMA channel failed!
-<4>[    1.246057] sprd-spi 20120000.spi: failed to request dma, enter no dma mode, ret = -19
-<3>[    1.246707] sprd-spi 20150000.spi: error -ENODEV: request RX DMA channel failed!
-<4>[    1.246716] sprd-spi 20150000.spi: failed to request dma, enter no dma mode, ret = -19
-<6>[    1.247703] sprd-adi 64200000.spi: no hardware spinlock supplied
-<4>[    1.248474] platform sc2730-adc.0.auto: DMA mask not set
-<4>[    1.248818] platform sc2730-audio-codec.1.auto: DMA mask not set
-<4>[    1.248923] platform sc2730-bltc.2.auto: DMA mask not set
-<4>[    1.249023] platform sc2730-efuse.3.auto: DMA mask not set
-<4>[    1.249164] platform sc2730-eic.4.auto: DMA mask not set
-<4>[    1.249392] platform sc2730-fgu.5.auto: DMA mask not set
-<4>[    1.249644] platform sc2730-pd.6.auto: DMA mask not set
-<4>[    1.249926] platform sc2730-rtc.9.auto: DMA mask not set
-<4>[    1.250087] platform sc2730-vibrator.10.auto: DMA mask not set
-<6>[    1.252927] tun: Universal TUN/TAP device driver, 1.6
-<6>[    1.253235] VFIO - User Level meta-driver version: 0.3
-<6>[    1.254220] usbcore: registered new interface driver usb-storage
-<3>[    1.254830] OF: /soc/aon/usb@64900000: could not find phandle 2013265920
-<3>[    1.254848] musb-sprd 64900000.usb: error -ENODEV: failed to get phy
-<6>[    1.255542] UDC core: g_serial: couldn't find an available UDC
-<6>[    1.255869] i2c_dev: i2c /dev entries driver
-<6>[    1.257690] device-mapper: ioctl: 4.50.0-ioctl (2025-04-28) initialised: dm-devel@lists.linux.dev
-<6>[    1.259351] ufshcd-sprd 20200000.ufs: probe entry (of_id sprd,ums9230-ufs)
-<6>[    1.260100] ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vdd-hba-supply regulator, assuming enabled
-<6>[    1.260108] ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vcc-supply regulator, assuming enabled
-<6>[    1.260114] ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vccq-supply regulator, assuming enabled
-<6>[    1.260120] ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vccq2-supply regulator, assuming enabled
-<6>[    1.263845] ufshcd-sprd 20200000.ufs: ufs host reset!
-<6>[    1.269655] scsi host0: ufshcd
-<3>[    1.331150] ufshcd-sprd 20200000.ufs: ufshcd_is_wb_buf_lifetime_available: WB buf lifetime is exhausted 0x0B
-<6>[    1.367871] ufshcd-sprd 20200000.ufs: ufshcd_pltfrm_init() = 0
-<5>[    1.368972] scsi 0:0:0:49488: Well-known LUN    SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
-<6>[    1.369745] usbcore: registered new interface driver usbhid
-<6>[    1.369751] usbhid: USB HID core driver
-<6>[    1.374820] IPVS: Registered protocols ()
-<6>[    1.374835] IPVS: Connection hash table configured (size=4096, memory=32Kbytes)
-<6>[    1.374930] IPVS: ipvs loaded.
-<6>[    1.375057] NET: Registered PF_INET6 protocol family
-<6>[    1.376483] Segment Routing with IPv6
-<6>[    1.376509] In-situ OAM (IOAM) with IPv6
-<6>[    1.376567] NET: Registered PF_PACKET protocol family
-<6>[    1.376620] 9pnet: Installing 9P2000 support
-<5>[    1.376666] Key type dns_resolver registered
-<5>[    1.377342] scsi 0:0:0:49476: Well-known LUN    SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
-<5>[    1.380649] scsi 0:0:0:49456: Well-known LUN    SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
-<5>[    1.384454] scsi 0:0:0:0: Direct-Access     SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
-<5>[    1.387144] scsi 0:0:0:1: Direct-Access     SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
-<5>[    1.387753] sd 0:0:0:0: [sda] 15620096 4096-byte logical blocks: (64.0 GB/59.6 GiB)
-<5>[    1.388391] sd 0:0:0:0: [sda] Write Protect is off
-<7>[    1.388414] sd 0:0:0:0: [sda] Mode Sense: 00 32 00 10
-<5>[    1.389172] sd 0:0:0:0: [sda] Write cache: enabled, read cache: enabled, supports DPO and FUA
-<6>[    1.389675] sd 0:0:0:0: [sda] Preferred minimum I/O size 524288 bytes
-<6>[    1.389729] sd 0:0:0:0: [sda] Optimal transfer size 524288 bytes
-<5>[    1.390474] scsi 0:0:0:2: Direct-Access     SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
-<5>[    1.391741] sd 0:0:0:1: [sdb] 1024 4096-byte logical blocks: (4.19 MB/4.00 MiB)
-<5>[    1.392324] sd 0:0:0:1: [sdb] Write Protect is off
-<7>[    1.392387] sd 0:0:0:1: [sdb] Mode Sense: 00 32 00 10
-<5>[    1.393353] sd 0:0:0:2: [sdc] 1024 4096-byte logical blocks: (4.19 MB/4.00 MiB)
-<5>[    1.393440] sd 0:0:0:1: [sdb] Write cache: enabled, read cache: enabled, supports DPO and FUA
-<5>[    1.393444] sd 0:0:0:2: [sdc] Write Protect is off
-<7>[    1.393452] sd 0:0:0:2: [sdc] Mode Sense: 00 32 00 10
-<5>[    1.393590] sd 0:0:0:2: [sdc] Write cache: enabled, read cache: enabled, supports DPO and FUA
-<6>[    1.393661] sd 0:0:0:2: [sdc] Preferred minimum I/O size 524288 bytes
-<6>[    1.393670] sd 0:0:0:2: [sdc] Optimal transfer size 524288 bytes
-<6>[    1.393826] sd 0:0:0:1: [sdb] Preferred minimum I/O size 524288 bytes
-<6>[    1.393846] sd 0:0:0:1: [sdb] Optimal transfer size 524288 bytes
-<5>[    1.421813] sd 0:0:0:1: [sdb] Attached SCSI disk
-<5>[    1.436977] sd 0:0:0:2: [sdc] Attached SCSI disk
-<6>[    1.445413]  sda: sda1 sda2 sda3 sda4 sda5 sda6 sda7 sda8 sda9 sda10 sda11 sda12 sda13 sda14 sda15 sda16 sda17 sda18 sda19 sda20 sda21 sda22 sda23 sda24 sda25 sda26 sda27 sda28 sda29 sda30 sda31 sda32 sda33 sda34 sda35 sda36 sda37 sda38 sda39 sda40 sda41 sda42 sda43 sda44 sda45 sda46 sda47 sda48 sda49 sda50 sda51 sda52 sda53 sda54 sda55 sda56 sda57 sda58 sda59 sda60 sda61 sda62 sda63 sda64 sda65 sda66 sda67 sda68
-<5>[    1.488510] sd 0:0:0:0: [sda] Attached SCSI disk
-<6>[    2.157042] registered taskstats version 1
-<5>[    2.157224] Loading compiled-in X.509 certificates
-<6>[    2.162806] Demotion targets for Node 0: null
-<6>[    2.172221] PM: genpd: Disabling unused power domains
-<6>[    2.172238] ALSA device list:
-<6>[    2.172246]   No soundcards found.
-<6>[    2.192820] diag: kernel: drivers initialized
-<6>[    2.193221] Freeing unused kernel memory: 1088K
-<6>[    2.193323] diag: kernel: starting /init
-<6>[    2.193328] Run /init as init process
-<7>[    2.193331]   with arguments:
-<7>[    2.193336]     /init
-<7>[    2.193340]   with environment:
-<7>[    2.193344]     HOME=/
-<7>[    2.193347]     TERM=linux
-<7>[    2.193351]     lcd_id=ID36525
-<7>[    2.193354]     lcd_name=lcd_nt36525c_boe_mipi_fhd
-<7>[    2.193357]     lcd_base=9e000000
-<7>[    2.193360]     lcd_size=1600x720
-<7>[    2.193363]     logo_bpix=24
-<7>[    2.193366]     cit_tp=0x00
-<7>[    2.193370]     sysdump_magic=80001000
-<7>[    2.193373]     sysdump_re_flag=1
-<7>[    2.193376]     modem=shutdown
-<7>[    2.193379]     ltemode=lcsfb
-<7>[    2.193382]     crystal=6
-<7>[    2.193384]     band_id=XT2227-1
-<7>[    2.193388]     buildvariant=user
-<7>[    2.193391]     bootcause=Reboot into normal
-<7>[    2.193394]     sensor_name=ltr569,
-<7>[    2.193397]     tspl=534ms
-<7>[    2.193400]     tsml=131ms
-<7>[    2.193403]     tuboot=5676ms
-<14>[    2.194113] H71-INIT: logsave up (pid 1, waiting 30 s, ring monitor on)
-<14>[    2.595568] H71-UFS[1]: 5,275,1025496,-;SCSI subsystem initialized
-<14>[    2.595568] 
-<14>[    2.595766] H71-UFS[2]: 6,324,1218981,-;Block layer SCSI generic (bsg) driver version 0.4 loaded (major 243)
-<14>[    2.595766] 
-<14>[    2.596135] H71-UFS[3]: 6,433,1259351,-;ufshcd-sprd 20200000.ufs: probe entry (of_id sprd,ums9230-ufs)
-<14>[    2.596135]  SUBSYSTEM=platform
-<14>[    2.596135]  DEVICE=+platform:20200000.ufs
-<14>[    2.596135] 
-<14>[    2.596155] H71-UFS[4]: 6,434,1260100,-;ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vdd-hba-supply regulator, assuming enabled
-<14>[    2.596155]  SUBSYSTEM=platform
-<14>[    2.596155]  DEVICE=+platform:20200000.ufs
-<14>[    2.596155] 
-<14>[    2.596174] H71-UFS[5]: 6,435,1260108,-;ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vcc-supply regulator, assuming enabled
-<14>[    2.596174]  SUBSYSTEM=platform
-<14>[    2.596174]  DEVICE=+platform:20200000.ufs
-<14>[    2.596174] 
-<14>[    2.596192] H71-UFS[6]: 6,436,1260114,-;ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vccq-supply regulator, assuming enabled
-<14>[    2.596192]  SUBSYSTEM=platform
-<14>[    2.596192]  DEVICE=+platform:20200000.ufs
-<14>[    2.596192] 
-<14>[    2.596211] H71-UFS[7]: 6,437,1260120,-;ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vccq2-supply regulator, assuming enabled
-<14>[    2.596211]  SUBSYSTEM=platform
-<14>[    2.596211]  DEVICE=+platform:20200000.ufs
-<14>[    2.596211] 
-<14>[    2.596228] H71-UFS[8]: 6,438,1263845,-;ufshcd-sprd 20200000.ufs: ufs host reset!
-<14>[    2.596228]  SUBSYSTEM=platform
-<14>[    2.596228]  DEVICE=+platform:20200000.ufs
-<14>[    2.596228] 
-<14>[    2.596247] H71-UFS[9]: 6,439,1269655,-;scsi host0: ufshcd
-<14>[    2.596247]  SUBSYSTEM=scsi
-<14>[    2.596247]  DEVICE=+scsi:host0
-<14>[    2.596247] 
-<14>[    2.596267] H71-UFS[10]: 3,440,1331150,-;ufshcd-sprd 20200000.ufs: ufshcd_is_wb_buf_lifetime_available: WB buf lifetime is exhausted 0x0B
-<14>[    2.596267]  SUBSYSTEM=platform
-<14>[    2.596267]  DEVICE=+platform:20200000.ufs
-<14>[    2.596267] 
-<14>[    2.596286] H71-UFS[11]: 6,441,1367871,-;ufshcd-sprd 20200000.ufs: ufshcd_pltfrm_init() = 0
-<14>[    2.596286]  SUBSYSTEM=platform
-<14>[    2.596286]  DEVICE=+platform:20200000.ufs
-<14>[    2.596286] 
-<14>[    2.596304] H71-UFS[12]: 5,442,1368972,-;scsi 0:0:0:49488: Well-known LUN    SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
-<14>[    2.596304]  SUBSYSTEM=scsi
-<14>[    2.596304]  DEVICE=+scsi:0:0:0:49488
-<14>[    2.596304] 
-<14>[    2.596358] H71-UFS[13]: 5,454,1377342,-;scsi 0:0:0:49476: Well-known LUN    SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
-<14>[    2.596358]  SUBSYSTEM=scsi
-<14>[    2.596358]  DEVICE=+scsi:0:0:0:49476
-<14>[    2.596358] 
-<14>[    2.596376] H71-UFS[14]: 5,455,1380649,-;scsi 0:0:0:49456: Well-known LUN    SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
-<14>[    2.596376]  SUBSYSTEM=scsi
-<14>[    2.596376]  DEVICE=+scsi:0:0:0:49456
-<14>[    2.596376] 
-<14>[    2.596396] H71-UFS[15]: 5,456,1384454,-;scsi 0:0:0:0: Direct-Access     SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
-<14>[    2.596396]  SUBSYSTEM=scsi
-<14>[    2.596396]  DEVICE=+scsi:0:0:0:0
-<14>[    2.596396] 
-<14>[    2.596416] H71-UFS[16]: 5,457,1387144,-;scsi 0:0:0:1: Direct-Access     SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
-<14>[    2.596416]  SUBSYSTEM=scsi
-<14>[    2.596416]  DEVICE=+scsi:0:0:0:1
-<14>[    2.596416] 
-<14>[    2.596439] H71-UFS[17]: 5,458,1387753,-;sd 0:0:0:0: [sda] 15620096 4096-byte logical blocks: (64.0 GB/59.6 GiB)
-<14>[    2.596439]  SUBSYSTEM=scsi
-<14>[    2.596439]  DEVICE=+scsi:0:0:0:0
-<14>[    2.596439] 
-<14>[    2.596460] H71-UFS[18]: 5,459,1388391,-;sd 0:0:0:0: [sda] Write Protect is off
-<14>[    2.596460]  SUBSYSTEM=scsi
-<14>[    2.596460]  DEVICE=+scsi:0:0:0:0
-<14>[    2.596460] 
-<14>[    2.596477] H71-UFS[19]: 7,460,1388414,-;sd 0:0:0:0: [sda] Mode Sense: 00 32 00 10
-<14>[    2.596477]  SUBSYSTEM=scsi
-<14>[    2.596477]  DEVICE=+scsi:0:0:0:0
-<14>[    2.596477] 
-<14>[    2.596494] H71-UFS[20]: 5,461,1389172,-;sd 0:0:0:0: [sda] Write cache: enabled, read cache: enabled, supports DPO and FUA
-<14>[    2.596494]  SUBSYSTEM=scsi
-<14>[    2.596494]  DEVICE=+scsi:0:0:0:0
-<14>[    2.596494] 
-<14>[    2.596515] H71-UFS[21]: 6,462,1389675,-;sd 0:0:0:0: [sda] Preferred minimum I/O size 524288 bytes
-<14>[    2.596515]  SUBSYSTEM=scsi
-<14>[    2.596515]  DEVICE=+scsi:0:0:0:0
-<14>[    2.596515] 
-<14>[    2.596536] H71-UFS[22]: 6,463,1389729,-;sd 0:0:0:0: [sda] Optimal transfer size 524288 bytes
-<14>[    2.596536]  SUBSYSTEM=scsi
-<14>[    2.596536]  DEVICE=+scsi:0:0:0:0
-<14>[    2.596536] 
-<14>[    2.596556] H71-UFS[23]: 5,464,1390474,-;scsi 0:0:0:2: Direct-Access     SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
-<14>[    2.596556]  SUBSYSTEM=scsi
-<14>[    2.596556]  DEVICE=+scsi:0:0:0:2
-<14>[    2.596556] 
-<14>[    2.596574] H71-UFS[24]: 5,465,1391741,-;sd 0:0:0:1: [sdb] 1024 4096-byte logical blocks: (4.19 MB/4.00 MiB)
-<14>[    2.596574]  SUBSYSTEM=scsi
-<14>[    2.596574]  DEVICE=+scsi:0:0:0:1
-<14>[    2.596574] 
-<14>[    2.596592] H71-UFS[25]: 5,466,1392324,-;sd 0:0:0:1: [sdb] Write Protect is off
-<14>[    2.596592]  SUBSYSTEM=scsi
-<14>[    2.596592]  DEVICE=+scsi:0:0:0:1
-<14>[    2.596592] 
-<14>[    2.596614] H71-UFS[26]: 7,467,1392387,-;sd 0:0:0:1: [sdb] Mode Sense: 00 32 00 10
-<14>[    2.596614]  SUBSYSTEM=scsi
-<14>[    2.596614]  DEVICE=+scsi:0:0:0:1
-<14>[    2.596614] 
-<14>[    2.596633] H71-UFS[27]: 5,468,1393353,-;sd 0:0:0:2: [sdc] 1024 4096-byte logical blocks: (4.19 MB/4.00 MiB)
-<14>[    2.596633]  SUBSYSTEM=scsi
-<14>[    2.596633]  DEVICE=+scsi:0:0:0:2
-<14>[    2.596633] 
-<14>[    2.596655] H71-UFS[28]: 5,469,1393440,-;sd 0:0:0:1: [sdb] Write cache: enabled, read cache: enabled, supports DPO and FUA
-<14>[    2.596655]  SUBSYSTEM=scsi
-<14>[    2.596655]  DEVICE=+scsi:0:0:0:1
-<14>[    2.596655] 
-<14>[    2.596673] H71-UFS[29]: 5,470,1393444,-;sd 0:0:0:2: [sdc] Write Protect is off
-<14>[    2.596673]  SUBSYSTEM=scsi
-<14>[    2.596673]  DEVICE=+scsi:0:0:0:2
-<14>[    2.596673] 
-<14>[    2.596692] H71-UFS[30]: 7,471,1393452,-;sd 0:0:0:2: [sdc] Mode Sense: 00 32 00 10
-<14>[    2.596692]  SUBSYSTEM=scsi
-<14>[    2.596692]  DEVICE=+scsi:0:0:0:2
-<14>[    2.596692] 
-<14>[    2.596713] H71-UFS[31]: 5,472,1393590,-;sd 0:0:0:2: [sdc] Write cache: enabled, read cache: enabled, supports DPO and FUA
-<14>[    2.596713]  SUBSYSTEM=scsi
-<14>[    2.596713]  DEVICE=+scsi:0:0:0:2
-<14>[    2.596713] 
-<14>[    2.596734] H71-UFS[32]: 6,473,1393661,-;sd 0:0:0:2: [sdc] Preferred minimum I/O size 524288 bytes
-<14>[    2.596734]  SUBSYSTEM=scsi
-<14>[    2.596734]  DEVICE=+scsi:0:0:0:2
-<14>[    2.596734] 
-<14>[    2.596751] H71-UFS[33]: 6,474,1393670,-;sd 0:0:0:2: [sdc] Optimal transfer size 524288 bytes
-<14>[    2.596751]  SUBSYSTEM=scsi
-<14>[    2.596751]  DEVICE=+scsi:0:0:0:2
-<14>[    2.596751] 
-<14>[    2.596775] H71-UFS[34]: 6,475,1393826,-;sd 0:0:0:1: [sdb] Preferred minimum I/O size 524288 bytes
-<14>[    2.596775]  SUBSYSTEM=scsi
-<14>[    2.596775]  DEVICE=+scsi:0:0:0:1
-<14>[    2.596775] 
-<14>[    2.596792] H71-UFS[35]: 6,476,1393846,-;sd 0:0:0:1: [sdb] Optimal transfer size 524288 bytes
-<14>[    2.596792]  SUBSYSTEM=scsi
-<14>[    2.596792]  DEVICE=+scsi:0:0:0:1
-<14>[    2.596792] 
-<14>[    2.596808] H71-UFS[36]: 5,477,1421813,-;sd 0:0:0:1: [sdb] Attached SCSI disk
-<14>[    2.596808]  SUBSYSTEM=scsi
-<14>[    2.596808]  DEVICE=+scsi:0:0:0:1
-<14>[    2.596808] 
-<14>[    2.596829] H71-UFS[37]: 5,478,1436977,-;sd 0:0:0:2: [sdc] Attached SCSI disk
-<14>[    2.596829]  SUBSYSTEM=scsi
-<14>[    2.596829]  DEVICE=+scsi:0:0:0:2
-<14>[    2.596829] 
-<14>[    2.596855] H71-UFS[38]: 5,480,1488510,-;sd 0:0:0:0: [sda] Attached SCSI disk
-<14>[    2.596855]  SUBSYSTEM=scsi
-<14>[    2.596855]  DEVICE=+scsi:0:0:0:0
-<14>[    2.596855] 
-<4>[   12.280479] platform extcon-gpio: deferred probe pending: (reason unknown)
-<4>[   12.280500] platform gpio-keys: deferred probe pending: gpio-keys: failed to get gpio
-<14>[   12.412659] H71-UFS[39]: 4,553,12280479,-;platform extcon-gpio: deferred probe pending: (reason unknown)
-<14>[   12.412659]  SUBSYSTEM=platform
-<14>[   12.412659]  DEVICE=+platform:extcon-gpio
-<14>[   12.412659] 
-<14>[   12.412707] H71-UFS[40]: 4,554,12280500,-;platform gpio-keys: deferred probe pending: gpio-keys: failed to get gpio
-<14>[   12.412707]  SUBSYSTEM=platform
-<14>[   12.412707]  DEVICE=+platform:gpio-keys
-<14>[   12.412707] 
-<14>[   32.244070] H71-UFS: 40 matching lines during the wait
-<14>[   32.244111] H71-INIT: wait done, collecting the kernel ring
-<14>[   32.244199] H71-INIT: devtmpfs mounted on /dev
-<14>[   32.244274] H71-INIT: sysfs mounted on /sys
-<14>[   32.245575] H71-INIT: sysdumpdb is /dev/sda58 (2560 blocks)
+<6>[    0.024189] HAWAII-BOOTWDT: selfreset=150s, armed at early
+<6>[    0.024500] Console: colour dummy device 80x25
+<6>[    0.031928] Calibrating delay loop (skipped), value calculated using timer frequency.. 52.00 BogoMIPS (lpj=104000)
+<6>[    0.031955] pid_max: default: 32768 minimum: 301
+<6>[    0.032285] Mount-cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
+<6>[    0.032305] Mountpoint-cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
+<6>[    0.032644] VFS: Finished mounting rootfs on nullfs
+<4>[    0.034052] cacheinfo: Unable to detect cache hierarchy for CPU 0
+<6>[    0.034999] rcu: Hierarchical SRCU implementation.
+<6>[    0.035007] rcu: 	Max phase no-delay instances is 1000.
+<6>[    0.035194] Timer migration: 1 hierarchy levels; 8 children per group; 1 crossnode level
+<6>[    0.036650] smp: Bringing up secondary CPUs ...
+<6>[    0.037538] Detected VIPT I-cache on CPU1
+<6>[    0.037610] GICv3: CPU1: found redistributor 100 region 0:0x0000000010060000
+<6>[    0.037667] CPU1: Booted secondary processor 0x0000000100 [0x412fd050]
+<6>[    0.038615] Detected VIPT I-cache on CPU2
+<6>[    0.038675] GICv3: CPU2: found redistributor 200 region 0:0x0000000010080000
+<6>[    0.038722] CPU2: Booted secondary processor 0x0000000200 [0x412fd050]
+<6>[    0.039597] Detected VIPT I-cache on CPU3
+<6>[    0.039649] GICv3: CPU3: found redistributor 300 region 0:0x00000000100a0000
+<6>[    0.039693] CPU3: Booted secondary processor 0x0000000300 [0x412fd050]
+<6>[    0.040579] Detected VIPT I-cache on CPU4
+<6>[    0.040630] GICv3: CPU4: found redistributor 400 region 0:0x00000000100c0000
+<6>[    0.040672] CPU4: Booted secondary processor 0x0000000400 [0x412fd050]
+<6>[    0.041537] Detected VIPT I-cache on CPU5
+<6>[    0.041588] GICv3: CPU5: found redistributor 500 region 0:0x00000000100e0000
+<6>[    0.041629] CPU5: Booted secondary processor 0x0000000500 [0x412fd050]
+<6>[    0.042416] CPU features: detected: Spectre-v4
+<6>[    0.042425] CPU features: detected: Spectre-BHB
+<6>[    0.042433] Detected VIPT I-cache on CPU6
+<6>[    0.042472] GICv3: CPU6: found redistributor 600 region 0:0x0000000010100000
+<6>[    0.042507] CPU6: Booted secondary processor 0x0000000600 [0x413fd0a1]
+<6>[    0.043238] Detected VIPT I-cache on CPU7
+<6>[    0.043284] GICv3: CPU7: found redistributor 700 region 0:0x0000000010120000
+<6>[    0.043319] CPU7: Booted secondary processor 0x0000000700 [0x413fd0a1]
+<6>[    0.043409] smp: Brought up 1 node, 8 CPUs
+<6>[    0.043419] SMP: Total of 8 processors activated.
+<6>[    0.043423] CPU: All CPU(s) started at EL2
+<6>[    0.043428] CPU features: detected: 32-bit EL0 Support
+<6>[    0.043432] CPU features: detected: 32-bit EL1 Support
+<6>[    0.043438] CPU features: detected: Data cache clean to the PoU not required for I/D coherence
+<6>[    0.043443] CPU features: detected: Common not Private translations
+<6>[    0.043447] CPU features: detected: CRC32 instructions
+<6>[    0.043455] CPU features: detected: RCpc load-acquire (LDAPR)
+<6>[    0.043459] CPU features: detected: LSE atomic instructions
+<6>[    0.043463] CPU features: detected: Privileged Access Never
+<6>[    0.043467] CPU features: detected: RAS Extension Support
+<6>[    0.043473] CPU features: detected: XNX
+<6>[    0.043534] alternatives: applying system-wide alternatives
+<6>[    0.047561] CPU features: detected: ICV_DIR_EL1 trapping
+<6>[    0.047572] CPU features: detected: Hardware dirty bit management on CPU6-7
+<6>[    0.048007] Memory: 3550460K/4194300K available (14016K kernel code, 4618K rwdata, 5148K rodata, 1088K init, 1474K bss, 606448K reserved, 32768K cma-reserved)
+<6>[    0.049671] devtmpfs: initialized
+<6>[    0.288318] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+<6>[    0.288347] posixtimers hash table entries: 4096 (order: 4, 65536 bytes, linear)
+<6>[    0.288399] futex hash table entries: 2048 (131072 bytes on 1 NUMA nodes, total 128 KiB, linear).
+<6>[    0.288689] 26128 pages in range for non-PLT usage
+<6>[    0.288694] 517648 pages in range for PLT usage
+<6>[    0.290804] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+<6>[    0.322681] DMA: preallocated 512 KiB GFP_KERNEL pool for atomic allocations
+<6>[    0.322808] DMA: preallocated 512 KiB GFP_KERNEL|GFP_DMA pool for atomic allocations
+<6>[    0.322909] audit: initializing netlink subsys (disabled)
+<5>[    0.323085] audit: type=2000 audit(0.296:1): state=initialized audit_enabled=0 res=1
+<6>[    0.323360] thermal_sys: Registered thermal governor 'step_wise'
+<6>[    0.323364] thermal_sys: Registered thermal governor 'power_allocator'
+<6>[    0.323398] cpuidle: using governor menu
+<6>[    0.356423] hw-breakpoint: found 6 breakpoint and 4 watchpoint registers.
+<6>[    0.356644] ASID allocator initialised with 65536 entries
+<6>[    0.356796] Serial: AMBA PL011 UART driver
+<6>[    0.357151] pstore: Using crash dump compression: deflate
+<6>[    0.357158] printk: legacy console [ramoops-1] enabled
+<6>[    0.357448] pstore: Registered ramoops as persistent store backend
+<6>[    0.357455] ramoops: using 0x40000@0xfff80000, ecc: 0
+<6>[    0.363920] /soc/ap-ahb/dpu@31000000: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000
+<6>[    0.363950] /soc/ap-ahb/dsi@31100000: Fixed dependency cycle(s) with /soc/ap-ahb/dpu@31000000
+<6>[    0.363961] /soc/ap-ahb/dsi@31100000: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
+<6>[    0.363979] /soc/ap-ahb/dsi@31100000/panel: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
+<6>[    0.363999] /soc/ap-ahb/dphy: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000
+<6>[    0.364008] /soc/ap-ahb/dphy: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000/panel
+<6>[    0.364267] /soc/interrupt-controller@10000000: Fixed dependency cycle(s) with /soc/interrupt-controller@10000000
+<6>[    0.364310] /soc/funnel@7c002000: Fixed dependency cycle(s) with /soc/funnel@7e004000
+<6>[    0.364318] /soc/funnel@7c002000: Fixed dependency cycle(s) with /soc/etb@7c003000
+<6>[    0.364344] /soc/etb@7c003000: Fixed dependency cycle(s) with /soc/funnel@7c002000
+<6>[    0.364354] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f740000
+<6>[    0.364362] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f540000
+<6>[    0.364371] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f440000
+<6>[    0.364382] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f340000
+<6>[    0.364399] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etf@7e002000
+<6>[    0.364420] /soc/etf@7e002000: Fixed dependency cycle(s) with /soc/funnel@7e001000
+<6>[    0.364436] /soc/etf@7e002000: Fixed dependency cycle(s) with /soc/funnel@7e004000
+<6>[    0.364454] /soc/etf@7e003000: Fixed dependency cycle(s) with /soc/funnel@7e005000
+<6>[    0.364470] /soc/etf@7e003000: Fixed dependency cycle(s) with /soc/funnel@7e004000
+<6>[    0.364487] /soc/funnel@7e004000: Fixed dependency cycle(s) with /soc/etf@7e003000
+<6>[    0.364504] /soc/funnel@7e004000: Fixed dependency cycle(s) with /soc/etf@7e002000
+<6>[    0.364511] /soc/funnel@7e004000: Fixed dependency cycle(s) with /soc/funnel@7c002000
+<6>[    0.364522] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f640000
+<6>[    0.364530] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f240000
+<6>[    0.364538] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f140000
+<6>[    0.364548] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f040000
+<6>[    0.364565] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etf@7e003000
+<6>[    0.364593] /soc/etm@7f040000: Fixed dependency cycle(s) with /soc/funnel@7e005000
+<6>[    0.364620] /soc/etm@7f140000: Fixed dependency cycle(s) with /soc/funnel@7e005000
+<6>[    0.364648] /soc/etm@7f240000: Fixed dependency cycle(s) with /soc/funnel@7e005000
+<6>[    0.364672] /soc/etm@7f340000: Fixed dependency cycle(s) with /soc/funnel@7e001000
+<6>[    0.364700] /soc/etm@7f440000: Fixed dependency cycle(s) with /soc/funnel@7e001000
+<6>[    0.364725] /soc/etm@7f540000: Fixed dependency cycle(s) with /soc/funnel@7e001000
+<6>[    0.364752] /soc/etm@7f640000: Fixed dependency cycle(s) with /soc/funnel@7e005000
+<6>[    0.364779] /soc/etm@7f740000: Fixed dependency cycle(s) with /soc/funnel@7e001000
+<6>[    0.367204] /soc/ap-ahb/dpu@31000000: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000
+<6>[    0.367229] /soc/ap-ahb/dsi@31100000: Fixed dependency cycle(s) with /soc/ap-ahb/dpu@31000000
+<6>[    0.367240] /soc/ap-ahb/dsi@31100000: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
+<6>[    0.367259] /soc/ap-ahb/dsi@31100000/panel: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
+<6>[    0.367276] /soc/ap-ahb/dphy: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000
+<6>[    0.367288] /soc/ap-ahb/dphy: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000/panel
+<6>[    0.367405] /soc/ap-ahb/dpu@31000000: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000
+<6>[    0.367584] /soc/ap-ahb/dpu@31000000: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000
+<6>[    0.367640] /soc/ap-ahb/dsi@31100000: Fixed dependency cycle(s) with /soc/ap-ahb/dpu@31000000
+<6>[    0.367677] /soc/ap-ahb/dsi@31100000: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
+<6>[    0.367694] /soc/ap-ahb/dsi@31100000/panel: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
+<6>[    0.367762] /soc/ap-ahb/dsi@31100000/panel: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
+<6>[    0.367820] /soc/ap-ahb/dsi@31100000: Fixed dependency cycle(s) with /soc/ap-ahb/dphy
+<6>[    0.367862] /soc/ap-ahb/dphy: Fixed dependency cycle(s) with /soc/ap-ahb/dsi@31100000/panel
+<6>[    0.371283] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/rfctl16
+<6>[    0.371297] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/rfctl3
+<6>[    0.371307] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/rfctl5
+<6>[    0.371320] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/rfctl6
+<6>[    0.371330] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/rfctl7
+<6>[    0.371342] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/keyin0
+<6>[    0.371352] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/bt_rfctl2
+<6>[    0.371361] /soc/aon/pinctrl@64710000: Fixed dependency cycle(s) with /soc/aon/pinctrl@64710000/keyout0
+<6>[    0.375917] /soc/funnel@7c002000: Fixed dependency cycle(s) with /soc/funnel@7e004000
+<6>[    0.375930] /soc/funnel@7c002000: Fixed dependency cycle(s) with /soc/etb@7c003000
+<6>[    0.376005] /soc/funnel@7c002000: Fixed dependency cycle(s) with /soc/etb@7c003000
+<6>[    0.376066] /soc/etb@7c003000: Fixed dependency cycle(s) with /soc/funnel@7c002000
+<6>[    0.376177] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f740000
+<6>[    0.376186] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f540000
+<6>[    0.376195] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f440000
+<6>[    0.376204] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f340000
+<6>[    0.376220] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etf@7e002000
+<6>[    0.376307] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etf@7e002000
+<6>[    0.376347] /soc/etf@7e002000: Fixed dependency cycle(s) with /soc/funnel@7e001000
+<6>[    0.376389] /soc/etf@7e002000: Fixed dependency cycle(s) with /soc/funnel@7e004000
+<6>[    0.376466] /soc/etf@7e003000: Fixed dependency cycle(s) with /soc/funnel@7e005000
+<6>[    0.376482] /soc/etf@7e003000: Fixed dependency cycle(s) with /soc/funnel@7e004000
+<6>[    0.376567] /soc/etf@7e003000: Fixed dependency cycle(s) with /soc/funnel@7e004000
+<6>[    0.376607] /soc/etf@7e002000: Fixed dependency cycle(s) with /soc/funnel@7e004000
+<6>[    0.376651] /soc/funnel@7c002000: Fixed dependency cycle(s) with /soc/funnel@7e004000
+<6>[    0.376691] /soc/funnel@7e004000: Fixed dependency cycle(s) with /soc/etf@7e003000
+<6>[    0.376726] /soc/funnel@7e004000: Fixed dependency cycle(s) with /soc/etf@7e002000
+<6>[    0.376764] /soc/funnel@7e004000: Fixed dependency cycle(s) with /soc/funnel@7c002000
+<6>[    0.376871] /soc/etf@7e003000: Fixed dependency cycle(s) with /soc/funnel@7e005000
+<6>[    0.376905] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f640000
+<6>[    0.376914] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f240000
+<6>[    0.376924] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f140000
+<6>[    0.376932] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f040000
+<6>[    0.376946] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etf@7e003000
+<6>[    0.377048] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f040000
+<6>[    0.377092] /soc/etm@7f040000: Fixed dependency cycle(s) with /soc/funnel@7e005000
+<6>[    0.377250] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f140000
+<6>[    0.377295] /soc/etm@7f140000: Fixed dependency cycle(s) with /soc/funnel@7e005000
+<6>[    0.377453] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f240000
+<6>[    0.377496] /soc/etm@7f240000: Fixed dependency cycle(s) with /soc/funnel@7e005000
+<6>[    0.377650] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f340000
+<6>[    0.377694] /soc/etm@7f340000: Fixed dependency cycle(s) with /soc/funnel@7e001000
+<6>[    0.377850] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f440000
+<6>[    0.377892] /soc/etm@7f440000: Fixed dependency cycle(s) with /soc/funnel@7e001000
+<6>[    0.378043] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f540000
+<6>[    0.378084] /soc/etm@7f540000: Fixed dependency cycle(s) with /soc/funnel@7e001000
+<6>[    0.378239] /soc/funnel@7e005000: Fixed dependency cycle(s) with /soc/etm@7f640000
+<6>[    0.378278] /soc/etm@7f640000: Fixed dependency cycle(s) with /soc/funnel@7e005000
+<6>[    0.378431] /soc/funnel@7e001000: Fixed dependency cycle(s) with /soc/etm@7f740000
+<6>[    0.378469] /soc/etm@7f740000: Fixed dependency cycle(s) with /soc/funnel@7e001000
+<6>[    1.023411] HugeTLB: registered 1.00 GiB page size, pre-allocated 0 pages
+<6>[    1.023420] HugeTLB: 0 KiB vmemmap can be freed for a 1.00 GiB page
+<6>[    1.023426] HugeTLB: registered 32.0 MiB page size, pre-allocated 0 pages
+<6>[    1.023429] HugeTLB: 0 KiB vmemmap can be freed for a 32.0 MiB page
+<6>[    1.023433] HugeTLB: registered 2.00 MiB page size, pre-allocated 0 pages
+<6>[    1.023436] HugeTLB: 0 KiB vmemmap can be freed for a 2.00 MiB page
+<6>[    1.023441] HugeTLB: registered 64.0 KiB page size, pre-allocated 0 pages
+<6>[    1.023444] HugeTLB: 0 KiB vmemmap can be freed for a 64.0 KiB page
+<6>[    1.025586] iommu: Default domain type: Translated
+<6>[    1.025593] iommu: DMA domain TLB invalidation policy: strict mode
+<5>[    1.026180] SCSI subsystem initialized
+<7>[    1.026290] libata version 3.00 loaded.
+<6>[    1.026402] usbcore: registered new interface driver usbfs
+<6>[    1.026425] usbcore: registered new interface driver hub
+<6>[    1.026443] usbcore: registered new device driver usb
+<6>[    1.026716] pps_core: LinuxPPS API ver. 1 registered
+<6>[    1.026720] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+<6>[    1.026730] PTP clock support registered
+<6>[    1.026795] scmi_core: SCMI protocol bus registered
+<6>[    1.027013] Advanced Linux Sound Architecture Driver Initialized.
+<6>[    1.095978] clocksource: Switched to clocksource arch_sys_counter
+<5>[    1.096199] VFS: Disk quotas dquot_6.6.0
+<6>[    1.096215] VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
+<6>[    1.101954] NET: Registered PF_INET protocol family
+<6>[    1.102142] IP idents hash table entries: 65536 (order: 7, 524288 bytes, linear)
+<6>[    1.104176] tcp_listen_portaddr_hash hash table entries: 2048 (order: 3, 32768 bytes, linear)
+<6>[    1.104196] Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+<6>[    1.104207] TCP established hash table entries: 32768 (order: 6, 262144 bytes, linear)
+<6>[    1.104289] TCP bind hash table entries: 32768 (order: 8, 1048576 bytes, linear)
+<6>[    1.104663] TCP: Hash tables configured (established 32768 bind 32768)
+<6>[    1.104743] UDP hash table entries: 2048 (order: 5, 131072 bytes, linear)
+<6>[    1.104896] NET: Registered PF_UNIX/PF_LOCAL protocol family
+<6>[    1.105258] RPC: Registered named UNIX socket transport module.
+<6>[    1.105264] RPC: Registered udp transport module.
+<6>[    1.105267] RPC: Registered tcp transport module.
+<6>[    1.105271] RPC: Registered tcp-with-tls transport module.
+<6>[    1.105275] RPC: Registered tcp NFSv4.1 backchannel transport module.
+<6>[    1.105369] Unpacking initramfs...
+<6>[    1.113253] Freeing initrd memory: 256K
+<6>[    1.194692] kvm [1]: nv: 570 coarse grained trap handlers
+<6>[    1.194820] kvm [1]: nv: 710 fine grained trap handlers
+<6>[    1.195017] kvm [1]: IPA Size Limit: 40 bits
+<6>[    1.195048] kvm [1]: GICv3: no GICV resource entry
+<6>[    1.195052] kvm [1]: disabling GICv2 emulation
+<6>[    1.195093] kvm [1]: GIC system register CPU interface enabled
+<6>[    1.195124] kvm [1]: vgic interrupt IRQ9
+<6>[    1.195181] kvm [1]: VHE mode initialized successfully
+<5>[    1.196554] Initialise system trusted keyrings
+<6>[    1.196766] workingset: timestamp_bits=42 (anon: 38) max_order=20 bucket_order=0 (anon: 0)
+<6>[    1.197042] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+<5>[    1.197288] NFS: Registering the id_resolver key type
+<5>[    1.197304] Key type id_resolver registered
+<5>[    1.197308] Key type id_legacy registered
+<6>[    1.197325] nfs4filelayout_init: NFSv4 File Layout Driver Registering...
+<6>[    1.197333] nfs4flexfilelayout_init: NFSv4 Flexfile Layout Driver Registering...
+<6>[    1.197485] fuse: init (API version 7.45)
+<6>[    1.197605] 9p: Installing v9fs 9p2000 file system support
+<5>[    1.221168] Key type asymmetric registered
+<5>[    1.221174] Asymmetric key parser 'x509' registered
+<6>[    1.221216] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 243)
+<6>[    1.221221] io scheduler mq-deadline registered
+<6>[    1.221227] io scheduler kyber registered
+<6>[    1.221255] io scheduler bfq registered
+<6>[    1.225614] ledtrig-cpu: registered to indicate activity on CPUs
+<6>[    1.236223] Serial: 8250/16550 driver, 4 ports, IRQ sharing enabled
+<6>[    1.238995] 200a0000.serial: ttyS0 at MMIO 0x200a0000 (irq = 15, base_baud = 1625000) is a SPX
+<4>[    1.239090] sysfs: cannot create duplicate filename '/class/tty/ttyS0'
+<4>[    1.239097] CPU: 6 UID: 0 PID: 1 Comm: swapper/0 Not tainted 7.1.0-rc1-sprd+ #33 PREEMPT 
+<4>[    1.239104] Hardware name: Spreadtrum UMS9230 4H10 Board (DT)
+<4>[    1.239108] Call trace:
+<4>[    1.239110]  show_stack+0x18/0x24 (C)
+<4>[    1.239124]  dump_stack_lvl+0x40/0x84
+<4>[    1.239131]  dump_stack+0x18/0x24
+<4>[    1.239137]  sysfs_warn_dup+0x68/0x84
+<4>[    1.239146]  sysfs_do_create_link_sd+0x94/0xd8
+<4>[    1.239153]  sysfs_create_link+0x34/0x48
+<4>[    1.239159]  device_add_class_symlinks+0xb4/0x12c
+<4>[    1.239168]  device_add+0x1b4/0x4b0
+<4>[    1.239173]  device_register+0x20/0x30
+<4>[    1.239178]  tty_register_device_attr+0x15c/0x274
+<4>[    1.239188]  tty_port_register_device_attr_serdev+0x84/0xac
+<4>[    1.239194]  serial_core_register_port+0x348/0x724
+<4>[    1.239199]  serial_ctrl_register_port+0x10/0x1c
+<4>[    1.239205]  uart_add_one_port+0x10/0x1c
+<4>[    1.239210]  sprd_probe+0x280/0x320
+<4>[    1.239217]  platform_probe+0x5c/0x9c
+<4>[    1.239224]  really_probe+0x154/0x450
+<4>[    1.239228]  __driver_probe_device+0xcc/0x1b0
+<4>[    1.239233]  driver_probe_device+0x40/0x238
+<4>[    1.239237]  __driver_attach+0xec/0x288
+<4>[    1.239241]  bus_for_each_dev+0xec/0x144
+<4>[    1.239249]  driver_attach+0x24/0x30
+<4>[    1.239253]  bus_add_driver+0x14c/0x2a4
+<4>[    1.239260]  driver_register+0x68/0x100
+<4>[    1.239264]  __platform_driver_register+0x20/0x2c
+<4>[    1.239270]  sprd_platform_driver_init+0x1c/0x28
+<4>[    1.239277]  do_one_initcall+0xfc/0x27c
+<4>[    1.239283]  do_initcall_level+0xa0/0xd4
+<4>[    1.239290]  do_initcalls+0x54/0x9c
+<4>[    1.239295]  do_basic_setup+0x20/0x2c
+<4>[    1.239300]  kernel_init_freeable+0x144/0x31c
+<4>[    1.239305]  kernel_init+0x20/0x258
+<4>[    1.239315]  ret_from_fork+0x10/0x20
+<3>[    1.239331] sprd_serial 200a0000.serial: Cannot register tty device on line 0
+<6>[    1.239652] 200c0000.serial: ttyS2 at MMIO 0x200c0000 (irq = 16, base_baud = 1625000) is a SPX
+<4>[    1.239738] sysfs: cannot create duplicate filename '/class/tty/ttyS2'
+<4>[    1.239744] CPU: 6 UID: 0 PID: 1 Comm: swapper/0 Not tainted 7.1.0-rc1-sprd+ #33 PREEMPT 
+<4>[    1.239750] Hardware name: Spreadtrum UMS9230 4H10 Board (DT)
+<4>[    1.239753] Call trace:
+<4>[    1.239755]  show_stack+0x18/0x24 (C)
+<4>[    1.239763]  dump_stack_lvl+0x40/0x84
+<4>[    1.239769]  dump_stack+0x18/0x24
+<4>[    1.239774]  sysfs_warn_dup+0x68/0x84
+<4>[    1.239782]  sysfs_do_create_link_sd+0x94/0xd8
+<4>[    1.239788]  sysfs_create_link+0x34/0x48
+<4>[    1.239793]  device_add_class_symlinks+0xb4/0x12c
+<4>[    1.239799]  device_add+0x1b4/0x4b0
+<4>[    1.239805]  device_register+0x20/0x30
+<4>[    1.239810]  tty_register_device_attr+0x15c/0x274
+<4>[    1.239818]  tty_port_register_device_attr_serdev+0x84/0xac
+<4>[    1.239823]  serial_core_register_port+0x348/0x724
+<4>[    1.239828]  serial_ctrl_register_port+0x10/0x1c
+<4>[    1.239834]  uart_add_one_port+0x10/0x1c
+<4>[    1.239839]  sprd_probe+0x280/0x320
+<4>[    1.239845]  platform_probe+0x5c/0x9c
+<4>[    1.239852]  really_probe+0x154/0x450
+<4>[    1.239856]  __driver_probe_device+0xcc/0x1b0
+<4>[    1.239860]  driver_probe_device+0x40/0x238
+<4>[    1.239864]  __driver_attach+0xec/0x288
+<4>[    1.239869]  bus_for_each_dev+0xec/0x144
+<4>[    1.239875]  driver_attach+0x24/0x30
+<4>[    1.239879]  bus_add_driver+0x14c/0x2a4
+<4>[    1.239886]  driver_register+0x68/0x100
+<4>[    1.239890]  __platform_driver_register+0x20/0x2c
+<4>[    1.239896]  sprd_platform_driver_init+0x1c/0x28
+<4>[    1.239902]  do_one_initcall+0xfc/0x27c
+<4>[    1.239907]  do_initcall_level+0xa0/0xd4
+<4>[    1.239913]  do_initcalls+0x54/0x9c
+<4>[    1.239918]  do_basic_setup+0x20/0x2c
+<4>[    1.239923]  kernel_init_freeable+0x144/0x31c
+<4>[    1.239929]  kernel_init+0x20/0x258
+<4>[    1.239936]  ret_from_fork+0x10/0x20
+<3>[    1.239952] sprd_serial 200c0000.serial: Cannot register tty device on line 2
+<6>[    1.240563] printk: legacy console [ttynull0] enabled
+<3>[    1.241548] simple-framebuffer chosen:framebuffer0: probe with driver simple-framebuffer failed with error -22
+<6>[    1.246999] loop: module loaded
+<3>[    1.248535] sprd-spi 20120000.spi: error -ENODEV: request RX DMA channel failed!
+<4>[    1.248549] sprd-spi 20120000.spi: failed to request dma, enter no dma mode, ret = -19
+<3>[    1.249117] sprd-spi 20150000.spi: error -ENODEV: request RX DMA channel failed!
+<4>[    1.249127] sprd-spi 20150000.spi: failed to request dma, enter no dma mode, ret = -19
+<6>[    1.250076] sprd-adi 64200000.spi: no hardware spinlock supplied
+<4>[    1.250974] platform sc2730-adc.0.auto: DMA mask not set
+<4>[    1.251358] platform sc2730-audio-codec.1.auto: DMA mask not set
+<4>[    1.251469] platform sc2730-bltc.2.auto: DMA mask not set
+<4>[    1.251569] platform sc2730-efuse.3.auto: DMA mask not set
+<4>[    1.251711] platform sc2730-eic.4.auto: DMA mask not set
+<4>[    1.251947] platform sc2730-fgu.5.auto: DMA mask not set
+<4>[    1.252222] platform sc2730-pd.6.auto: DMA mask not set
+<4>[    1.252507] platform sc2730-rtc.9.auto: DMA mask not set
+<4>[    1.252649] platform sc2730-vibrator.10.auto: DMA mask not set
+<6>[    1.255506] tun: Universal TUN/TAP device driver, 1.6
+<6>[    1.255813] VFIO - User Level meta-driver version: 0.3
+<6>[    1.256859] usbcore: registered new interface driver usb-storage
+<3>[    1.258307] musb-hdrc musb-hdrc.11.auto: unsupported port mode 0
+<6>[    1.259304] UDC core: g_serial: couldn't find an available UDC
+<6>[    1.259629] i2c_dev: i2c /dev entries driver
+<6>[    1.261491] device-mapper: ioctl: 4.50.0-ioctl (2025-04-28) initialised: dm-devel@lists.linux.dev
+<6>[    1.263214] ufshcd-sprd 20200000.ufs: probe entry (of_id sprd,ums9230-ufs)
+<6>[    1.264229] ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vdd-hba-supply regulator, assuming enabled
+<6>[    1.264239] ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vcc-supply regulator, assuming enabled
+<6>[    1.264245] ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vccq-supply regulator, assuming enabled
+<6>[    1.264251] ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vccq2-supply regulator, assuming enabled
+<6>[    1.267775] ufshcd-sprd 20200000.ufs: ufs host reset!
+<6>[    1.273584] scsi host0: ufshcd
+<3>[    1.362369] ufshcd-sprd 20200000.ufs: ufshcd_is_wb_buf_lifetime_available: WB buf lifetime is exhausted 0x0B
+<6>[    1.399120] ufshcd-sprd 20200000.ufs: ufshcd_pltfrm_init() = 0
+<5>[    1.400892] scsi 0:0:0:49488: Well-known LUN    SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
+<6>[    1.401000] usbcore: registered new interface driver usbhid
+<6>[    1.401006] usbhid: USB HID core driver
+<6>[    1.406065] IPVS: Registered protocols ()
+<6>[    1.406082] IPVS: Connection hash table configured (size=4096, memory=32Kbytes)
+<6>[    1.406156] IPVS: ipvs loaded.
+<6>[    1.406298] NET: Registered PF_INET6 protocol family
+<6>[    1.407189] Segment Routing with IPv6
+<6>[    1.407218] In-situ OAM (IOAM) with IPv6
+<6>[    1.407284] NET: Registered PF_PACKET protocol family
+<6>[    1.407340] 9pnet: Installing 9P2000 support
+<5>[    1.407386] Key type dns_resolver registered
+<5>[    1.407533] scsi 0:0:0:49476: Well-known LUN    SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
+<5>[    1.410984] scsi 0:0:0:49456: Well-known LUN    SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
+<5>[    1.414024] scsi 0:0:0:0: Direct-Access     SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
+<5>[    1.416411] scsi 0:0:0:1: Direct-Access     SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
+<5>[    1.417257] sd 0:0:0:0: [sda] 15620096 4096-byte logical blocks: (64.0 GB/59.6 GiB)
+<5>[    1.417384] sd 0:0:0:0: [sda] Write Protect is off
+<7>[    1.417395] sd 0:0:0:0: [sda] Mode Sense: 00 32 00 10
+<5>[    1.417530] sd 0:0:0:0: [sda] Write cache: enabled, read cache: enabled, supports DPO and FUA
+<6>[    1.417612] sd 0:0:0:0: [sda] Preferred minimum I/O size 524288 bytes
+<6>[    1.417622] sd 0:0:0:0: [sda] Optimal transfer size 524288 bytes
+<5>[    1.419452] scsi 0:0:0:2: Direct-Access     SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
+<5>[    1.421861] sd 0:0:0:1: [sdb] 1024 4096-byte logical blocks: (4.19 MB/4.00 MiB)
+<5>[    1.422279] sd 0:0:0:1: [sdb] Write Protect is off
+<7>[    1.422294] sd 0:0:0:1: [sdb] Mode Sense: 00 32 00 10
+<5>[    1.423308] sd 0:0:0:1: [sdb] Write cache: enabled, read cache: enabled, supports DPO and FUA
+<6>[    1.423826] sd 0:0:0:1: [sdb] Preferred minimum I/O size 524288 bytes
+<6>[    1.423848] sd 0:0:0:1: [sdb] Optimal transfer size 524288 bytes
+<5>[    1.424114] sd 0:0:0:2: [sdc] 1024 4096-byte logical blocks: (4.19 MB/4.00 MiB)
+<5>[    1.424199] sd 0:0:0:2: [sdc] Write Protect is off
+<7>[    1.424210] sd 0:0:0:2: [sdc] Mode Sense: 00 32 00 10
+<5>[    1.424351] sd 0:0:0:2: [sdc] Write cache: enabled, read cache: enabled, supports DPO and FUA
+<6>[    1.424418] sd 0:0:0:2: [sdc] Preferred minimum I/O size 524288 bytes
+<6>[    1.424426] sd 0:0:0:2: [sdc] Optimal transfer size 524288 bytes
+<5>[    1.454298] sd 0:0:0:1: [sdb] Attached SCSI disk
+<5>[    1.457618] sd 0:0:0:2: [sdc] Attached SCSI disk
+<6>[    1.458726]  sda: sda1 sda2 sda3 sda4 sda5 sda6 sda7 sda8 sda9 sda10 sda11 sda12 sda13 sda14 sda15 sda16 sda17 sda18 sda19 sda20 sda21 sda22 sda23 sda24 sda25 sda26 sda27 sda28 sda29 sda30 sda31 sda32 sda33 sda34 sda35 sda36 sda37 sda38 sda39 sda40 sda41 sda42 sda43 sda44 sda45 sda46 sda47 sda48 sda49 sda50 sda51 sda52 sda53 sda54 sda55 sda56 sda57 sda58 sda59 sda60 sda61 sda62 sda63 sda64 sda65 sda66 sda67 sda68
+<5>[    1.492260] sd 0:0:0:0: [sda] Attached SCSI disk
+<6>[    2.183936] registered taskstats version 1
+<5>[    2.184126] Loading compiled-in X.509 certificates
+<6>[    2.189751] Demotion targets for Node 0: null
+<6>[    2.199251] PM: genpd: Disabling unused power domains
+<6>[    2.199267] ALSA device list:
+<6>[    2.199274]   No soundcards found.
+<6>[    2.219913] diag: kernel: drivers initialized
+<6>[    2.220346] Freeing unused kernel memory: 1088K
+<6>[    2.220444] diag: kernel: starting /init
+<6>[    2.220448] Run /init as init process
+<7>[    2.220452]   with arguments:
+<7>[    2.220457]     /init
+<7>[    2.220461]   with environment:
+<7>[    2.220465]     HOME=/
+<7>[    2.220468]     TERM=linux
+<7>[    2.220472]     lcd_id=ID36525
+<7>[    2.220476]     lcd_name=lcd_nt36525c_boe_mipi_fhd
+<7>[    2.220479]     lcd_base=9e000000
+<7>[    2.220482]     lcd_size=1600x720
+<7>[    2.220485]     logo_bpix=24
+<7>[    2.220488]     cit_tp=0x00
+<7>[    2.220492]     sysdump_magic=80001000
+<7>[    2.220496]     sysdump_re_flag=1
+<7>[    2.220499]     modem=shutdown
+<7>[    2.220502]     ltemode=lcsfb
+<7>[    2.220504]     crystal=6
+<7>[    2.220507]     band_id=XT2227-1
+<7>[    2.220511]     buildvariant=user
+<7>[    2.220513]     bootcause=Reboot into normal
+<7>[    2.220517]     sensor_name=ltr569,
+<7>[    2.220520]     tspl=538ms
+<7>[    2.220523]     tsml=132ms
+<7>[    2.220526]     tuboot=5463ms
+<14>[    2.221285] H71-INIT: logsave up (pid 1, waiting 30 s, ring monitor on)
+<14>[    2.622959] H71-UFS[1]: 5,274,1026180,-;SCSI subsystem initialized
+<14>[    2.622959] 
+<14>[    2.623161] H71-UFS[2]: 6,323,1221216,-;Block layer SCSI generic (bsg) driver version 0.4 loaded (major 243)
+<14>[    2.623161] 
+<14>[    2.623527] H71-UFS[3]: 6,431,1263214,-;ufshcd-sprd 20200000.ufs: probe entry (of_id sprd,ums9230-ufs)
+<14>[    2.623527]  SUBSYSTEM=platform
+<14>[    2.623527]  DEVICE=+platform:20200000.ufs
+<14>[    2.623527] 
+<14>[    2.623546] H71-UFS[4]: 6,432,1264229,-;ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vdd-hba-supply regulator, assuming enabled
+<14>[    2.623546]  SUBSYSTEM=platform
+<14>[    2.623546]  DEVICE=+platform:20200000.ufs
+<14>[    2.623546] 
+<14>[    2.623563] H71-UFS[5]: 6,433,1264239,-;ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vcc-supply regulator, assuming enabled
+<14>[    2.623563]  SUBSYSTEM=platform
+<14>[    2.623563]  DEVICE=+platform:20200000.ufs
+<14>[    2.623563] 
+<14>[    2.623582] H71-UFS[6]: 6,434,1264245,-;ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vccq-supply regulator, assuming enabled
+<14>[    2.623582]  SUBSYSTEM=platform
+<14>[    2.623582]  DEVICE=+platform:20200000.ufs
+<14>[    2.623582] 
+<14>[    2.623600] H71-UFS[7]: 6,435,1264251,-;ufshcd-sprd 20200000.ufs: ufshcd_populate_vreg: Unable to find vccq2-supply regulator, assuming enabled
+<14>[    2.623600]  SUBSYSTEM=platform
+<14>[    2.623600]  DEVICE=+platform:20200000.ufs
+<14>[    2.623600] 
+<14>[    2.623617] H71-UFS[8]: 6,436,1267775,-;ufshcd-sprd 20200000.ufs: ufs host reset!
+<14>[    2.623617]  SUBSYSTEM=platform
+<14>[    2.623617]  DEVICE=+platform:20200000.ufs
+<14>[    2.623617] 
+<14>[    2.623647] H71-UFS[9]: 6,437,1273584,-;scsi host0: ufshcd
+<14>[    2.623647]  SUBSYSTEM=scsi
+<14>[    2.623647]  DEVICE=+scsi:host0
+<14>[    2.623647] 
+<14>[    2.623665] H71-UFS[10]: 3,438,1362369,-;ufshcd-sprd 20200000.ufs: ufshcd_is_wb_buf_lifetime_available: WB buf lifetime is exhausted 0x0B
+<14>[    2.623665]  SUBSYSTEM=platform
+<14>[    2.623665]  DEVICE=+platform:20200000.ufs
+<14>[    2.623665] 
+<14>[    2.623682] H71-UFS[11]: 6,439,1399120,-;ufshcd-sprd 20200000.ufs: ufshcd_pltfrm_init() = 0
+<14>[    2.623682]  SUBSYSTEM=platform
+<14>[    2.623682]  DEVICE=+platform:20200000.ufs
+<14>[    2.623682] 
+<14>[    2.623702] H71-UFS[12]: 5,440,1400892,-;scsi 0:0:0:49488: Well-known LUN    SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
+<14>[    2.623702]  SUBSYSTEM=scsi
+<14>[    2.623702]  DEVICE=+scsi:0:0:0:49488
+<14>[    2.623702] 
+<14>[    2.623755] H71-UFS[13]: 5,452,1407533,-;scsi 0:0:0:49476: Well-known LUN    SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
+<14>[    2.623755]  SUBSYSTEM=scsi
+<14>[    2.623755]  DEVICE=+scsi:0:0:0:49476
+<14>[    2.623755] 
+<14>[    2.623773] H71-UFS[14]: 5,453,1410984,-;scsi 0:0:0:49456: Well-known LUN    SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
+<14>[    2.623773]  SUBSYSTEM=scsi
+<14>[    2.623773]  DEVICE=+scsi:0:0:0:49456
+<14>[    2.623773] 
+<14>[    2.623792] H71-UFS[15]: 5,454,1414024,-;scsi 0:0:0:0: Direct-Access     SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
+<14>[    2.623792]  SUBSYSTEM=scsi
+<14>[    2.623792]  DEVICE=+scsi:0:0:0:0
+<14>[    2.623792] 
+<14>[    2.623809] H71-UFS[16]: 5,455,1416411,-;scsi 0:0:0:1: Direct-Access     SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
+<14>[    2.623809]  SUBSYSTEM=scsi
+<14>[    2.623809]  DEVICE=+scsi:0:0:0:1
+<14>[    2.623809] 
+<14>[    2.623829] H71-UFS[17]: 5,456,1417257,-;sd 0:0:0:0: [sda] 15620096 4096-byte logical blocks: (64.0 GB/59.6 GiB)
+<14>[    2.623829]  SUBSYSTEM=scsi
+<14>[    2.623829]  DEVICE=+scsi:0:0:0:0
+<14>[    2.623829] 
+<14>[    2.623847] H71-UFS[18]: 5,457,1417384,-;sd 0:0:0:0: [sda] Write Protect is off
+<14>[    2.623847]  SUBSYSTEM=scsi
+<14>[    2.623847]  DEVICE=+scsi:0:0:0:0
+<14>[    2.623847] 
+<14>[    2.623863] H71-UFS[19]: 7,458,1417395,-;sd 0:0:0:0: [sda] Mode Sense: 00 32 00 10
+<14>[    2.623863]  SUBSYSTEM=scsi
+<14>[    2.623863]  DEVICE=+scsi:0:0:0:0
+<14>[    2.623863] 
+<14>[    2.623880] H71-UFS[20]: 5,459,1417530,-;sd 0:0:0:0: [sda] Write cache: enabled, read cache: enabled, supports DPO and FUA
+<14>[    2.623880]  SUBSYSTEM=scsi
+<14>[    2.623880]  DEVICE=+scsi:0:0:0:0
+<14>[    2.623880] 
+<14>[    2.623897] H71-UFS[21]: 6,460,1417612,-;sd 0:0:0:0: [sda] Preferred minimum I/O size 524288 bytes
+<14>[    2.623897]  SUBSYSTEM=scsi
+<14>[    2.623897]  DEVICE=+scsi:0:0:0:0
+<14>[    2.623897] 
+<14>[    2.623914] H71-UFS[22]: 6,461,1417622,-;sd 0:0:0:0: [sda] Optimal transfer size 524288 bytes
+<14>[    2.623914]  SUBSYSTEM=scsi
+<14>[    2.623914]  DEVICE=+scsi:0:0:0:0
+<14>[    2.623914] 
+<14>[    2.623936] H71-UFS[23]: 5,462,1419452,-;scsi 0:0:0:2: Direct-Access     SAMSUNG  KM5P9001DM-B424  0300 PQ: 0 ANSI: 6
+<14>[    2.623936]  SUBSYSTEM=scsi
+<14>[    2.623936]  DEVICE=+scsi:0:0:0:2
+<14>[    2.623936] 
+<14>[    2.623955] H71-UFS[24]: 5,463,1421861,-;sd 0:0:0:1: [sdb] 1024 4096-byte logical blocks: (4.19 MB/4.00 MiB)
+<14>[    2.623955]  SUBSYSTEM=scsi
+<14>[    2.623955]  DEVICE=+scsi:0:0:0:1
+<14>[    2.623955] 
+<14>[    2.623994] H71-UFS[25]: 5,464,1422279,-;sd 0:0:0:1: [sdb] Write Protect is off
+<14>[    2.623994]  SUBSYSTEM=scsi
+<14>[    2.623994]  DEVICE=+scsi:0:0:0:1
+<14>[    2.623994] 
+<14>[    2.624012] H71-UFS[26]: 7,465,1422294,-;sd 0:0:0:1: [sdb] Mode Sense: 00 32 00 10
+<14>[    2.624012]  SUBSYSTEM=scsi
+<14>[    2.624012]  DEVICE=+scsi:0:0:0:1
+<14>[    2.624012] 
+<14>[    2.624029] H71-UFS[27]: 5,466,1423308,-;sd 0:0:0:1: [sdb] Write cache: enabled, read cache: enabled, supports DPO and FUA
+<14>[    2.624029]  SUBSYSTEM=scsi
+<14>[    2.624029]  DEVICE=+scsi:0:0:0:1
+<14>[    2.624029] 
+<14>[    2.624046] H71-UFS[28]: 6,467,1423826,-;sd 0:0:0:1: [sdb] Preferred minimum I/O size 524288 bytes
+<14>[    2.624046]  SUBSYSTEM=scsi
+<14>[    2.624046]  DEVICE=+scsi:0:0:0:1
+<14>[    2.624046] 
+<14>[    2.624066] H71-UFS[29]: 6,468,1423848,-;sd 0:0:0:1: [sdb] Optimal transfer size 524288 bytes
+<14>[    2.624066]  SUBSYSTEM=scsi
+<14>[    2.624066]  DEVICE=+scsi:0:0:0:1
+<14>[    2.624066] 
+<14>[    2.624084] H71-UFS[30]: 5,469,1424114,-;sd 0:0:0:2: [sdc] 1024 4096-byte logical blocks: (4.19 MB/4.00 MiB)
+<14>[    2.624084]  SUBSYSTEM=scsi
+<14>[    2.624084]  DEVICE=+scsi:0:0:0:2
+<14>[    2.624084] 
+<14>[    2.624101] H71-UFS[31]: 5,470,1424199,-;sd 0:0:0:2: [sdc] Write Protect is off
+<14>[    2.624101]  SUBSYSTEM=scsi
+<14>[    2.624101]  DEVICE=+scsi:0:0:0:2
+<14>[    2.624101] 
+<14>[    2.624117] H71-UFS[32]: 7,471,1424210,-;sd 0:0:0:2: [sdc] Mode Sense: 00 32 00 10
+<14>[    2.624117]  SUBSYSTEM=scsi
+<14>[    2.624117]  DEVICE=+scsi:0:0:0:2
+<14>[    2.624117] 
+<14>[    2.624139] H71-UFS[33]: 5,472,1424351,-;sd 0:0:0:2: [sdc] Write cache: enabled, read cache: enabled, supports DPO and FUA
+<14>[    2.624139]  SUBSYSTEM=scsi
+<14>[    2.624139]  DEVICE=+scsi:0:0:0:2
+<14>[    2.624139] 
+<14>[    2.624159] H71-UFS[34]: 6,473,1424418,-;sd 0:0:0:2: [sdc] Preferred minimum I/O size 524288 bytes
+<14>[    2.624159]  SUBSYSTEM=scsi
+<14>[    2.624159]  DEVICE=+scsi:0:0:0:2
+<14>[    2.624159] 
+<14>[    2.624175] H71-UFS[35]: 6,474,1424426,-;sd 0:0:0:2: [sdc] Optimal transfer size 524288 bytes
+<14>[    2.624175]  SUBSYSTEM=scsi
+<14>[    2.624175]  DEVICE=+scsi:0:0:0:2
+<14>[    2.624175] 
+<14>[    2.624192] H71-UFS[36]: 5,475,1454298,-;sd 0:0:0:1: [sdb] Attached SCSI disk
+<14>[    2.624192]  SUBSYSTEM=scsi
+<14>[    2.624192]  DEVICE=+scsi:0:0:0:1
+<14>[    2.624192] 
+<14>[    2.624207] H71-UFS[37]: 5,476,1457618,-;sd 0:0:0:2: [sdc] Attached SCSI disk
+<14>[    2.624207]  SUBSYSTEM=scsi
+<14>[    2.624207]  DEVICE=+scsi:0:0:0:2
+<14>[    2.624207] 
+<14>[    2.624232] H71-UFS[38]: 5,478,1492260,-;sd 0:0:0:0: [sda] Attached SCSI disk
+<14>[    2.624232]  SUBSYSTEM=scsi
+<14>[    2.624232]  DEVICE=+scsi:0:0:0:0
+<14>[    2.624232] 
+<4>[   12.281380] platform extcon-gpio: deferred probe pending: (reason unknown)
+<4>[   12.281399] platform gpio-keys: deferred probe pending: gpio-keys: failed to get gpio
+<14>[   12.284317] H71-UFS[39]: 4,551,12281380,-;platform extcon-gpio: deferred probe pending: (reason unknown)
+<14>[   12.284317]  SUBSYSTEM=platform
+<14>[   12.284317]  DEVICE=+platform:extcon-gpio
+<14>[   12.284317] 
+<14>[   12.284390] H71-UFS[40]: 4,552,12281399,-;platform gpio-keys: deferred probe pending: gpio-keys: failed to get gpio
+<14>[   12.284390]  SUBSYSTEM=platform
+<14>[   12.284390]  DEVICE=+platform:gpio-keys
+<14>[   12.284390] 
+<14>[   32.528451] H71-UFS: 40 matching lines during the wait
+<14>[   32.528512] H71-INIT: wait done, collecting the kernel ring
+<14>[   32.528642] H71-INIT: devtmpfs mounted on /dev
+<14>[   32.528751] H71-INIT: sysfs mounted on /sys
+<14>[   32.529923] H71-INIT: sysdumpdb is /dev/sda58 (2560 blocks)

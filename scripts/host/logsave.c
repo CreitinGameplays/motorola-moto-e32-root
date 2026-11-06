@@ -55,6 +55,14 @@
 
 static const char magic[8] = "H71LOG01";
 
+/* USB serial (g_serial gadget): once the musb UDC binds, the PC gets a
+ * CDC-ACM port and the whole ring goes over the wire - the panel
+ * becomes the backup channel.  Opened lazily: the gadget may bind
+ * seconds after /init starts. */
+static int ser_fd = -1;
+static char *ring_copy;		/* kept copy of the kernel ring */
+static int ring_len;
+
 static void kmsg(const char *fmt, ...)
 {
 	char buf[512];
@@ -78,6 +86,42 @@ static void kmsg(const char *fmt, ...)
 		write(fd, buf, n);
 		close(fd);
 	}
+}
+
+static void serial_try(void)
+{
+	int fd;
+
+	if (ser_fd >= 0)
+		return;
+	fd = open("/dev/ttyGS0", O_WRONLY | O_NONBLOCK | O_NOCTTY);
+	if (fd < 0)
+		return;
+	ser_fd = fd;
+	kmsg("<6>H71-INIT: ttyGS0 open - USB serial live");
+	if (ring_copy && ring_len > 0) {
+		if (write(ser_fd, "\r\n=== H71 full kernel ring ===\r\n", 31) < 0)
+			;
+		if (write(ser_fd, ring_copy, ring_len) < 0)
+			;
+		if (write(ser_fd, "\r\n=== H71 end of ring ===\r\n", 27) < 0)
+			;
+	}
+}
+
+static void serial_printf(const char *fmt, ...)
+{
+	char buf[512];
+	va_list ap;
+	int n;
+
+	if (ser_fd < 0)
+		return;
+	va_start(ap, fmt);
+	n = vsnprintf(buf, sizeof(buf) - 1, fmt, ap);
+	va_end(ap);
+	if (n > 0)
+		(void)write(ser_fd, buf, (size_t)n);
 }
 
 /*
@@ -325,6 +369,8 @@ int main(void)
 			if (n > 0) {
 				len = n;
 				kmsg("<6>H71-INIT: ring is %d bytes", len);
+				ring_copy = buf;
+				ring_len = len;
 			} else {
 				free(buf);
 				buf = NULL;
@@ -433,10 +479,14 @@ int main(void)
 	 * slot a and the rescue restores Android. */
 	xray();
 	kmsg("<6>H71-INIT: PARKED - power-hold to recover");
+	serial_try();
 	for (;;) {
 		sleep(10);
+		serial_try();		/* the gadget may bind late */
 		kmsg("<4>H71-INIT: parked, ring %s",
 		     saved ? "SAVED to sysdumpdb" : "NOT saved");
+		serial_printf("H71-INIT: parked, ring %s\r\n",
+			      saved ? "SAVED to sysdumpdb" : "NOT saved");
 	}
 	return 0;
 }
