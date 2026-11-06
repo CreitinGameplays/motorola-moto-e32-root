@@ -77,3 +77,43 @@ write + misc arming + verification in the same shell.  With Magisk su
 present the same script runs under `su -c` with no exploit at all.
 
 Kernel commits: db5e94f74 (quiet console) and fb18b900c (KERN_EMERG).
+
+Follow-up (same day): panel log policy + panic guard, both trees
+----------------------------------------------------------------
+The quiet filter had no way back to a full log for debugging, and no
+guard against painting a full log past the init exec (a ~4 MB
+framebuffer scroll per line under userspace log spam stalls the
+console lock - and on the 7.1 the 1 Hz heartbeat/watchdog timer - until
+the system dies).  Both trees now carry a runtime-switchable policy
+(setup.c + diag_stage.h + main.c + arch/arm64/Kconfig):
+
+  mode 0 (default): progress lines + crash signatures only
+  mode 1: full log until /init execs, then auto-quiet
+          (CONFIG_DIAGFB_FULL_LOG=y makes it the boot mode)
+  mode 2: full log, no auto-quiet (debug override)
+  runtime switch: /proc/diagfb_log (root; read shows "<mode> <boot_done>")
+  panic guard: diag_panel_boot_done set in kernel_init() right before
+  the /init exec demotes mode 1
+
+4.14 (commit pending): crash signatures ("Kernel panic", "Internal
+error", "Asynchronous SError", "Unable to handle", "Call trace",
+"BUG:", "WARNING:") paint even when quiet; progress lines still painted
+from the tag (prefix stripped); module_layout CRC must stay
+0x89b5c3ef.
+
+7.1 fork (hawaii-test commit c09d43057): the kmsg painter and the
+console share the diag_panel_write() filter; the painter is capped at
+256 lines per heartbeat tick; the filter keeps H71-* and
+HAWAII-BOOTWDT lines visible (park-screen workflow unchanged);
+DIAG_PROGRESS is KERN_INFO there because the kmsg painter ignores the
+loglevel=1 bootargs (EMERG would only duplicate lines via the console).
+Image builds clean with the policy in place.
+
+Build note (4.14): after adding DIAGFB_FULL_LOG to arch/arm64/Kconfig,
+an incremental build needs `make O=$OUT olddefconfig` first - a bare
+`make ... Image` dies in silentoldconfig.  Beware: an olddefconfig run
+against a stale .config silently flips other symbols (it disabled
+CONFIG_DEBUG_NOTIFIERS, which the notifier.c diag report depends on);
+build.sh regenerates the config from stock_kernel_config.txt + tweaks
+and is the reliable path.
+

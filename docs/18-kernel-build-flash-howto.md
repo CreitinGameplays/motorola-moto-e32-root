@@ -124,10 +124,14 @@ outputs into `$STABLE`** (default `~/kernel-out`: Image, `mali_kbase.ko`,
 a `SHA256SUMS` manifest).  Everything is overridable via the
 environment: `TOOLCHAIN` (dir with clang/lld), `CONFIG` (starting
 .config), `OUT` (build dir, default `/tmp/kbuild` - it may be RAM-backed
-and wiped on reboot), `STABLE` (persistent output dir).  `~/kernel-out`
-is the source of truth: Image and modules there are guaranteed to come
-from the same build, which is what keeps vermagic and `module_layout`
-CRC consistent.
+and wiped on reboot), `STABLE` (persistent output dir), `CLEAN` (1 =
+wipe `OUT` and build from scratch).  **The build is incremental by
+default**: `OUT` is reused, the `.config` is regenerated in a scratch
+tree from `$CONFIG` + the tweak list and swapped in only when it
+differs, so a code-only change relinks in ~1 min (see section 11.4).
+`~/kernel-out` is the source of truth: Image and modules there are
+guaranteed to come from the same build, which is what keeps vermagic and
+`module_layout` CRC consistent.
 
 Outputs that matter:
 
@@ -542,7 +546,52 @@ glyphs and every glyph flushed the whole text band through the cache.
   whole 36-row band (~103 KB) per glyph.
 * `CON_PRINTBUFFER` stays, so progress lines printed before the console
   registers still appear through the replay.
+* Crash signatures paint even when quiet: lines matching "Kernel
+  panic", "Internal error", "Asynchronous SError", "Unable to handle",
+  "Call trace", "BUG:" or "WARNING:" always pass the filter.
 
-To get the full kernel log back on the panel for a debug boot, restore
-`.write = diag_txt_puts(s, n)` in `arch/arm64/kernel/setup.c` (the
-initcall trace is separately gated by `DIAG_SCREEN`).
+### 11.2 Panel log policy: enable/disable + the panic guard (2026-11-06)
+
+The panel log is a *policy* now, not a compile-time choice (both the
+4.14 daily driver and the 7.1 fork):
+
+* mode 0 (default): progress lines + crash signatures only.
+* mode 1: full kernel log **until /init execs**, then back to mode 0.
+  The build starts in mode 1 with `CONFIG_DIAGFB_FULL_LOG=y`
+  (default n, `arch/arm64/Kconfig`).
+* mode 2: full kernel log, no auto-quiet - explicit debug override only.
+
+Runtime switch (root): `/proc/diagfb_log` (created by a late initcall):
+
+```
+adb shell su -c 'cat /proc/diagfb_log'    # shows "<mode> <boot_done>"
+adb shell su -c 'echo 2 > /proc/diagfb_log'   # full log, no auto-quiet
+```
+
+### 11.3 7.1 fork differences
+
+The 7.1 fork (`hawaii-test`, commit c09d43057) carries the same policy
+with two extras:
+
+* the kmsg painter (the printk-independent drain at milestones and the
+  1 Hz heartbeat tick) goes through the same filter and is capped at
+  256 lines per tick;
+* the filter also keeps the `H71-*` test markers and
+  `HAWAII-BOOTWDT` lines visible, so the flash-test workflow (park
+  screen photos) is unchanged in quiet mode;
+* progress lines are `KERN_INFO` there (the kmsg painter ignores the
+  `loglevel=1` bootargs; an EMERG level would only make the console
+  paint a second copy).
+
+### 11.4 One-shot note for the 4.14 build
+
+`build.sh` is incremental by default (commit bc4f4b834): `OUT` is
+reused, and the `.config` is always regenerated from
+`stock_kernel_config.txt` + the tweak list in a **scratch tree**, then
+installed into `OUT` only when it differs.  A config change rebuilds
+exactly the affected objects; a stale `OUT/.config` can never leak into
+a build (that is how `CONFIG_DEBUG_NOTIFIERS` got silently disabled
+once - a bare `olddefconfig` against a stale config flipped it and
+broke the notifier diag report).  Set `CLEAN=1` for a from-scratch
+build; a code-only incremental build takes ~1 min instead of ~7 and
+produces a byte-identical Image.
