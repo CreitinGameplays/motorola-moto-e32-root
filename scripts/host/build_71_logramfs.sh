@@ -41,6 +41,14 @@ aarch64-linux-gnu-gcc -static -Os -Wall -o init "$HERE/logsave.c"
 aarch64-linux-gnu-strip init
 ls -l init
 
+# the Novatek NT36xxx touch controller firmware: the driver loads it with
+# request_firmware("novatek_ts_fw.bin"), so it has to be in the initramfs
+# (the vendor kernel gets it from /vendor/firmware on Android).
+FW_DIR="${FW_DIR:-$HOME/fw}"
+for f in novatek_ts_fw.bin novatek_ts_mp.bin; do
+	[ -f "$FW_DIR/$f" ] || continue
+done
+
 # applet symlinks the debug shell gets out of the box (deliberately no
 # reboot/poweroff: the 7.1 reset paths are broken and logsave must park)
 APPLETS="sh ash echo printf cat ls ln rm cp mv mkdir rmdir touch mount
@@ -59,9 +67,16 @@ nod /dev/mem 0600 0 0 c 1 1
 dir /sys 0755 0 0
 dir /proc 0755 0 0
 dir /bin 0755 0 0
+dir /lib 0755 0 0
+dir /lib/firmware 0755 0 0
 file /init $PWD/init 0755 0 0
 file /bin/busybox $BB 0755 0 0
 EOF
+	for f in novatek_ts_fw.bin novatek_ts_mp.bin; do
+		if [ -f "$FW_DIR/$f" ]; then
+			printf 'file /lib/firmware/%s %s/%s 0644 0 0\n' "$f" "$FW_DIR" "$f"
+		fi
+	done
 	for a in $APPLETS; do
 		printf 'slink /bin/%s busybox 0777 0 0\n' "$a"
 	done

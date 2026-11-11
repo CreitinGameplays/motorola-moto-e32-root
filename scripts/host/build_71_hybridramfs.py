@@ -101,6 +101,10 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--keep-init-name", default="/system/bin/init",
                     help="where the stock init is expected (we exec it)")
+    ap.add_argument("--extra", action="append", default=[],
+                    metavar="PATH=FILE",
+                    help="add a file to the ramdisk (e.g. "
+                         "/lib/firmware/novatek_ts_fw.bin=novatek_ts_fw.bin)")
     args = ap.parse_args()
 
     if args.stock_ramdisk:
@@ -111,6 +115,15 @@ def main():
     data = gzip.decompress(blob) if blob[:2] == b"\x1f\x8b" else blob
 
     hybrid = open(args.init, "rb").read()
+
+    extras = []
+    for spec in args.extra:
+        path, _, src = spec.partition("=")
+        if not src:
+            path, src = spec, spec
+        content = open(src, "rb").read()
+        extras.append((path, content))
+        print("  + %s (%d bytes)" % (path, len(content)))
 
     entries = []
     replaced = False
@@ -126,6 +139,17 @@ def main():
 
     if not replaced:
         sys.exit("no /init entry in the stock ramdisk")
+
+    # the extra files, with their parent directories
+    have_dirs = {e[0] for e in entries}
+    for path, content in extras:
+        parts = path.split("/")[:-1]
+        for i in range(len(parts)):
+            d = "/".join(parts[:i + 1])
+            if d and d not in have_dirs:
+                entries.append((d, 0o040755, 0, 0, 1, 0, b"", 0, 0))
+                have_dirs.add(d)
+        entries.append((path, 0o100644, 0, 0, 1, 0, content, 0, 0))
 
     buf = io.BytesIO()
     write_cpio(entries, buf)

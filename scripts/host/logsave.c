@@ -348,6 +348,66 @@ static unsigned long irq_sum(void)
  * watchdog's bark, or an IRQ-storm message) is on flash even though the
  * phone later reset.
  */
+/*
+ * Hybrid mode only: Android's init writes its log to logd, *not* to the
+ * kernel ring, so the ring alone does not tell us how far the userspace
+ * got.  This snapshots what PID 1 (the stock init that replaced us) is
+ * doing right now: the syscall it is in, the wait channel and the
+ * kernel stack.
+ */
+#ifdef H71_HYBRID
+static char pid1_diag[4096];
+
+/* seconds since boot, from /proc/uptime */
+static long uptime_secs(void)
+{
+	char buf[64];
+	int fd, r;
+	long v = 0;
+
+	fd = open("/proc/uptime", O_RDONLY);
+	if (fd < 0)
+		return 0;
+	r = read(fd, buf, sizeof(buf) - 1);
+	close(fd);
+	if (r <= 0)
+		return 0;
+	buf[r] = 0;
+	v = strtol(buf, NULL, 10);
+	return v;
+}
+
+static void collect_pid1_state(void)
+{
+	static const char * const files[] = { "syscall", "wchan", "stack", "stat" };
+	unsigned int i;
+	int n = 0;
+
+	n += snprintf(pid1_diag + n, sizeof(pid1_diag) - n,
+		      "--- H71-PID1 (t=%lds) ---\n", (long)uptime_secs());
+
+	for (i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
+		char path[64];
+		char buf[1024];
+		int fd, r;
+
+		snprintf(path, sizeof(path), "/proc/1/%s", files[i]);
+		fd = open(path, O_RDONLY);
+		if (fd < 0)
+			continue;
+		r = read(fd, buf, sizeof(buf) - 1);
+		close(fd);
+		if (r <= 0)
+			continue;
+		buf[r] = 0;
+		n += snprintf(pid1_diag + n, sizeof(pid1_diag) - n,
+			      "[%s]\n%s\n", files[i], buf);
+		if (n >= (int)sizeof(pid1_diag) - 512)
+			break;
+	}
+}
+#endif
+
 static int save_ring(int logfd, int verbose)
 {
 	unsigned char hdr[16];
@@ -355,6 +415,9 @@ static int save_ring(int logfd, int verbose)
 	char *buf = NULL;
 	size_t total;
 	int len = 0, size, n, ok = 0;
+#ifdef H71_HYBRID
+	int diag_len = 0;
+#endif
 
 	ring_save_errno = 0;
 	size = klogctl(10 /* size of the ring */, NULL, 0);
@@ -395,6 +458,13 @@ static int save_ring(int logfd, int verbose)
 	 * ring together, zero-padded to a 4096 multiple - valid on 512-
 	 * and 4096-byte disks alike (LOG_OFF1/2 are 1/2 MiB, aligned) */
 	total = ((size_t)len + sizeof(hdr) + 4095) & ~(size_t)4095;
+#ifdef H71_HYBRID
+	/* append the PID 1 state: it says what the userspace is doing,
+	 * which the kernel ring does not (Android's init logs to logd) */
+	collect_pid1_state();
+	diag_len = (int)strlen(pid1_diag);
+	total = ((size_t)(len + diag_len) + sizeof(hdr) + 4095) & ~(size_t)4095;
+#endif
 	blob = calloc(1, total);
 	if (!blob) {
 		if (verbose)
@@ -411,6 +481,10 @@ static int save_ring(int logfd, int verbose)
 	hdr[12] = hdr[13] = hdr[14] = hdr[15] = 0;
 	memcpy(blob, hdr, sizeof(hdr));
 	memcpy(blob + sizeof(hdr), buf, len);
+#ifdef H71_HYBRID
+	if (diag_len > 0)
+		memcpy(blob + sizeof(hdr) + len, pid1_diag, diag_len);
+#endif
 	if (buf != ring_copy)
 		free(buf);
 	save_phase = 1;
