@@ -887,21 +887,13 @@ static void run_saver(int logfd)
 	}
 }
 
-int main(void)
+/*
+ * The pseudo filesystems both modes need: the ring saver writes to
+ * /dev/kmsg and to the sysdumpdb block device, the debug shell wants
+ * /proc and /sys.
+ */
+static void mount_pseudo(void)
 {
-	int logfd;
-	struct sigaction sa;
-
-	/* SIGALRM interrupts a wedged UFS write instead of hanging the
-	 * (parent or child) caller for ever - the second block write to
-	 * the device reliably wedges the queue (tests 46/47) */
-	memset(&sa, 0, sizeof(sa));
-	sa.sa_handler = save_alarm_handler;
-	sigaction(SIGALRM, &sa, NULL);
-
-	kmsg("<6>H71-INIT: logsave up (pid %d, waiting %d s, ring monitor on)",
-	     (int)getpid(), WAIT_SECONDS);
-
 	/* mounts first: the monitor's 1 s ring saves and the watchdog
 	 * feed both need them */
 	if (access("/dev/sda", F_OK) != 0) {
@@ -925,8 +917,79 @@ int main(void)
 	if (access("/proc/cmdline", F_OK) != 0 &&
 	    mount("proc", "/proc", "proc", 0, "") == 0)
 		kmsg("<6>H71-INIT: proc mounted on /proc");
+}
 
+/*
+ * Hybrid mode (built with -DH71_HYBRID): this binary is the /init of a
+ * ramdisk that also carries the *stock* Android ramdisk.  We mount the
+ * pseudo filesystems, fork a ring-saver child that keeps the kernel
+ * ring in the sysdumpdb partition (so an Android boot that dies
+ * before adbd still leaves evidence - the kernel ring carries the
+ * first-stage init's own kmsg output), and then exec the stock Android
+ * init, which becomes PID 1 and takes the boot over.
+ */
+#ifdef H71_HYBRID
+static void hybrid_main(void)
+{
+	char *const av[] = { (char *)"init", NULL };
+	int logfd, sp;
+	extern char **environ;
+
+	kmsg("<6>H71-INIT: hybrid up (pid %d) - ring saver + stock android init",
+	     (int)getpid());
+
+	mount_pseudo();
+
+	logfd = open_log_partition();
+	if (logfd < 0) {
+		logfd = open("/dev/block/by-name/sysdumpdb", O_WRONLY);
+		if (logfd < 0)
+			kmsg("<3>H71-INIT: hybrid: sysdumpdb not found - "
+			     "the ring will not be saved");
+	}
+
+	sp = fork();
+	if (sp == 0) {
+		run_saver(logfd);
+		_exit(0);
+	}
+	if (sp > 0)
+		kmsg("<6>H71-INIT: hybrid: saver pid %d, handing over to "
+		     "the stock init", (int)sp);
+
+	execve("/system/bin/init", av, environ);
+	kmsg("<3>H71-INIT: hybrid: execve(/system/bin/init) failed (%d)",
+	     errno);
+
+	for (;;)
+		sleep(1);
+}
+#endif
+
+int main(void)
+{
+	struct sigaction sa;
+
+	/* SIGALRM interrupts a wedged UFS write instead of hanging the
+	 * (parent or child) caller for ever - the second block write to
+	 * the device reliably wedges the queue (tests 46/47) */
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = save_alarm_handler;
+	sigaction(SIGALRM, &sa, NULL);
+
+#ifdef H71_HYBRID
+	hybrid_main();
+	return 0;
+#else
+
+	kmsg("<6>H71-INIT: logsave up (pid %d, waiting %d s, ring monitor on)",
+	     (int)getpid(), WAIT_SECONDS);
+
+	mount_pseudo();
 	wdt_init();
+
+	{
+	int logfd;
 	gadget_setup();
 	usb_regs_dump();
 	print_musb_irq();
@@ -1066,5 +1129,7 @@ int main(void)
 			serial_printf("H71-INIT: parked, wdt %u s left\r\n",
 				      wdt_timeleft());
 	}
+	} /* logfd */
+#endif /* H71_HYBRID */
 	return 0;
 }
