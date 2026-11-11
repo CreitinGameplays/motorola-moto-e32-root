@@ -346,3 +346,60 @@ research and mechanism analysis: `docs/22-kexec-hang-research.md`.
   collect pstore right after the next successful jump to decide it.
 
 
+
+## 2026-11-11: the 7.1 tree is published as branch "7.1"
+
+The 7.1-rc1 bring-up tree (VPS `~/linux-ums9230`, upstream base
+`codeberg.org/ums9230-mainline/linux` branch `ums9230`) is now published
+as the **`7.1` branch** of
+<https://github.com/CreitinGameplays/motorola-moto-e32-kernel> (the
+vendor 4.14 daily-driver tree stays on the `4.14` branch of the same
+repository).
+
+What the branch carries:
+
+* all 18 hawaii commits: display bring-up (sprd DRM/DPU/DSI/panel/DPHY),
+  USB gadget + phy power, the UFS host port, the panel-log console and
+  the boot-watchdog policy, plus the `dm-default-key` port.
+* `arch/arm64/configs/hawaii71_defconfig` (canonical savedefconfig of
+  the tested configuration) and `arch/arm64/configs/hawaii71.config`
+  (the full `.config` for byte-exact reproduction).
+* `H71-README.md` - what the tree is, how to build it, what works
+  (display end to end, USB gadget with live serial shell, UFS), what
+  does not yet (Novatek touch over SPI, PMIC EIC gpio-keys, the
+  metadata-encrypted /data behind a keymaster-wrapped key, the
+  parked-boot hang) and where the flash harness and the full journal
+  live.
+
+Build (VPS):
+
+```sh
+make O=$HOME/l71out ARCH=arm64 LLVM=1 -j$(nproc) Image
+```
+
+### Publishing caveat: the published history is rooted at a synthetic commit
+
+The local clone of the upstream snapshot is **shallow** (`.git/shallow`
+at the upstream commit `4a5b97b8`), and GitHub's receive-pack does not
+accept shallow pushes - a first attempt failed with
+`remote: fatal: did not receive expected object b9d32493...`, i.e. the
+missing parent of the shallow boundary.  The published branch therefore
+starts with a **synthetic root commit** carrying the upstream tree of
+`4a5b97b8` (upstream history deliberately not mirrored - it stays
+available at codeberg), followed by the 18 hawaii commits replayed on
+top.  The tree content is byte-identical to the working branch.
+
+### .gitignore review
+
+The tree had **no untracked and no ignored files** (everything is
+tracked, the biggest tracked file is 23 MB - under GitHub's 100 MB
+per-file limit), and the builds happen out-of-tree in `~/l71out`, so
+nothing stale or cache-like was published.  The appended local section
+covers what the hawaii workflow could drop into the tree (in-tree
+`.config`, `out/`, `build/`, `l71out/`, patch/diff/editor leftovers).
+It deliberately does **not** repeat upstream's `tags`/`TAGS`/`cscope`
+rules: upstream pairs `tags` with a `!tags/` re-include for tracked
+directories of that name, and duplicating the plain `tags` rule made
+`tools/testing/selftests/arm64/tags/` appear ignored (verified with
+`git ls-files -i -c --exclude-standard`: back to the single
+pre-existing upstream case, `Documentation/.renames.txt`).
