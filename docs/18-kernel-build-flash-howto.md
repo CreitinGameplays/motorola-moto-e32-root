@@ -22,7 +22,7 @@ Two options.
 commit and push there directly):
 
 ```bash
-git clone https://github.com/CreitinGameplays/motorola-moto-e32-kernel.git kernel-sprd
+git clone -b 4.14 --single-branch https://github.com/CreitinGameplays/motorola-moto-e32-kernel.git kernel-sprd
 cd kernel-sprd && bash build.sh      # self-contained: config ships in the tree
 ```
 
