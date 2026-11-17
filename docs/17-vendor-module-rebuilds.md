@@ -375,3 +375,14 @@ script.)  Then re-run
 * keeping two kernels (vendor-module-compat without KVM, KVM kernel
   without vendor modules) - the current state; keep as fallback while Plan
   A is unproven.
+
+## 2026-11-17: the vendor sprdwl_ng is the driver after the first Wi-Fi toggle
+
+With the relaxed CRC checks above, the HAL's own
+`finit_module("/mnt/vendor/socko/sprdwl_ng.ko")` works, so Wi-Fi on/off
+after the boot-time in-tree module has been unloaded runs the vendor
+`sprdwl_ng` (409600 in `/proc/modules`; the in-tree port is 708608). That
+is normal. The in-tree module's SDIO `.remove` used to skip
+`sprd_iface_remove()` - turning Wi-Fi off then panicked in
+`run_timer_softirq` on the freed watchdog timer. Fixed in kernel commit
+`fd15bc439`; see `docs/25-wifi-poweroff-panic.md`.

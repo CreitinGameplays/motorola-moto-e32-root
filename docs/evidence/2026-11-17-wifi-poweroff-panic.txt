@@ -1,0 +1,121 @@
+# Wi-Fi off -> kernel panic (2026-11-17): logs before and after the fix
+
+Phone: Moto E32 (hawaii, UMS9230, Android 11, 4.14.199+-ab612c2).
+Boot module at the time: in-tree sprdwl_ng from
+/data/adb/modules/sprd-wlan-combo (Magisk, "Ver. v1.0", 708608 in
+/proc/modules). Bootloader slot: boot_b (Magisk), slot_a untouched.
+
+## 1. Before the fix: `svc wifi disable` -> reboot
+
+adb dropped off and the phone came back by itself; after it returned:
+
+    $ adb shell getprop ro.boot.bootreason
+    kernel_panic,fatal_exception_in_interrupt
+
+/sys/fs/pstore/console-ramoops-0 and dmesg-ramoops-0 of the panicked boot:
+
+    [ 7221.945489] c1 ieee80211 phy0: Power off WCN (2 time)
+    [ 7222.093118] c1 wlan0: Power off WCN (1 time)
+    [ 7222.129727] c0 WCN BASEmarlin_digital_power_enable D1v2 0
+    [ 7222.129907] c0 WCN SDIO: sdiohal_remove remove card successful
+    [ 7222.130300] c0 mmc2: card 8800 removed
+    [ 7222.130455] c3 WCN SDIO: remove card end
+    [ 7222.184731] c1 sprd-wlan: sprd_wlan_remove sprd,sc2355-wifi 2.
+    [ 7222.421539] c0 Unable to handle kernel paging request at virtual address ffffff8001048458
+    [ 7222.421546] c0 Mem abort info:
+    [ 7222.421550] c0   Exception class = DABT (current EL), IL = 32 bits
+    [ 7222.421556] c0   ISV = 0, ISS = 0x00000047
+    [ 7222.421558] c0   CM = 0, WnR = 1
+    [ 7222.421563] c0 swapper pgtable: 4k pages, 39-bit VAs, pgd = 0000000056ac2d78
+    [ 7222.421565] c0 [ffffff8001048458] *pgd=000000017fffd003, *pud=000000017fffd003, *pmd=000000016fbb1003, *pte=0000000000000000
+    [ 7222.421576] c0 Internal error: Oops: 96000047 [#1] PREEMPT SMP
+    [ 7222.422075] c0 Modules linked in: flash_ic_ocp8135b(O) sprd_sdio_fm(O) sprdbt_sdio_tty(O) mali_kbase(O) aw9610x_sar(O) sprd_fd(O) mmdvfs(O) sprd_cpp(O) sprd_camera(O) sprd_flash_drv(O) sprd_sensor(O) incrementalfs [last unloaded: sprdwl_ng]
+    [ 7222.422141] c0 Process swapper/0 (pid: 0, stack limit = 0x00000000610ceabd)
+    [ 7222.422160] c0 CPU: 0 PID: 0 Comm: swapper/0 Tainted: G S      W  O    4.14.199+-ab612c2 #1
+    [ 7222.422178] c0 Hardware name: Spreadtrum UMS9230 4H10 Board (DT)
+    [ 7222.422215] c0 pc : run_timer_softirq+0x20c/0x718
+    [ 7222.422227] c0 lr : run_timer_softirq+0x6c/0x718
+    [ 7222.422238] c0 sp : ffffff8008003df0 pstate : 004001c5
+    [ 7222.422250] c0 x29: ffffff8008003e60 x28: ffffff8008003e10
+    [ 7222.422310] c0 x21: ffffff8009306000 x20: 0000000100130780
+    [ 7222.422325] c0 x19: ffffffc0ffe72380 x18: 0000000000000002
+    [ 7222.425942] c0 Call trace:
+    [ 7222.426241] c0  run_timer_softirq+0x20c/0x718
+    [ 7222.426257] c0  __do_softirq+0x16c/0x330
+    [ 7222.426274] c0  irq_exit+0xf0/0xfc
+    [ 7222.426287] c0  __handle_domain_irq+0x84/0xbc
+    [ 7222.426299] c0  gic_handle_irq+0x14c/0x1bc
+    [ 7222.426311] c0  el1_irq+0xf0/0x198
+    [ 7222.426331] c0  cpuidle_enter_state+0x2ac/0x32c
+    [ 7222.426344] c0  cpuidle_enter+0x18/0x20
+    [ 7222.426359] c0  do_idle+0x1c8/0x260
+    [ 7222.426369] c0  cpu_startup_entry+0x20/0x24
+    [ 7222.426385] c0  rest_init+0xd0/0xdc
+    [ 7222.426401] c0  start_kernel+0x468/0x4e0
+    [ 7222.426416] c0 Code: aa0903eb f8470d4c f800856c b400004c (f9000589)
+    [ 7222.426443] c0 ---[ end trace cea8986f30f43cfb ]---
+    [ 7222.452027] c0 Kernel panic - not syncing: Fatal exception in interrupt
+    [ 7223.522298] c0 sprd-sysdump: (sysdump_panic_event) ------ in (0)
+    [ 7226.685646] c0 Rebooting in 5 seconds..
+
+Notes on the decode:
+
+- `ISS 0x47` = write (`WnR=1`), DFSC 7 = translation fault level 3.
+  The address is unmapped, not RAM-scribbled.
+- With `VA_BITS=39`, `MODULES_VADDR=0xffffff8000000000` and
+  `MODULES_END=0xffffff8800000000`; the faulting `ffffff8001048458` is in
+  that window, so the timer detached by `run_timer_softirq` lived in module
+  memory freed by the rmmod (`[last unloaded: sprdwl_ng]`).
+- 0.24 s elapsed between `sprd_wlan_remove` and the fault: the per-second
+  `iface_wd_tick` delayed work of the unloaded module.
+
+## 2. After the fix (kernel commit fd15bc439, module rebuilt and installed)
+
+`svc wifi disable` at 50 s uptime:
+
+    [   50.057023] wlan0: Power off WCN (1 time)
+    [   50.097302] WCN SDIO: sdiohal_remove remove card successful
+    [   50.097737] WCN SDIO: remove card end
+    [   50.144083] sprd-wlan: sprd_wlan_remove sprd,sc2355-wifi 2.
+    [   50.144093] sprd-wlan: sprd_iface_remove\x0a wlan driver remove.
+    [   50.144105] sprd-wlan: Power on WCN (0 time)
+    [   50.144115] WCN BASEstart_marlin [MARLIN_WIFI]
+    [   50.165427] WCN SDIO: sdiohal_scan_card
+    [   50.226607] WCN SDIO: sdiohal_probe scan card successful! nodify callback:...
+    [   50.680506] sprd-wlan: Power off WCN (1 time)
+    [   50.724332] WCN SDIO: remove card end
+    [   50.724342] WCN SDIO: sdiohal_remove remove card successful
+    [   50.724679] WCN BASEmarlin power off!
+
+No Oops, no panic; adb stayed connected and `uptime` kept counting.
+
+`svc wifi enable` then loaded the vendor module (the HAL's own
+finit_module("/mnt/vendor/socko/sprdwl_ng.ko")), and Wi-Fi reconnected:
+
+    $ adb shell grep sprdwl /proc/modules
+    sprdwl_ng 409600 0 - Live ... (O)        <- vendor .ko (our port: 708608)
+    $ adb logcat -d | grep wifi_load_driver
+    I android.hardware.wifi@1.0-service: wifi_load_driver success: Success
+    $ adb shell settings get global wifi_on
+    1
+    $ adb shell dumpsys wifi | grep 'Wi-Fi is'
+    Wi-Fi is enabled
+
+3 further off/on cycles (`svc wifi disable` / `svc wifi enable`, 6 s / 8 s
+apart) all returned; final check:
+
+    $ adb shell cat /proc/uptime
+    286.04 2080.18          (same boot, no reboot)
+    $ adb shell settings get global wifi_on
+    1
+
+## 3. Module compatibility check (why the built .ko can be swapped in)
+
+The rebuilt module and the one already on the phone have the same
+vermagic and the same __versions section (all symbol CRCs, including
+module_layout = 0x89b5c3ef):
+
+    vermagic=4.14.199+-ab612c2 SMP preempt mod_unload modversions aarch64
+    module_layout crc = 0x89b5c3ef     (both files)
+    __versions = 14528 bytes, byte-identical
+    .modinfo   = 1070 bytes, byte-identical
