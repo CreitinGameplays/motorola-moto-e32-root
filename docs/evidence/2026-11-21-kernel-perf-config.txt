@@ -1,0 +1,116 @@
+# Kernel performance config build verification (2026-11-21/22)
+
+VPS build of `motorola-moto-e32-kernel` `4.14` with the new performance
+defaults in `build.sh` plus the `tcp_bbr.c` helper fix.  Host: 2 vCPU,
+3 GB RAM, clang+lld 11.0.1, `OUT=/home/creitin/kbuild`,
+`STABLE=/home/creitin/kernel-out`.
+
+## Build
+
+```
+$ OUT=/home/creitin/kbuild STABLE=/home/creitin/kernel-out ./build.sh
+...
+--- building
+...
+-rw-rw-r-- 1 creitin creitin 21463056 Nov 22 09:38 /home/creitin/kbuild/arch/arm64/boot/Image
+-rw-rw-r-- 1 creitin creitin   565691 Nov 22 09:38 /home/creitin/kbuild/Module.symvers
+--- stable output in /home/creitin/kernel-out (Image + modules, one build)
+DONE
+```
+
+First attempt failed because the vendor drop's BBR file was never
+compiled before:
+
+```
+net/ipv4/tcp_bbr.c:274:43: error: implicit declaration of function
+        'bbr_min_tso_segs' [-Werror,-Wimplicit-function-declaration]
+        segs = max_t(u32, bytes / tp->mss_cache, bbr_min_tso_segs(sk));
+```
+
+The 5.4.y helper was added (`bbr_min_tso_segs()`, matching the
+`min_segs` already computed by `bbr_set_tso_segs_goal()`), then the
+incremental rebuild finished with EXIT=0.
+
+## Effective config (`~/kernel-out/kernel.config`)
+
+```
+CONFIG_HZ_300=y
+CONFIG_HZ=300
+CONFIG_ARM64_VHE=y
+CONFIG_TCP_CONG_ADVANCED=y
+CONFIG_TCP_CONG_CUBIC=y
+CONFIG_TCP_CONG_BBR=y
+CONFIG_DEFAULT_BBR=y
+CONFIG_DEFAULT_TCP_CONG="bbr"
+CONFIG_NET_SCH_CODEL=y
+CONFIG_NET_SCH_FQ_CODEL=y
+CONFIG_NET_SCH_FQ=y
+CONFIG_NET_SCH_DEFAULT=y
+CONFIG_DEFAULT_FQ_CODEL=y
+CONFIG_DEFAULT_NET_SCH="fq_codel"
+CONFIG_CRYPTO_SHA512_ARM64=y
+CONFIG_CRYPTO_CRC32_ARM64_CE=y
+CONFIG_CRYPTO_CHACHA20_NEON=y
+CONFIG_CRYPTO_AES_ARM64_BS=y
+CONFIG_LTO_NONE=y
+CONFIG_MODVERSIONS=y
+```
+
+`# CONFIG_HZ_250 is not set`, `# CONFIG_LTO is not set`,
+`# CONFIG_CFI is not set`; KVM and KEXEC are still `=y`.
+
+## ABI / module compatibility (unchanged)
+
+```
+mali_kbase.ko: vermagic=4.14.199+-ab612c2 SMP preempt mod_unload modversions aarch64
+sprdwl_ng.ko:  vermagic=4.14.199+-ab612c2 SMP preempt mod_unload modversions aarch64
+sprdbt_tty.ko: vermagic=4.14.199+-ab612c2 SMP preempt mod_unload modversions aarch64
+
+new: 0x89b5c3ef  module_layout  vmlinux  EXPORT_SYMBOL
+old: 0x89b5c3ef  module_layout  vmlinux  EXPORT_SYMBOL
+```
+
+BBR is linked in (`System.map`):
+
+```
+ffffff8008b02eb8 t bbr_init
+ffffff8008b03028 t bbr_ssthresh
+ffffff8008b03064 t bbr_set_state
+ffffff8008b030e0 t bbr_cwnd_event
+ffffff8008b0313c t bbr_undo_cwnd
+ffffff8008b0319c t bbr_tso_segs_goal
+...
+ffffff8008a48288 t fq_codel_enqueue
+ffffff8008a48610 t fq_codel_dequeue
+ffffff8008a48f30 t fq_codel_init
+ffffff8008a49098 t fq_codel_reset
+```
+
+## Output hashes
+
+Old (2026-11-17, still running on the phone):
+
+```
+c0244fc3525a4eb84b08435b7a1c042424855630d05d25b15627d650811c6dc4  ./Image
+e5f1d847782e0249cd115c1ed4cf7266ea5129a015f3679fc4d5524805b99b6c  ./kernel.config
+7335bbf7055d92333d2369ca2259ece1c18d9da716c249cedc71b8260d1afb61  ./mali_kbase.ko
+2b7e3035c2edc21fae247be56022bec0e0b391333b131d63d1593a8696a13bd3  ./Module.symvers
+e21694f4f3420d545cb10529991f8816803edaf3680a0feeb7190f39ae038076  ./sprdbt_tty.ko
+fb0b996f372ceb92a9517682d83d6f6cce81ce0dd181ca4208385c6b274a77e7  ./sprdwl_ng.ko
+```
+
+New (performance defaults):
+
+```
+de1be4ee9a189d3f541fa831e574a78f58431725a876c0b75723aaf5de951eca  ./Image
+e8a5425da377c3113149ee4bb7f2617161155e25a6d62756ff002da51752e2c4  ./kernel.config
+e50bd0620c62476fc173daad4f9de36bccdb2883f928bfd53111c0f3bc5690df  ./mali_kbase.ko
+e9e7b9e86925e0c1e7e082b576c1e2d20bd6323f470e027a0dbd4b193c603adb  ./Module.symvers
+8315401795ba07c5bd2dc606b9342e46181583284a2b622f345a388f8ec82938  ./sprdbt_tty.ko
+f3f5661eb20f4c911460d5725cb14f237d0c7f113bf8836f65cefa23c61f39ef  ./sprdwl_ng.ko
+```
+
+Image size: 21,454,864 -> 21,463,056 bytes (+8 KB).
+
+The previous output set is kept on the VPS as
+`~/kernel-out-before-perf` for rollback.

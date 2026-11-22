@@ -97,6 +97,26 @@ Key settings and why:
 | `MALI_MDBG_CRUMB` | m (probe) / n (production) | flash-crumb hang instrumentation; keep off for production |
 | `SC23XX` + WCN_* | y | the marlin/sdiohal WCN bus, built-in - the WLAN driver binds to it |
 
+### 2b. Performance defaults (applied by `build.sh`)
+
+`build.sh` is the recommended route and now also applies the runtime
+tuning in `docs/26-kernel-performance-config.md` on every build:
+
+| option | value | why |
+|---|---|---|
+| `HZ_300` (`HZ=300`) | y | 250 -> 300 Hz: lower wakeup jitter without the idle cost of 1000 Hz |
+| `TCP_CONG_BBR` + `DEFAULT_BBR` | y | BBR default; cubic stays selectable |
+| `NET_SCH_FQ_CODEL` + `DEFAULT_FQ_CODEL` | y | real AQM default (was `pfifo_fast`) |
+| `NET_SCH_FQ`, `NET_SCH_CODEL` | y | BBR pacing + codel |
+| `CRYPTO_CRC32_ARM64_CE` | y | ARMv8 CRC32/CRC32C (f2fs/ext4 checksums) |
+| `CRYPTO_AES_ARM64_BS`, `CRYPTO_SHA512_ARM64`, `CRYPTO_CHACHA20_NEON` | y | ARMv8 crypto (FBE/WPA, SHA, ChaCha20) |
+| `ARM64_VHE` | y | KVM host at EL2, runtime-detected |
+
+The prebuilt vendor modules were built for HZ=250, so their
+constant-folded `msecs_to_jiffies()` timeouts run ~20% short at 300 Hz;
+the modules this tree builds are rebuilt with the same config and are
+consistent.  Rationale and the rejected options: docs 26.
+
 ## 3. Build
 
 ```bash
