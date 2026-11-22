@@ -108,6 +108,8 @@ cat /proc/sys/net/ipv4/tcp_available_congestion_control  # ... bbr ...
 
 Config + compile validated on the VPS (EXIT=0, `DONE`); the phone still
 runs the 2026-11-17 Image until the new one is flashed.  The build keeps
-the vermagic and `module_layout` CRC (`0x89b5c3ef`) unchanged.  Evidence:
+the vermagic and `module_layout` CRC (`0x89b5c3ef`) unchanged, and an
+`abiprobe` run built against the new config matches all 127 offsets of the
+existing KVM reference.  Evidence:
 `docs/evidence/2026-11-21-kernel-perf-config.txt`.  The previous output set
 (Image + modules) is backed up on the VPS as `~/kernel-out-before-perf`.

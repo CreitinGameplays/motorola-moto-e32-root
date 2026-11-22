@@ -114,3 +114,23 @@ Image size: 21,454,864 -> 21,463,056 bytes (+8 KB).
 
 The previous output set is kept on the VPS as
 `~/kernel-out-before-perf` for rollback.
+
+## Vendor ABI probe (docs/17/18 `modules/abiprobe`)
+
+Built `modules/abiprobe` against the new config with the same clang
+11.0.1 and loaded it on the phone (module removed and
+`/data/local/tmp/abiprobe.ko` deleted afterwards).  All 127 `ABIPROBE`
+lines are identical to the existing KVM reference
+`docs/evidence/abiprobe/abiprobe-kvm-4.14.199-ab612c2.txt`:
+
+```
+$ diff <(grep ABIPROBE abiprobe-kvm-4.14.199-ab612c2.txt | sed 's/^\[[^]]*\] //') \
+       <(grep ABIPROBE abiprobe_new.txt | sed 's/^\[[^]]*\] //')
+$ echo $?
+0
+```
+
+(offsets of `module`, `device`, `task_struct`, `mm_struct`, `file`,
+`net_device`, `sk_buff`, `platform_device`, `regmap`, `clk`,
+`iommu_domain`, `dma_buf`, `timer_list`, plus the relocated KVM tail
+fields.)
