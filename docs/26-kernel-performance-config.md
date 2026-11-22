@@ -106,10 +106,15 @@ cat /proc/sys/net/ipv4/tcp_available_congestion_control  # ... bbr ...
 
 ## Status
 
-Config + compile validated on the VPS (EXIT=0, `DONE`); the phone still
-runs the 2026-11-17 Image until the new one is flashed.  The build keeps
-the vermagic and `module_layout` CRC (`0x89b5c3ef`) unchanged, and an
-`abiprobe` run built against the new config matches all 127 offsets of the
-existing KVM reference.  Evidence:
-`docs/evidence/2026-11-21-kernel-perf-config.txt`.  The previous output set
-(Image + modules) is backed up on the VPS as `~/kernel-out-before-perf`.
+Built (EXIT=0, `DONE`), validated and **flashed** to `boot_b` on
+2026-11-21.  The build keeps the vermagic and `module_layout` CRC
+(`0x89b5c3ef`) unchanged, and an `abiprobe` run built against the new
+config matches all 127 offsets of the existing KVM reference.  The phone
+boots the new Image in ~1 min with `CONFIG_HZ=300`, BBR + fq_codel active
+(`wlan0` also shows `qdisc fq_codel`), vendor modules loading and no
+Oops/panic.  Wi-Fi now associates on the 5 GHz network (5200 MHz) and
+survives off/on cycles - a bonus the stock configs never had.  Evidence:
+`docs/evidence/2026-11-21-kernel-perf-config.txt` and
+`docs/evidence/2026-11-21-perf-flash.txt`.  The previous output set is
+backed up on the VPS as `~/kernel-out-before-perf`; if needed, power-cycle
+once to fall back to the slot-a rescue.

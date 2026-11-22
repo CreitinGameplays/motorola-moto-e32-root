@@ -134,3 +134,58 @@ $ echo $?
 `net_device`, `sk_buff`, `platform_device`, `regmap`, `clk`,
 `iommu_domain`, `dma_buf`, `timer_list`, plus the relocated KVM tail
 fields.)
+
+## Flash + on-device verification (2026-11-21/22)
+
+Packed `Image.perf` into `boot_perf_magisk.img` with
+`pack_and_sign_boot.py --base boot_custom_magisk.img` (the base is
+byte-identical to the previous `boot_b`, hash `024005f4...`; only the
+kernel payload changed, ramdisk and DTB match the base byte-for-byte).
+Signed image: 67,108,864 bytes, sha256
+`49d74b204d6e11d3fcc626def9ccf74ae9f73abd40afa48e832f7bd6fc1bb3c6`.
+Staged the matching modules in the Magisk modules:
+`mali_kbase.ko` `e50bd062...` and `sprdwl_ng.ko` `f3f5661e...` (hashes
+verified on the device).
+
+Flashed with `run_boot_b_test.ps1 -SkipWait`: slot `_b`, root uid 0,
+SELinux Enforcing, boot_a rescue v3 (`46519e13...`) verified, `dd`
+read-back hash matched, slot b armed to one attempt, reboot issued via
+`su -c reboot`.  Android came back in ~104 s (and a second reboot in
+~56 s).  Full log: `docs/evidence/2026-11-21-perf-flash.txt`.
+
+Running kernel after the flash:
+
+```
+Linux version 4.14.199+-ab612c2 (creitin@tunnel.creitingameplays.com)
+(clang 11.0.1, LLD 11.0.1) #2 SMP PREEMPT Sun Nov 22 09:37:48 CST 2026
+CONFIG_HZ=300 / CONFIG_HZ_300=y / CONFIG_ARM64_VHE=y / CONFIG_KVM=y
+cat /proc/sys/net/ipv4/tcp_congestion_control  -> bbr
+cat /proc/sys/net/core/default_qdisc            -> fq_codel
+wlan0: ... qdisc fq_codel state UP ...
+/dev/kvm present; mali_kbase 757760, sprdwl_ng 708608 in /proc/modules
+```
+
+Vendor modules still load (camera, flash, sensor, BT `sprdbt_sdio_tty`,
+FM `sprd_sdio_fm`, SAR `aw9610x_sar`).  A one-time
+`WARNING: CPU: 1 PID: 55 at sdiohal_list_push+0xdc/0x254` at t+8.7 s is
+pre-existing (identical warning on the 2026-11-17 boot at t+8.5 s), not
+a panic.  `dmesg | grep -cE 'Internal error|Kernel panic'` = 0.
+
+Wi-Fi: the 5 GHz network is a bonus - the user reports stock configs on
+this device only support 2.4 GHz.  With the new Image the in-tree
+`sprdwl_ng` (708608, the port with the SDIO remove fix) associates to
+`Família Santos_5G` at 5200 MHz (Wi-Fi standard 5, 292-390 Mbps,
+`wlan0` with `fq_codel`) and stays on it across three `svc wifi
+disable`/`enable` cycles; no reboot, no Oops.  The in-tree module also
+remains loaded (size 708608, i.e. no handover to the 409600-byte vendor
+module this time).
+
+BT: `sprdbt_sdio_tty` loads; attempting `svc bluetooth enable` from the
+adb shell is denied by Android (`SecurityException: Need BLUETOOTH
+ADMIN permission`, `svc` rc=137) - a pre-existing shell restriction,
+not a kernel error.  BT stays in BLE_ON state.
+
+Slot/cleanup: after the successful boot the A/B block shows slot b
+`8e 00 9f 00` (successful=1); boot_a rescue untouched.  The flash
+staging image, slot helper, `ab_tries1.bin` and the temporary abiprobe
+`.ko` were removed from `/data/local/tmp`.
